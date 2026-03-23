@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/Work/My Projects/**)",
+      "Bash(npx nuxi@latest init Norbiz-Web --package-manager npm --no-install)",
+      "Bash(rm -rf \"D:/Work/My Projects/Norbiz-Web\")",
+      "Bash(mkdir \"D:/Work/My Projects/Norbiz-Web\")",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(echo \"Exit: $?\")"
+    ]
+  }
+}
