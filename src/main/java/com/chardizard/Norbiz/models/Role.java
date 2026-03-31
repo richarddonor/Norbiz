@@ -20,6 +20,9 @@ public class Role {
     @Column(nullable = false, unique = true)
     private String name;
 
+    @Column(name = "display_name")
+    private String displayName;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "role_permissions",

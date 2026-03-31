@@ -2,8 +2,10 @@ package com.chardizard.Norbiz.controllers;
 
 import com.chardizard.Norbiz.dto.AuthRequest;
 import com.chardizard.Norbiz.dto.AuthResponse;
+import com.chardizard.Norbiz.models.User;
 import com.chardizard.Norbiz.security.JwtUtil;
 import com.chardizard.Norbiz.services.UserDetailsServiceImpl;
+import com.chardizard.Norbiz.services.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -21,6 +23,7 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final UserDetailsServiceImpl userDetailsService;
+    private final UserService userService;
     private final JwtUtil jwtUtil;
 
     @PostMapping("/login")
@@ -29,7 +32,8 @@ public class AuthController {
                 new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
         );
         UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
-        String token = jwtUtil.generateToken(userDetails);
+        User user = userService.findByUsername(request.getUsername());
+        String token = jwtUtil.generateToken(userDetails, user.getDisplayName());
         return ResponseEntity.ok(new AuthResponse(token));
     }
 }

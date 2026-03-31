@@ -25,67 +25,47 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         // Permissions
-        Permission readPermission = permissionRepository.findByName("READ")
-                .orElseGet(() -> {
-                    Permission p = new Permission();
-                    p.setName("READ");
-                    return permissionRepository.save(p);
-                });
+        Permission manageSystemPermission = findOrCreate("MANAGE_SYSTEM");
+        Permission viewUserPermission     = findOrCreate("VIEW_USER");
+        Permission createUserPermission   = findOrCreate("CREATE_USER");
+        Permission updateUserPermission   = findOrCreate("UPDATE_USER");
+        Permission deleteUserPermission   = findOrCreate("DELETE_USER");
+        Permission viewRolePermission     = findOrCreate("VIEW_ROLE");
+        Permission createRolePermission   = findOrCreate("CREATE_ROLE");
+        Permission updateRolePermission   = findOrCreate("UPDATE_ROLE");
+        Permission deleteRolePermission   = findOrCreate("DELETE_ROLE");
 
-        Permission writePermission = permissionRepository.findByName("WRITE")
-                .orElseGet(() -> {
-                    Permission p = new Permission();
-                    p.setName("WRITE");
-                    return permissionRepository.save(p);
-                });
+        // Roles — permissions are always synced on startup
+        Role adminRole = roleRepository.findByName("ADMIN").orElseGet(() -> {
+            Role r = new Role();
+            r.setName("ADMIN");
+            return r;
+        });
+        adminRole.setDisplayName("Administrator");
+        adminRole.setPermissions(Set.of());
+        roleRepository.save(adminRole);
 
-        Permission deletePermission = permissionRepository.findByName("DELETE")
-                .orElseGet(() -> {
-                    Permission p = new Permission();
-                    p.setName("DELETE");
-                    return permissionRepository.save(p);
-                });
-
-        Permission manageSystemPermission = permissionRepository.findByName("MANAGE_SYSTEM")
-                .orElseGet(() -> {
-                    Permission p = new Permission();
-                    p.setName("MANAGE_SYSTEM");
-                    return permissionRepository.save(p);
-                });
-
-        Permission createUserPermission = permissionRepository.findByName("CREATE_USER")
-                .orElseGet(() -> {
-                    Permission p = new Permission();
-                    p.setName("CREATE_USER");
-                    return permissionRepository.save(p);
-                });
-
-        // Roles
-        Role adminRole = roleRepository.findByName("ADMIN")
-                .orElseGet(() -> {
-                    Role r = new Role();
-                    r.setName("ADMIN");
-                    r.setPermissions(Set.of(readPermission, writePermission));
-                    return roleRepository.save(r);
-                });
-
-        // SYSTEM_ADMIN: business-level access (read, write, delete, create users — no system management)
-        Role systemAdminRole = roleRepository.findByName("SYSTEM_ADMIN")
-                .orElseGet(() -> {
-                    Role r = new Role();
-                    r.setName("SYSTEM_ADMIN");
-                    r.setPermissions(Set.of(readPermission, writePermission, deletePermission, createUserPermission));
-                    return roleRepository.save(r);
-                });
+        // SYSTEM_ADMIN: business-level access
+        Role systemAdminRole = roleRepository.findByName("SYSTEM_ADMIN").orElseGet(() -> {
+            Role r = new Role();
+            r.setName("SYSTEM_ADMIN");
+            return r;
+        });
+        systemAdminRole.setDisplayName("System Administrator");
+        systemAdminRole.setPermissions(Set.of(viewUserPermission, createUserPermission, viewRolePermission));
+        roleRepository.save(systemAdminRole);
 
         // SUPER_ADMIN: complete access including system management
-        Role superAdminRole = roleRepository.findByName("SUPER_ADMIN")
-                .orElseGet(() -> {
-                    Role r = new Role();
-                    r.setName("SUPER_ADMIN");
-                    r.setPermissions(Set.of(readPermission, writePermission, deletePermission, manageSystemPermission, createUserPermission));
-                    return roleRepository.save(r);
-                });
+        Role superAdminRole = roleRepository.findByName("SUPER_ADMIN").orElseGet(() -> {
+            Role r = new Role();
+            r.setName("SUPER_ADMIN");
+            return r;
+        });
+        superAdminRole.setDisplayName("Super Administrator");
+        superAdminRole.setPermissions(Set.of(manageSystemPermission,
+                viewUserPermission, createUserPermission, updateUserPermission, deleteUserPermission,
+                viewRolePermission, createRolePermission, updateRolePermission, deleteRolePermission));
+        roleRepository.save(superAdminRole);
 
         // Seed users (skip if already present)
         if (userRepository.findByUsername("admin").isEmpty()) {
@@ -114,5 +94,13 @@ public class DataInitializer implements CommandLineRunner {
             systemAdmin.setRoles(Set.of(systemAdminRole));
             userRepository.save(systemAdmin);
         }
+    }
+
+    private Permission findOrCreate(String name) {
+        return permissionRepository.findByName(name).orElseGet(() -> {
+            Permission p = new Permission();
+            p.setName(name);
+            return permissionRepository.save(p);
+        });
     }
 }
