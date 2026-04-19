@@ -62,6 +62,8 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/auth/login").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                // Images are served publicly — paths are UUID-prefixed and not guessable
+                .requestMatchers("/item-images/*/items/images/*").permitAll()
                 // System-level endpoints: SUPER_ADMIN only
                 .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
                 // Business-level endpoints: SUPER_ADMIN or SYSTEM_ADMIN

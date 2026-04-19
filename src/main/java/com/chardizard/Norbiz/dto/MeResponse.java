@@ -8,13 +8,11 @@ import java.util.Set;
 
 @Getter
 @Setter
-public class UserResponse {
-    private Long id;
+public class MeResponse {
     private String username;
     private String displayName;
-    private String email;
-    private Set<String> roles;
-    private Set<Long> roleIds;
+    private List<String> roles;
+    private Set<String> permissions;
     private List<CompanyInfo> companies;
 
     @Getter

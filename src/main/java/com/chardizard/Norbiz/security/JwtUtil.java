@@ -28,16 +28,10 @@ public class JwtUtil {
                 .map(a -> a.substring(5))
                 .toList();
 
-        List<String> permissions = userDetails.getAuthorities().stream()
-                .map(a -> a.getAuthority())
-                .filter(a -> !a.startsWith("ROLE_"))
-                .toList();
-
         return Jwts.builder()
                 .subject(userDetails.getUsername())
                 .claim("displayName", displayName)
                 .claim("roles", roles)
-                .claim("permissions", permissions)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey())

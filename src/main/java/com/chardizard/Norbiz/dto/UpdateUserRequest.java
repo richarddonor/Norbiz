@@ -12,4 +12,5 @@ public class UpdateUserRequest {
     private String displayName;
     private String email;
     private Set<Long> roleIds;
+    private Set<Long> companyIds;
 }
