@@ -5,12 +5,17 @@ import com.chardizard.Norbiz.models.Role;
 import com.chardizard.Norbiz.repositories.PermissionRepository;
 import com.chardizard.Norbiz.repositories.RoleRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
+import com.chardizard.Norbiz.util.SpecificationUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -21,8 +26,13 @@ public class RoleService {
     private final PermissionRepository permissionRepository;
     private final UserRepository userRepository;
 
-    public List<Role> findAll() {
-        return roleRepository.findAll();
+    public Page<Role> findAll(Map<String, String> filters, Pageable pageable) {
+        Specification<Role> spec = SpecificationUtils.allOf(
+                SpecificationUtils.containsIgnoreCase("displayName", filters.get("displayName")),
+                SpecificationUtils.containsIgnoreCase("name", filters.get("name")),
+                SpecificationUtils.containsIgnoreCase("permissions.name", filters.get("permissions"))
+        );
+        return roleRepository.findAll(spec, pageable);
     }
 
     public Role findById(Long id) {

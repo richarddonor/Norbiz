@@ -1,11 +1,13 @@
 package com.chardizard.Norbiz.dto;
 
+import com.chardizard.Norbiz.models.ItemTag;
 import com.chardizard.Norbiz.models.PriceType;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -13,12 +15,15 @@ public class ItemResponse {
     private Long id;
     private Long companyId;
     private String companyName;
+    private Long itemCategoryId;
+    private String itemCategoryName;
     private String itemCode;
     private String name;
     private String imagePath;
     private boolean active;
     private List<String> skus;
     private List<PriceEntry> prices;
+    private Set<ItemTag> tags;
 
     @Getter
     @Setter

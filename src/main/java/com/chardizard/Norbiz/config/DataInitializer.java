@@ -41,6 +41,23 @@ public class DataInitializer implements CommandLineRunner {
         Permission createItemPermission   = findOrCreate("CREATE_ITEM",   "Maintenance - Item Create");
         Permission updateItemPermission   = findOrCreate("UPDATE_ITEM",   "Maintenance - Item Update");
         Permission deleteItemPermission   = findOrCreate("DELETE_ITEM",   "Maintenance - Item Delete");
+        Permission viewCostPricePermission = findOrCreate("VIEW_COST_PRICE", "Maintenance - Item Cost Price View");
+        Permission viewBrandPermission            = findOrCreate("VIEW_BRAND",            "Maintenance - Brand View");
+        Permission createBrandPermission          = findOrCreate("CREATE_BRAND",          "Maintenance - Brand Create");
+        Permission updateBrandPermission          = findOrCreate("UPDATE_BRAND",          "Maintenance - Brand Update");
+        Permission deleteBrandPermission          = findOrCreate("DELETE_BRAND",          "Maintenance - Brand Delete");
+        Permission viewItemCategoryPermission     = findOrCreate("VIEW_ITEM_CATEGORY",    "Maintenance - Item Category View");
+        Permission createItemCategoryPermission   = findOrCreate("CREATE_ITEM_CATEGORY",  "Maintenance - Item Category Create");
+        Permission updateItemCategoryPermission   = findOrCreate("UPDATE_ITEM_CATEGORY",  "Maintenance - Item Category Update");
+        Permission deleteItemCategoryPermission   = findOrCreate("DELETE_ITEM_CATEGORY",  "Maintenance - Item Category Delete");
+        Permission viewWarehousePermission        = findOrCreate("VIEW_WAREHOUSE",        "Maintenance - Warehouse View");
+        Permission createWarehousePermission      = findOrCreate("CREATE_WAREHOUSE",      "Maintenance - Warehouse Create");
+        Permission updateWarehousePermission      = findOrCreate("UPDATE_WAREHOUSE",      "Maintenance - Warehouse Update");
+        Permission deleteWarehousePermission      = findOrCreate("DELETE_WAREHOUSE",      "Maintenance - Warehouse Delete");
+        Permission viewEmployeePermission         = findOrCreate("VIEW_EMPLOYEE",         "HR - Employee View");
+        Permission createEmployeePermission       = findOrCreate("CREATE_EMPLOYEE",       "HR - Employee Create");
+        Permission updateEmployeePermission       = findOrCreate("UPDATE_EMPLOYEE",       "HR - Employee Update");
+        Permission deleteEmployeePermission       = findOrCreate("DELETE_EMPLOYEE",       "HR - Employee Delete");
 
         // Roles — permissions are always synced on startup
         Role adminRole = roleRepository.findByName("ADMIN").orElseGet(() -> {
@@ -61,7 +78,11 @@ public class DataInitializer implements CommandLineRunner {
         systemAdminRole.setDisplayName("System Administrator");
         systemAdminRole.setPermissions(Set.of(
                 viewUserPermission, createUserPermission, viewRolePermission,
-                viewItemPermission, createItemPermission, updateItemPermission));
+                viewItemPermission, createItemPermission, updateItemPermission,
+                viewBrandPermission, createBrandPermission, updateBrandPermission,
+                viewItemCategoryPermission, createItemCategoryPermission, updateItemCategoryPermission,
+                viewWarehousePermission, createWarehousePermission, updateWarehousePermission,
+                viewEmployeePermission, createEmployeePermission, updateEmployeePermission));
         roleRepository.save(systemAdminRole);
 
         // SUPER_ADMIN: complete access including system management
@@ -74,7 +95,11 @@ public class DataInitializer implements CommandLineRunner {
         superAdminRole.setPermissions(Set.of(manageSystemPermission,
                 viewUserPermission, createUserPermission, updateUserPermission, deleteUserPermission,
                 viewRolePermission, createRolePermission, updateRolePermission, deleteRolePermission,
-                viewItemPermission, createItemPermission, updateItemPermission, deleteItemPermission));
+                viewItemPermission, createItemPermission, updateItemPermission, deleteItemPermission, viewCostPricePermission,
+                viewBrandPermission, createBrandPermission, updateBrandPermission, deleteBrandPermission,
+                viewItemCategoryPermission, createItemCategoryPermission, updateItemCategoryPermission, deleteItemCategoryPermission,
+                viewWarehousePermission, createWarehousePermission, updateWarehousePermission, deleteWarehousePermission,
+                viewEmployeePermission, createEmployeePermission, updateEmployeePermission, deleteEmployeePermission));
         roleRepository.save(superAdminRole);
 
         // Default company — super admin is pre-assigned; other users are assigned to tenants later

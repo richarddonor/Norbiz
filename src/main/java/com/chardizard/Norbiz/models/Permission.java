@@ -7,14 +7,17 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(name = "permissions")
-public class Permission {
+@Table(
+    name = "permissions",
+    uniqueConstraints = @UniqueConstraint(name = "PERMISSIONS_NAME_UQ", columnNames = "name")
+)
+public class Permission extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String name;
 
     @Column

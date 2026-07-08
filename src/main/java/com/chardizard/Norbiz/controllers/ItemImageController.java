@@ -62,12 +62,13 @@ public class ItemImageController {
             throw new SecurityException("Invalid file path");
         }
 
-        file.transferTo(target);
-
         // Delete old image if present
         if (item.getImagePath() != null) {
             Files.deleteIfExists(resolveUploadDir().resolve(item.getImagePath()));
         }
+
+        file.transferTo(target);
+
 
         String imagePath = companyId + "/items/images/" + filename;
         item.setImagePath(imagePath);

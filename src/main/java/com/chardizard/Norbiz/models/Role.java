@@ -10,14 +10,17 @@ import java.util.Set;
 @Getter
 @Setter
 @Entity
-@Table(name = "roles")
-public class Role {
+@Table(
+    name = "roles",
+    uniqueConstraints = @UniqueConstraint(name = "ROLES_NAME_UQ", columnNames = "name")
+)
+public class Role extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String name;
 
     @Column(name = "display_name")
@@ -26,8 +29,10 @@ public class Role {
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "role_permissions",
-        joinColumns = @JoinColumn(name = "role_id"),
-        inverseJoinColumns = @JoinColumn(name = "permission_id")
+        joinColumns = @JoinColumn(name = "role_id",
+            foreignKey = @ForeignKey(name = "ROLE_PERMISSIONS_ROLE_ID_FK")),
+        inverseJoinColumns = @JoinColumn(name = "permission_id",
+            foreignKey = @ForeignKey(name = "ROLE_PERMISSIONS_PERMISSION_ID_FK"))
     )
     private Set<Permission> permissions = new HashSet<>();
 }

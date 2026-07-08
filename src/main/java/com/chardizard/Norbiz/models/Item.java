@@ -3,29 +3,34 @@ package com.chardizard.Norbiz.models;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Getter
 @Setter
 @Entity
 @Table(
     name = "items",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"company_id", "item_code"})
+    uniqueConstraints = @UniqueConstraint(name = "ITEMS_COMPANY_ITEM_CODE_UQ", columnNames = {"company_id", "item_code"})
 )
-public class Item {
+public class Item extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "company_id", nullable = false)
+    @JoinColumn(name = "company_id", nullable = false,
+        foreignKey = @ForeignKey(name = "ITEMS_COMPANY_ID_FK"))
     private Company company;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "item_category_id", nullable = false,
+        foreignKey = @ForeignKey(name = "ITEMS_ITEM_CATEGORY_ID_FK"))
+    private ItemCategory itemCategory;
 
     @Column(name = "item_code", nullable = false, length = 100)
     private String itemCode;
@@ -47,11 +52,13 @@ public class Item {
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ItemPrice> prices = new ArrayList<>();
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false, nullable = false)
-    private Instant createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(
+        name = "item_tags",
+        joinColumns = @JoinColumn(name = "item_id",
+            foreignKey = @ForeignKey(name = "ITEM_TAGS_ITEM_ID_FK"))
+    )
+    @Column(name = "tag", nullable = false, length = 50)
+    @Enumerated(EnumType.STRING)
+    private Set<ItemTag> tags = new HashSet<>();
 }

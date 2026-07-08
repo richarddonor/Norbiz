@@ -1,20 +1,20 @@
 package com.chardizard.Norbiz.controllers;
 
-import com.chardizard.Norbiz.models.Company;
+import com.chardizard.Norbiz.dto.AppResponse;
+import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.repositories.CompanyRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Tag(name = "Companies", description = "Company lookup — restricted to SUPER_ADMIN (MANAGE_SYSTEM permission)")
 @RestController
@@ -29,10 +29,9 @@ public class CompanyController {
     @ApiResponse(responseCode = "403", description = "Missing MANAGE_SYSTEM permission")
     @GetMapping
     @PreAuthorize("hasAuthority('MANAGE_SYSTEM')")
-    public ResponseEntity<List<Map<String, Object>>> getAll() {
-        List<Map<String, Object>> companies = companyRepository.findAll().stream()
-                .map(c -> Map.<String, Object>of("id", c.getId(), "name", c.getName()))
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(companies);
+    public ResponseEntity<AppResponse<PageResponse<Map<String, Object>>>> getAll(Pageable pageable) {
+        var companies = companyRepository.findAll(pageable)
+                .map(c -> Map.<String, Object>of("id", c.getId(), "name", c.getName()));
+        return ResponseEntity.ok(AppResponse.of(PageResponse.of(companies)));
     }
 }

@@ -1,6 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.CreateUserRequest;
+import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.UpdateUserRequest;
 import com.chardizard.Norbiz.dto.UserResponse;
 import com.chardizard.Norbiz.models.User;
@@ -9,15 +11,20 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -34,11 +41,22 @@ public class UserController {
     @ApiResponse(responseCode = "403", description = "Missing VIEW_USER permission")
     @GetMapping
     @PreAuthorize("hasAuthority('VIEW_USER')")
-    public ResponseEntity<List<UserResponse>> getAll() {
-        List<UserResponse> users = userService.findAll().stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(users);
+    public ResponseEntity<AppResponse<PageResponse<UserResponse>>> getAll(
+            @Parameter(description = "Filter by display name (contains)") @RequestParam(required = false) String displayName,
+            @Parameter(description = "Filter by username (contains)") @RequestParam(required = false) String username,
+            @Parameter(description = "Filter by email (contains)") @RequestParam(required = false) String email,
+            @Parameter(description = "Filter by role name (contains)") @RequestParam(required = false) String roles,
+            @Parameter(description = "Filter by company name (contains)") @RequestParam(required = false) String companies,
+            Pageable pageable) {
+        Map<String, String> filters = new LinkedHashMap<>();
+        if (StringUtils.hasText(displayName)) filters.put("displayName", displayName);
+        if (StringUtils.hasText(username)) filters.put("username", username);
+        if (StringUtils.hasText(email)) filters.put("email", email);
+        if (StringUtils.hasText(roles)) filters.put("roles", roles);
+        if (StringUtils.hasText(companies)) filters.put("companies", companies);
+
+        var users = userService.findAll(filters, pageable).map(this::toResponse);
+        return ResponseEntity.ok(AppResponse.of(PageResponse.of(users)));
     }
 
     @Operation(summary = "Create user", description = "Creates a new user. SUPER_ADMIN may assign any companies; others assign the user to their own company.")
@@ -46,8 +64,8 @@ public class UserController {
     @ApiResponse(responseCode = "403", description = "Missing CREATE_USER permission")
     @PostMapping
     @PreAuthorize("hasAuthority('CREATE_USER')")
-    public ResponseEntity<UserResponse> createUser(@RequestBody CreateUserRequest request,
-                                                   @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<AppResponse<UserResponse>> createUser(@Valid @RequestBody CreateUserRequest request,
+                                                                @AuthenticationPrincipal UserDetails userDetails) {
         User caller = userService.findByUsername(userDetails.getUsername());
         Set<Long> companyIds = userService.resolveCompanyIds(caller, request.getCompanyIds());
 
@@ -57,8 +75,8 @@ public class UserController {
         user.setEmail(request.getEmail());
         user.setPassword(request.getPassword());
 
-        User created = userService.register(user, companyIds);
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(AppResponse.of(toResponse(userService.register(user, companyIds))));
     }
 
     @Operation(summary = "Update user", description = "Updates display name, email, roles, and company assignments for an existing user.")
@@ -67,15 +85,15 @@ public class UserController {
     @ApiResponse(responseCode = "404", description = "User not found")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('UPDATE_USER')")
-    public ResponseEntity<UserResponse> updateUser(@Parameter(description = "User ID") @PathVariable Long id,
-                                                   @RequestBody UpdateUserRequest request,
-                                                   @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<AppResponse<UserResponse>> updateUser(@Parameter(description = "User ID") @PathVariable Long id,
+                                                                @Valid @RequestBody UpdateUserRequest request,
+                                                                @AuthenticationPrincipal UserDetails userDetails) {
         User caller = userService.findByUsername(userDetails.getUsername());
         Set<Long> companyIds = userService.resolveCompanyIds(caller, request.getCompanyIds());
 
         User user = userService.update(id, request.getUsername(), request.getDisplayName(),
                 request.getEmail(), request.getRoleIds(), companyIds);
-        return ResponseEntity.ok(toResponse(user));
+        return ResponseEntity.ok(AppResponse.of(toResponse(user)));
     }
 
     @Operation(summary = "Delete user", description = "Permanently deletes a user.")

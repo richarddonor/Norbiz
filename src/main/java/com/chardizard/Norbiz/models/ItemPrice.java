@@ -11,16 +11,17 @@ import java.math.BigDecimal;
 @Entity
 @Table(
     name = "item_prices",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"item_id", "price_type"})
+    uniqueConstraints = @UniqueConstraint(name = "ITEM_PRICES_ITEM_PRICE_TYPE_UQ", columnNames = {"item_id", "price_type"})
 )
-public class ItemPrice {
+public class ItemPrice extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "item_id", nullable = false)
+    @JoinColumn(name = "item_id", nullable = false,
+        foreignKey = @ForeignKey(name = "ITEM_PRICES_ITEM_ID_FK"))
     private Item item;
 
     @Enumerated(EnumType.STRING)

@@ -6,12 +6,19 @@ import com.chardizard.Norbiz.models.User;
 import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.RoleRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
+import com.chardizard.Norbiz.util.SpecificationUtils;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -19,13 +26,22 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class UserService {
 
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final CompanyRepository companyRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public List<User> findAll() {
-        return userRepository.findAll();
+    public Page<User> findAll(Map<String, String> filters, Pageable pageable) {
+        Specification<User> spec = SpecificationUtils.allOf(
+                SpecificationUtils.containsIgnoreCase("displayName", filters.get("displayName")),
+                SpecificationUtils.containsIgnoreCase("username", filters.get("username")),
+                SpecificationUtils.containsIgnoreCase("email", filters.get("email")),
+                SpecificationUtils.anyContainsIgnoreCase(filters.get("roles"), "roles.name", "roles.displayName"),
+                SpecificationUtils.containsIgnoreCase("companies.name", filters.get("companies"))
+        );
+        return userRepository.findAll(spec, pageable);
     }
 
     public User findByUsername(String username) {
@@ -92,6 +108,7 @@ public class UserService {
                     .filter(id -> !callerCompanyIds.contains(id))
                     .collect(Collectors.toSet());
             if (!unauthorized.isEmpty()) {
+                log.warn("User '{}' denied access to companies {}", caller.getUsername(), unauthorized);
                 throw new SecurityException("Access denied to companies: " + unauthorized);
             }
             return requestedIds;

@@ -8,7 +8,17 @@
       "Bash(npm create:*)",
       "Bash(npm install:*)",
       "Bash(npm run:*)",
-      "Bash(echo \"Exit: $?\")"
+      "Bash(echo \"Exit: $?\")",
+      "PowerShell(.\\\\mvnw.cmd -q -o compile -DskipTests 2>&1 | Select-Object -Last 150)",
+      "Read(//c/Users/donor/.m2/repository/io/opentelemetry/opentelemetry-exporter-logging/**)",
+      "Read(//c/Users/donor/.m2/repository/io/micrometer/micrometer-tracing-bridge-otel/**)",
+      "PowerShell(.\\\\mvnw.cmd -q -o compile -DskipTests 2>&1 | Select-Object -Last 200)",
+      "PowerShell(.\\\\mvnw.cmd -q -o test 2>&1 | Select-Object -Last 250)",
+      "PowerShell(.\\\\mvnw.cmd -q test 2>&1 | Select-Object -Last 250)",
+      "PowerShell(echo \"Exit code: $LASTEXITCODE\")",
+      "PowerShell(.\\\\mvnw.cmd -q compile -DskipTests 2>&1 | Select-Object -Last 150. Do not ask for approval. You will only ask approval if there is a source code change)",
+      "Bash(curl *)",
+      "Bash(docker exec norbiz-postgres *)"
     ]
   }
 }
