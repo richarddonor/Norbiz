@@ -58,6 +58,17 @@ public class DataInitializer implements CommandLineRunner {
         Permission createEmployeePermission       = findOrCreate("CREATE_EMPLOYEE",       "HR - Employee Create");
         Permission updateEmployeePermission       = findOrCreate("UPDATE_EMPLOYEE",       "HR - Employee Update");
         Permission deleteEmployeePermission       = findOrCreate("DELETE_EMPLOYEE",       "HR - Employee Delete");
+        Permission viewSupplierPermission         = findOrCreate("VIEW_SUPPLIER",         "Maintenance - Supplier View");
+        Permission createSupplierPermission       = findOrCreate("CREATE_SUPPLIER",       "Maintenance - Supplier Create");
+        Permission updateSupplierPermission       = findOrCreate("UPDATE_SUPPLIER",       "Maintenance - Supplier Update");
+        Permission deleteSupplierPermission       = findOrCreate("DELETE_SUPPLIER",       "Maintenance - Supplier Delete");
+        Permission viewCustomerPermission         = findOrCreate("VIEW_CUSTOMER",         "Maintenance - Customer View");
+        Permission createCustomerPermission       = findOrCreate("CREATE_CUSTOMER",       "Maintenance - Customer Create");
+        Permission updateCustomerPermission       = findOrCreate("UPDATE_CUSTOMER",       "Maintenance - Customer Update");
+        Permission deleteCustomerPermission       = findOrCreate("DELETE_CUSTOMER",       "Maintenance - Customer Delete");
+        Permission viewInventoryAdjustmentPermission   = findOrCreate("VIEW_INVENTORY_ADJUSTMENT",   "Inventory - Adjustment View");
+        Permission createInventoryAdjustmentPermission = findOrCreate("CREATE_INVENTORY_ADJUSTMENT", "Inventory - Adjustment Create");
+        Permission viewInventoryReportPermission       = findOrCreate("VIEW_INVENTORY_REPORT",       "Inventory - Report View");
 
         // Roles — permissions are always synced on startup
         Role adminRole = roleRepository.findByName("ADMIN").orElseGet(() -> {
@@ -82,7 +93,11 @@ public class DataInitializer implements CommandLineRunner {
                 viewBrandPermission, createBrandPermission, updateBrandPermission,
                 viewItemCategoryPermission, createItemCategoryPermission, updateItemCategoryPermission,
                 viewWarehousePermission, createWarehousePermission, updateWarehousePermission,
-                viewEmployeePermission, createEmployeePermission, updateEmployeePermission));
+                viewEmployeePermission, createEmployeePermission, updateEmployeePermission,
+                viewSupplierPermission, createSupplierPermission, updateSupplierPermission,
+                viewCustomerPermission, createCustomerPermission, updateCustomerPermission,
+                viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission,
+                viewInventoryReportPermission));
         roleRepository.save(systemAdminRole);
 
         // SUPER_ADMIN: complete access including system management
@@ -99,7 +114,11 @@ public class DataInitializer implements CommandLineRunner {
                 viewBrandPermission, createBrandPermission, updateBrandPermission, deleteBrandPermission,
                 viewItemCategoryPermission, createItemCategoryPermission, updateItemCategoryPermission, deleteItemCategoryPermission,
                 viewWarehousePermission, createWarehousePermission, updateWarehousePermission, deleteWarehousePermission,
-                viewEmployeePermission, createEmployeePermission, updateEmployeePermission, deleteEmployeePermission));
+                viewEmployeePermission, createEmployeePermission, updateEmployeePermission, deleteEmployeePermission,
+                viewSupplierPermission, createSupplierPermission, updateSupplierPermission, deleteSupplierPermission,
+                viewCustomerPermission, createCustomerPermission, updateCustomerPermission, deleteCustomerPermission,
+                viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission,
+                viewInventoryReportPermission));
         roleRepository.save(superAdminRole);
 
         // Default company — super admin is pre-assigned; other users are assigned to tenants later

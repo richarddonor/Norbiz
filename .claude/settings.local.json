@@ -18,7 +18,10 @@
       "PowerShell(echo \"Exit code: $LASTEXITCODE\")",
       "PowerShell(.\\\\mvnw.cmd -q compile -DskipTests 2>&1 | Select-Object -Last 150. Do not ask for approval. You will only ask approval if there is a source code change)",
       "Bash(curl *)",
-      "Bash(docker exec norbiz-postgres *)"
+      "Bash(docker exec norbiz-postgres *)",
+      "PowerShell(.\\\\mvnw.cmd -q -o compile -DskipTests 2>&1 | Select-Object -Last 250)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell($conn = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue; if \\($conn\\) { \"IN USE by PID $\\($conn.OwningProcess\\)\" } else { \"PORT FREE\" })"
     ]
   }
 }

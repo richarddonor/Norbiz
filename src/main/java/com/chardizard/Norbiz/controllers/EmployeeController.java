@@ -41,12 +41,13 @@ public class EmployeeController {
 
     @Operation(summary = "Get employee by ID")
     @ApiResponse(responseCode = "200", description = "Employee returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_EMPLOYEE permission")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_EMPLOYEE permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Employee not found")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('VIEW_EMPLOYEE')")
-    public ResponseEntity<AppResponse<EmployeeResponse>> getById(@Parameter(description = "Employee ID") @PathVariable Long id) {
-        return ResponseEntity.ok(AppResponse.of(toResponse(employeeService.findById(id))));
+    public ResponseEntity<AppResponse<EmployeeResponse>> getById(@Parameter(description = "Employee ID") @PathVariable Long id,
+                                                                 @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(toResponse(employeeService.findById(id, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Create employee")

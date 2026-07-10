@@ -53,7 +53,9 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - As a general rule, all Entities must belong to only one `Company`
 
 - Entities that are scoped strictly to one company. Update this list everytime there is a new entity:
-    Brand, Item, ItemCategory, Employee, Warehouse
+    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment
+- `InventoryMovement` and `InventoryBalance` are not directly created via their own endpoint (only posted internally by transactions like `InventoryAdjustment`), but are still company-scoped transitively through their `Warehouse`.
+- **Company-membership must be verified on every single-record read, not just on list/create/update/delete.** A `GET /{id}` endpoint's `@PreAuthorize("hasAuthority('VIEW_X')")` only checks the permission, not which company the record belongs to — without an explicit check, any user holding that permission could fetch any other company's record by ID (a cross-tenant IDOR). Every company-scoped entity's `findById(id, username)` must resolve the entity, then call the existing `assertCompanyAccess(username, companyId)` helper before returning it — mirror `ItemSkuService.findById` (the original correct example) or `BrandService.findById` (fixed 2026-07-09 after this exact bug was found live in Brand/ItemCategory/Employee/Warehouse/Supplier/Customer/InventoryAdjustment). `update`/`delete` should call this same scoped `findById` rather than checking access a second time separately.
 - Entities that belong to one or more companies. Use an intermediary table like `user_companies` to enforce one to many or many to many relationships. Update this list everytime there is a new entity:
     User
 - Entities that are not scoped by `Company` as they are used system-wide:
@@ -83,6 +85,8 @@ Every entity extending `Auditable` (a `@MappedSuperclass`) is automatically logg
 
 `AuditLog` does **not** extend `Auditable` to avoid infinite recursion. `User.password` is annotated `@AuditExclude`. `ApplicationContextHolder` provides static Spring context access because JPA listeners are not Spring-managed beans. `AuditLogController` (`/audit-logs`) is restricted to `SUPER_ADMIN` only.
 
+Inventory ledger/transaction entities (`InventoryMovement`, `InventoryBalance`, `InventoryAdjustment`, `InventoryAdjustmentLine`) deliberately do **not** extend `Auditable` — they are immutable/append-only by design (no update/delete path), so there is nothing to diff over time; the ledger itself already is the audit trail for stock changes. They track `createdAt`/`createdBy` as plain fields instead, set directly by the posting service.
+
 ### Entity relationships
 
 ```
@@ -90,9 +94,15 @@ Company ──< User (many-to-many via user_companies)
 Company ──< Brand
 Company ──< Employee (optional link to User)
 Company ──< Warehouse
+Company ──< Supplier
+Company ──< Customer (type: CUSTOMER | OUTLET)
 Company ──< Item ──< ItemSku
                 └──< ItemPrice (one row per PriceType enum value)
                 └──> ItemCategory (unique name per company)
+Company ──< InventoryAdjustment ──< InventoryAdjustmentLine ──> Item
+                                └──> Warehouse
+Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment and future transactions)
+Item + Warehouse ──< InventoryBalance (running quantity/transitQuantity cache, one row per item+warehouse)
 User ──< Role (many-to-many) ──< Permission (many-to-many)
 AuditLog  (append-only, references entities by type+id strings)
 ```
@@ -136,12 +146,14 @@ The frontend (sibling repo `Norbiz-Web`, see its `CLAUDE.md`) drives these requi
 - The frontend's "Global Filter" search box is frontend-only (searches already-fetched page data, including hidden columns) — do **not** build a backend endpoint or query param for it.
 - Spreadsheet export (list/report pages) — scope not yet decided: unclear whether export operates only on the currently-fetched page or needs a separate "fetch all matching rows" backend capability. Confirm before implementing.
 
+## Dates
+- All 
 ## Logging
 Norbiz should observe the OpenTelemetry specification for logging. Have loggers in all strategic places of the code. Make sure that we are logging the incoming request including the payload. I should be able to see the transaction span from end to finish
 
 ## Database
 
-`db/init.sql` creates all tables and seeds 30 permissions, 3 roles (`ADMIN`, `SYSTEM_ADMIN`, `SUPER_ADMIN`), and 3 default users (`admin`, `super_admin`, `system_admin`) with BCrypt passwords.
+`db/init.sql` creates all tables and seeds 41 permissions, 3 roles (`ADMIN`, `SYSTEM_ADMIN`, `SUPER_ADMIN`), and 3 default users (`admin`, `super_admin`, `system_admin`) with BCrypt passwords.
 
 `db/drop_all.sql` tears down the entire schema.
 
@@ -178,3 +190,37 @@ Transactional Data are data that exist as day-to-day business recordings that ut
 ## Warehouses
 - Warehouses are where the `Items` are stored
 
+## Inventory Management
+- Norbiz tracks the inventory level of items throughout different warehouses (storage locations). 
+- Different transactions dictate the item count in each warehouse whether it increases or decreases
+- Reporting of inventory movement will be tracked by As of Date, within date range or the current count in each warehouse. 
+- Inventory Balance report should show the current value of the item per warehouse within a time period. Further drilling this report should forward to the Inventory Ledger report
+- The Inventory Ledger report will provide all the transactions that contributed to the Inventory Balance
+- Quantity is referred to as main stock level of an item in a warehouse. Transit Quantity is a count that are not yet added or subtracted from the main stock
+- Transit Quantity is posted by transactions that have not been fully received or dispatched by Norbiz. Example of this are, purchase ordered items but have not received by the warehouse. 
+- Every inventory transaction should commit their Post Transaction Company Id, Warehouse Id, ItemId, Source Type, Reference Number, Sheet Number, Posting Date, Posted By data to the Inventory Movement table
+
+## Transactions
+- Transactions are non-master data records. This includes inventory movements, financial transaction, and other executions that makes use of master data
+- Always auto-generate a transaction reference number value for each new transaction
+- Most transaction will have a sheet number value. Sheet number is based from the control number in the physical document of that transaction
+- Always have a Notes column for comments or remarks
+Implementation: `TransactionReferenceService.next(companyId, transactionType, prefix)` is the shared mechanism every transaction type should call to satisfy the auto-generated reference number rule — do not hand-roll numbering per transaction type. It's backed by `TransactionSequence` (table `transaction_sequences`, one row per `(company_id, transaction_type)`, locked with `PESSIMISTIC_WRITE` and incremented in its own `REQUIRES_NEW` transaction so the counter still advances if the caller's transaction rolls back — numbers may have gaps but never repeat). Reference numbers are formatted `{PREFIX}-{6-digit zero-padded number}` (e.g. `IA-000001` for Inventory Adjustment) and are unique per `(company_id, reference_number)` on the owning transaction table. `sheetNumber` is plain user input (nullable, not generated) — only capture it on request DTOs, never derive it.
+
+## Purchase Order
+- This transaction lets the users buy goods from different Suppliers
+
+## Suppliers
+- These are entities where we buy goods or avail services
+
+## Customers
+- Customers are entities we sell our goods or Outlets where we consign our products for selling
+- There are two Customers: Customers (Direct buyers of products) and Outlets (Branches where we deliver our goods for selling)
+- Outlets maintain their own inventory count. So it is important the inventory side-by-side with the warehouses our main warehouse monitor
+
+## Inventory Adjustment
+- This is inventory movement transaction to increase or decrease item inventory
+
+## Reports
+- Reports special queries that users generate. 
+- The main categories are: Inventory, Purchases, Sales (for now)

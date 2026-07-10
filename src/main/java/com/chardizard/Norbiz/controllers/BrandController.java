@@ -59,12 +59,13 @@ public class BrandController {
 
     @Operation(summary = "Get brand by ID")
     @ApiResponse(responseCode = "200", description = "Brand returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_BRAND permission")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_BRAND permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Brand not found")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('VIEW_BRAND')")
-    public ResponseEntity<AppResponse<BrandResponse>> getById(@Parameter(description = "Brand ID") @PathVariable Long id) {
-        return ResponseEntity.ok(AppResponse.of(toResponse(brandService.findById(id))));
+    public ResponseEntity<AppResponse<BrandResponse>> getById(@Parameter(description = "Brand ID") @PathVariable Long id,
+                                                              @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(toResponse(brandService.findById(id, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Create brand", description = "Brand name must be unique per company.")

@@ -59,9 +59,11 @@ public class ItemCategoryService {
         return itemCategoryRepository.findAll(spec, pageable);
     }
 
-    public ItemCategory findById(Long id) {
-        return itemCategoryRepository.findById(id)
+    public ItemCategory findById(Long id, String username) {
+        ItemCategory category = itemCategoryRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Item category not found: " + id));
+        assertCompanyAccess(username, category.getCompany().getId());
+        return category;
     }
 
     @Transactional
@@ -83,9 +85,7 @@ public class ItemCategoryService {
 
     @Transactional
     public ItemCategory update(Long id, ItemCategoryRequest request, String username) {
-        ItemCategory category = findById(id);
-
-        assertCompanyAccess(username, category.getCompany().getId());
+        ItemCategory category = findById(id, username);
 
         if (!category.getName().equals(request.getName())
                 && itemCategoryRepository.existsByNameAndCompanyId(request.getName(), category.getCompany().getId())) {
@@ -98,8 +98,7 @@ public class ItemCategoryService {
 
     @Transactional
     public void delete(Long id, String username) {
-        ItemCategory category = findById(id);
-        assertCompanyAccess(username, category.getCompany().getId());
+        ItemCategory category = findById(id, username);
         itemCategoryRepository.delete(category);
     }
 

@@ -1,12 +1,12 @@
 package com.chardizard.Norbiz.services;
 
-import com.chardizard.Norbiz.dto.WarehouseRequest;
+import com.chardizard.Norbiz.dto.SupplierRequest;
 import com.chardizard.Norbiz.models.Company;
+import com.chardizard.Norbiz.models.Supplier;
 import com.chardizard.Norbiz.models.User;
-import com.chardizard.Norbiz.models.Warehouse;
 import com.chardizard.Norbiz.repositories.CompanyRepository;
+import com.chardizard.Norbiz.repositories.SupplierRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
-import com.chardizard.Norbiz.repositories.WarehouseRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -25,22 +25,22 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class WarehouseService {
+public class SupplierService {
 
-    private static final Logger log = LoggerFactory.getLogger(WarehouseService.class);
+    private static final Logger log = LoggerFactory.getLogger(SupplierService.class);
 
-    private final WarehouseRepository warehouseRepository;
+    private final SupplierRepository supplierRepository;
     private final CompanyRepository companyRepository;
     private final UserRepository userRepository;
 
-    public Page<Warehouse> findAllForUser(String username, Map<String, String> filters, Instant updatedAtFrom, Instant updatedAtTo, Pageable pageable) {
+    public Page<Supplier> findAllForUser(String username, Map<String, String> filters, Instant updatedAtFrom, Instant updatedAtTo, Pageable pageable) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
 
         boolean isSuperAdmin = user.getRoles().stream()
                 .anyMatch(r -> r.getName().equals("SUPER_ADMIN"));
 
-        Specification<Warehouse> companyScope = null;
+        Specification<Supplier> companyScope = null;
         if (!isSuperAdmin) {
             List<Long> companyIds = user.getCompanies().stream()
                     .map(Company::getId)
@@ -49,7 +49,7 @@ public class WarehouseService {
             companyScope = (root, query, cb) -> root.get("company").get("id").in(companyIds);
         }
 
-        Specification<Warehouse> spec = SpecificationUtils.allOf(
+        Specification<Supplier> spec = SpecificationUtils.allOf(
                 companyScope,
                 SpecificationUtils.containsIgnoreCase("name", filters.get("name")),
                 SpecificationUtils.containsIgnoreCase("code", filters.get("code")),
@@ -59,63 +59,67 @@ public class WarehouseService {
                 SpecificationUtils.dateRange("updatedAt", updatedAtFrom, updatedAtTo)
         );
 
-        return warehouseRepository.findAll(spec, pageable);
+        return supplierRepository.findAll(spec, pageable);
     }
 
-    public Warehouse findById(Long id, String username) {
-        Warehouse warehouse = warehouseRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Warehouse not found: " + id));
-        assertCompanyAccess(username, warehouse.getCompany().getId());
-        return warehouse;
+    public Supplier findById(Long id, String username) {
+        Supplier supplier = supplierRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Supplier not found: " + id));
+        assertCompanyAccess(username, supplier.getCompany().getId());
+        return supplier;
     }
 
     @Transactional
-    public Warehouse create(WarehouseRequest request, String username) {
+    public Supplier create(SupplierRequest request, String username) {
         Company company = companyRepository.findById(request.getCompanyId())
                 .orElseThrow(() -> new IllegalArgumentException("Company not found: " + request.getCompanyId()));
 
         assertCompanyAccess(username, company.getId());
 
         if (StringUtils.hasText(request.getCode())
-                && warehouseRepository.existsByCodeAndCompanyId(request.getCode(), company.getId())) {
-            throw new IllegalArgumentException("Warehouse code already exists for this company: " + request.getCode());
+                && supplierRepository.existsByCodeAndCompanyId(request.getCode(), company.getId())) {
+            throw new IllegalArgumentException("Supplier code already exists for this company: " + request.getCode());
         }
 
-        Warehouse warehouse = new Warehouse();
-        warehouse.setCompany(company);
-        warehouse.setCode(request.getCode());
-        warehouse.setName(request.getName());
-        warehouse.setActive(request.isActive());
+        Supplier supplier = new Supplier();
+        supplier.setCompany(company);
+        supplier.setCode(request.getCode());
+        supplier.setName(request.getName());
+        supplier.setEmail(request.getEmail());
+        supplier.setPhone(request.getPhone());
+        supplier.setActive(request.isActive());
 
-        Warehouse saved = warehouseRepository.save(warehouse);
-        log.info("User '{}' created warehouse '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
+        Supplier saved = supplierRepository.save(supplier);
+        log.info("User '{}' created supplier '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
         return saved;
     }
 
     @Transactional
-    public Warehouse update(Long id, WarehouseRequest request, String username) {
-        Warehouse warehouse = findById(id, username);
+    public Supplier update(Long id, SupplierRequest request, String username) {
+        Supplier supplier = findById(id, username);
 
         if (StringUtils.hasText(request.getCode())
-                && !request.getCode().equals(warehouse.getCode())
-                && warehouseRepository.existsByCodeAndCompanyId(request.getCode(), warehouse.getCompany().getId())) {
-            throw new IllegalArgumentException("Warehouse code already exists for this company: " + request.getCode());
+                && !request.getCode().equals(supplier.getCode())
+                && supplierRepository.existsByCodeAndCompanyId(request.getCode(), supplier.getCompany().getId())) {
+            throw new IllegalArgumentException("Supplier code already exists for this company: " + request.getCode());
         }
 
-        warehouse.setCode(request.getCode());
-        warehouse.setName(request.getName());
-        warehouse.setActive(request.isActive());
+        supplier.setCode(request.getCode());
+        supplier.setName(request.getName());
+        supplier.setEmail(request.getEmail());
+        supplier.setPhone(request.getPhone());
+        supplier.setActive(request.isActive());
 
-        Warehouse saved = warehouseRepository.save(warehouse);
-        log.info("User '{}' updated warehouse '{}' (id={})", username, saved.getName(), saved.getId());
+        Supplier saved = supplierRepository.save(supplier);
+        log.info("User '{}' updated supplier '{}' (id={})", username, saved.getName(), saved.getId());
         return saved;
     }
 
     @Transactional
     public void delete(Long id, String username) {
-        Warehouse warehouse = findById(id, username);
-        warehouseRepository.delete(warehouse);
-        log.info("User '{}' deleted warehouse '{}' (id={})", username, warehouse.getName(), id);
+        Supplier supplier = findById(id, username);
+        supplierRepository.delete(supplier);
+        log.info("User '{}' deleted supplier '{}' (id={})", username, supplier.getName(), id);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

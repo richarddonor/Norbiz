@@ -61,12 +61,13 @@ public class ItemCategoryController {
 
     @Operation(summary = "Get item category by ID")
     @ApiResponse(responseCode = "200", description = "Item category returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_ITEM_CATEGORY permission")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_ITEM_CATEGORY permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Item category not found")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('VIEW_ITEM_CATEGORY')")
-    public ResponseEntity<AppResponse<ItemCategoryResponse>> getById(@Parameter(description = "Item category ID") @PathVariable Long id) {
-        return ResponseEntity.ok(AppResponse.of(toResponse(itemCategoryService.findById(id))));
+    public ResponseEntity<AppResponse<ItemCategoryResponse>> getById(@Parameter(description = "Item category ID") @PathVariable Long id,
+                                                                     @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(toResponse(itemCategoryService.findById(id, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Create item category", description = "Item category name must be unique within the company.")

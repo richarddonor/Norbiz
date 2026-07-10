@@ -45,6 +45,7 @@ public class WarehouseController {
             @Parameter(description = "Filter by code (contains)") @RequestParam(required = false) String code,
             @Parameter(description = "Filter by company name (contains)") @RequestParam(required = false) String company,
             @Parameter(description = "Filter by creator (contains)") @RequestParam(required = false) String createdBy,
+            @Parameter(description = "Filter by active status (true or false)") @RequestParam(required = false) String active,
             @Parameter(description = "Filter by last-updated date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtFrom,
             @Parameter(description = "Filter by last-updated date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtTo,
             Pageable pageable) {
@@ -53,6 +54,7 @@ public class WarehouseController {
         if (StringUtils.hasText(code)) filters.put("code", code);
         if (StringUtils.hasText(company)) filters.put("company", company);
         if (StringUtils.hasText(createdBy)) filters.put("createdBy", createdBy);
+        if (StringUtils.hasText(active)) filters.put("active", active);
 
         Instant fromInstant = DateRangeUtils.startOfDayUtc(updatedAtFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
@@ -63,12 +65,13 @@ public class WarehouseController {
 
     @Operation(summary = "Get warehouse by ID")
     @ApiResponse(responseCode = "200", description = "Warehouse returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_WAREHOUSE permission")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_WAREHOUSE permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Warehouse not found")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('VIEW_WAREHOUSE')")
-    public ResponseEntity<AppResponse<WarehouseResponse>> getById(@Parameter(description = "Warehouse ID") @PathVariable Long id) {
-        return ResponseEntity.ok(AppResponse.of(toResponse(warehouseService.findById(id))));
+    public ResponseEntity<AppResponse<WarehouseResponse>> getById(@Parameter(description = "Warehouse ID") @PathVariable Long id,
+                                                                  @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(toResponse(warehouseService.findById(id, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Create warehouse", description = "Warehouse code (if supplied) must be unique per company.")

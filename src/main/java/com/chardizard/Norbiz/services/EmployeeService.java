@@ -47,9 +47,11 @@ public class EmployeeService {
         return companyIds.isEmpty() ? Page.empty(pageable) : employeeRepository.findByCompanyIdIn(companyIds, pageable);
     }
 
-    public Employee findById(Long id) {
-        return employeeRepository.findById(id)
+    public Employee findById(Long id, String username) {
+        Employee employee = employeeRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Employee not found: " + id));
+        assertCompanyAccess(username, employee.getCompany().getId());
+        return employee;
     }
 
     @Transactional
@@ -84,9 +86,7 @@ public class EmployeeService {
 
     @Transactional
     public Employee update(Long id, EmployeeRequest request, String username) {
-        Employee employee = findById(id);
-
-        assertCompanyAccess(username, employee.getCompany().getId());
+        Employee employee = findById(id, username);
 
         if (!employee.getEmployeeCode().equals(request.getEmployeeCode())
                 && employeeRepository.existsByEmployeeCodeAndCompanyId(request.getEmployeeCode(), employee.getCompany().getId())) {
@@ -114,8 +114,7 @@ public class EmployeeService {
 
     @Transactional
     public void delete(Long id, String username) {
-        Employee employee = findById(id);
-        assertCompanyAccess(username, employee.getCompany().getId());
+        Employee employee = findById(id, username);
         employeeRepository.delete(employee);
     }
 

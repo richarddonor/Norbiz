@@ -1,12 +1,12 @@
 package com.chardizard.Norbiz.services;
 
-import com.chardizard.Norbiz.dto.WarehouseRequest;
+import com.chardizard.Norbiz.dto.CustomerRequest;
 import com.chardizard.Norbiz.models.Company;
+import com.chardizard.Norbiz.models.Customer;
 import com.chardizard.Norbiz.models.User;
-import com.chardizard.Norbiz.models.Warehouse;
 import com.chardizard.Norbiz.repositories.CompanyRepository;
+import com.chardizard.Norbiz.repositories.CustomerRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
-import com.chardizard.Norbiz.repositories.WarehouseRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -25,22 +25,22 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class WarehouseService {
+public class CustomerService {
 
-    private static final Logger log = LoggerFactory.getLogger(WarehouseService.class);
+    private static final Logger log = LoggerFactory.getLogger(CustomerService.class);
 
-    private final WarehouseRepository warehouseRepository;
+    private final CustomerRepository customerRepository;
     private final CompanyRepository companyRepository;
     private final UserRepository userRepository;
 
-    public Page<Warehouse> findAllForUser(String username, Map<String, String> filters, Instant updatedAtFrom, Instant updatedAtTo, Pageable pageable) {
+    public Page<Customer> findAllForUser(String username, Map<String, String> filters, Instant updatedAtFrom, Instant updatedAtTo, Pageable pageable) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
 
         boolean isSuperAdmin = user.getRoles().stream()
                 .anyMatch(r -> r.getName().equals("SUPER_ADMIN"));
 
-        Specification<Warehouse> companyScope = null;
+        Specification<Customer> companyScope = null;
         if (!isSuperAdmin) {
             List<Long> companyIds = user.getCompanies().stream()
                     .map(Company::getId)
@@ -49,73 +49,80 @@ public class WarehouseService {
             companyScope = (root, query, cb) -> root.get("company").get("id").in(companyIds);
         }
 
-        Specification<Warehouse> spec = SpecificationUtils.allOf(
+        Specification<Customer> spec = SpecificationUtils.allOf(
                 companyScope,
                 SpecificationUtils.containsIgnoreCase("name", filters.get("name")),
                 SpecificationUtils.containsIgnoreCase("code", filters.get("code")),
+                SpecificationUtils.containsIgnoreCase("type", filters.get("type")),
                 SpecificationUtils.containsIgnoreCase("company.name", filters.get("company")),
                 SpecificationUtils.containsIgnoreCase("createdBy", filters.get("createdBy")),
                 SpecificationUtils.containsIgnoreCase("active", filters.get("active")),
                 SpecificationUtils.dateRange("updatedAt", updatedAtFrom, updatedAtTo)
         );
 
-        return warehouseRepository.findAll(spec, pageable);
+        return customerRepository.findAll(spec, pageable);
     }
 
-    public Warehouse findById(Long id, String username) {
-        Warehouse warehouse = warehouseRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Warehouse not found: " + id));
-        assertCompanyAccess(username, warehouse.getCompany().getId());
-        return warehouse;
+    public Customer findById(Long id, String username) {
+        Customer customer = customerRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + id));
+        assertCompanyAccess(username, customer.getCompany().getId());
+        return customer;
     }
 
     @Transactional
-    public Warehouse create(WarehouseRequest request, String username) {
+    public Customer create(CustomerRequest request, String username) {
         Company company = companyRepository.findById(request.getCompanyId())
                 .orElseThrow(() -> new IllegalArgumentException("Company not found: " + request.getCompanyId()));
 
         assertCompanyAccess(username, company.getId());
 
         if (StringUtils.hasText(request.getCode())
-                && warehouseRepository.existsByCodeAndCompanyId(request.getCode(), company.getId())) {
-            throw new IllegalArgumentException("Warehouse code already exists for this company: " + request.getCode());
+                && customerRepository.existsByCodeAndCompanyId(request.getCode(), company.getId())) {
+            throw new IllegalArgumentException("Customer code already exists for this company: " + request.getCode());
         }
 
-        Warehouse warehouse = new Warehouse();
-        warehouse.setCompany(company);
-        warehouse.setCode(request.getCode());
-        warehouse.setName(request.getName());
-        warehouse.setActive(request.isActive());
+        Customer customer = new Customer();
+        customer.setCompany(company);
+        customer.setCode(request.getCode());
+        customer.setName(request.getName());
+        customer.setType(request.getType());
+        customer.setEmail(request.getEmail());
+        customer.setPhone(request.getPhone());
+        customer.setActive(request.isActive());
 
-        Warehouse saved = warehouseRepository.save(warehouse);
-        log.info("User '{}' created warehouse '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
+        Customer saved = customerRepository.save(customer);
+        log.info("User '{}' created customer '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
         return saved;
     }
 
     @Transactional
-    public Warehouse update(Long id, WarehouseRequest request, String username) {
-        Warehouse warehouse = findById(id, username);
+    public Customer update(Long id, CustomerRequest request, String username) {
+        Customer customer = findById(id, username);
 
         if (StringUtils.hasText(request.getCode())
-                && !request.getCode().equals(warehouse.getCode())
-                && warehouseRepository.existsByCodeAndCompanyId(request.getCode(), warehouse.getCompany().getId())) {
-            throw new IllegalArgumentException("Warehouse code already exists for this company: " + request.getCode());
+                && !request.getCode().equals(customer.getCode())
+                && customerRepository.existsByCodeAndCompanyId(request.getCode(), customer.getCompany().getId())) {
+            throw new IllegalArgumentException("Customer code already exists for this company: " + request.getCode());
         }
 
-        warehouse.setCode(request.getCode());
-        warehouse.setName(request.getName());
-        warehouse.setActive(request.isActive());
+        customer.setCode(request.getCode());
+        customer.setName(request.getName());
+        customer.setType(request.getType());
+        customer.setEmail(request.getEmail());
+        customer.setPhone(request.getPhone());
+        customer.setActive(request.isActive());
 
-        Warehouse saved = warehouseRepository.save(warehouse);
-        log.info("User '{}' updated warehouse '{}' (id={})", username, saved.getName(), saved.getId());
+        Customer saved = customerRepository.save(customer);
+        log.info("User '{}' updated customer '{}' (id={})", username, saved.getName(), saved.getId());
         return saved;
     }
 
     @Transactional
     public void delete(Long id, String username) {
-        Warehouse warehouse = findById(id, username);
-        warehouseRepository.delete(warehouse);
-        log.info("User '{}' deleted warehouse '{}' (id={})", username, warehouse.getName(), id);
+        Customer customer = findById(id, username);
+        customerRepository.delete(customer);
+        log.info("User '{}' deleted customer '{}' (id={})", username, customer.getName(), id);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

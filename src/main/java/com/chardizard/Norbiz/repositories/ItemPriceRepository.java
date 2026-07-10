@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface ItemPriceRepository extends JpaRepository<ItemPrice, Long> {
     List<ItemPrice> findByItemId(Long itemId);
     Optional<ItemPrice> findByItemIdAndPriceType(Long itemId, PriceType priceType);
+    List<ItemPrice> findByItemIdInAndPriceType(List<Long> itemIds, PriceType priceType);
 }

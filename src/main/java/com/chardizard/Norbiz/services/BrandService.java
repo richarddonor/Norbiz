@@ -58,9 +58,11 @@ public class BrandService {
         return brandRepository.findAll(spec, pageable);
     }
 
-    public Brand findById(Long id) {
-        return brandRepository.findById(id)
+    public Brand findById(Long id, String username) {
+        Brand brand = brandRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Brand not found: " + id));
+        assertCompanyAccess(username, brand.getCompany().getId());
+        return brand;
     }
 
     @Transactional
@@ -82,9 +84,7 @@ public class BrandService {
 
     @Transactional
     public Brand update(Long id, BrandRequest request, String username) {
-        Brand brand = findById(id);
-
-        assertCompanyAccess(username, brand.getCompany().getId());
+        Brand brand = findById(id, username);
 
         if (!brand.getName().equals(request.getName())
                 && brandRepository.existsByNameAndCompanyId(request.getName(), brand.getCompany().getId())) {
@@ -97,8 +97,7 @@ public class BrandService {
 
     @Transactional
     public void delete(Long id, String username) {
-        Brand brand = findById(id);
-        assertCompanyAccess(username, brand.getCompany().getId());
+        Brand brand = findById(id, username);
         brandRepository.delete(brand);
     }
 
