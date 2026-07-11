@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -26,6 +27,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<AppErrorResponse> handleSecurity(SecurityException ex) {
         log.warn("Access denied: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(AppErrorResponse.of(ex.getMessage()));
+    }
+
+    // Thrown by @PreAuthorize when the caller lacks the required permission entirely.
+    // Method-security denials happen inside the controller invocation (unlike URL-level
+    // security rules), so they reach this advice rather than Spring Security's own
+    // filter-chain exception translation — without this handler they'd fall through to
+    // the generic 500 handler below instead of a 403.
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public ResponseEntity<AppErrorResponse> handleAuthorizationDenied(AuthorizationDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(AppErrorResponse.of("Access denied"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

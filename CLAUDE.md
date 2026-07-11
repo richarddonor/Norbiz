@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+@docs/TRANSACTIONS.md
+Transactional Data specification (transaction types, reference numbering, and the standard transaction document/print layout) lives in `docs/TRANSACTIONS.md`, imported above — see it for anything Purchase Order/Inventory Adjustment/Sales Order-specific rather than duplicating it here. `docs/` is where all non-`CLAUDE.md` project markdown lives going forward — `CLAUDE.md` itself stays at the repo root since Claude Code only auto-discovers it there.
+
 ## Build & Run Commands
 
 ```bash
@@ -53,7 +56,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - As a general rule, all Entities must belong to only one `Company`
 
 - Entities that are scoped strictly to one company. Update this list everytime there is a new entity:
-    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment
+    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment, DocumentTemplate
 - `InventoryMovement` and `InventoryBalance` are not directly created via their own endpoint (only posted internally by transactions like `InventoryAdjustment`), but are still company-scoped transitively through their `Warehouse`.
 - **Company-membership must be verified on every single-record read, not just on list/create/update/delete.** A `GET /{id}` endpoint's `@PreAuthorize("hasAuthority('VIEW_X')")` only checks the permission, not which company the record belongs to — without an explicit check, any user holding that permission could fetch any other company's record by ID (a cross-tenant IDOR). Every company-scoped entity's `findById(id, username)` must resolve the entity, then call the existing `assertCompanyAccess(username, companyId)` helper before returning it — mirror `ItemSkuService.findById` (the original correct example) or `BrandService.findById` (fixed 2026-07-09 after this exact bug was found live in Brand/ItemCategory/Employee/Warehouse/Supplier/Customer/InventoryAdjustment). `update`/`delete` should call this same scoped `findById` rather than checking access a second time separately.
 - Entities that belong to one or more companies. Use an intermediary table like `user_companies` to enforce one to many or many to many relationships. Update this list everytime there is a new entity:
@@ -73,6 +76,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - Admin paths (`/admin/**`) require `SUPER_ADMIN` or `SYSTEM_ADMIN`.
 - At application start, `DataInitializer` guarantees that '`SUPER_ADMIN` user and all roles and privileges/permissions are given to it.
 - When logging in, if a user belongs to more than one `Company` they need to select the `Company` they wish to login to. The user's actions in that session will be scoped only to that selected `Company`
+- `GlobalExceptionHandler` must explicitly catch `org.springframework.security.authorization.AuthorizationDeniedException` and return 403. Spring Security throws this *from inside* the controller invocation whenever a caller lacks the required `@PreAuthorize` authority entirely (as opposed to the company-scoping `SecurityException` case) — with no explicit handler it falls through to the generic `Exception` → 500 handler, which is wrong and was live for every `@PreAuthorize`-protected endpoint until fixed (found while testing `MANAGE_DOCUMENT_TEMPLATES`).
 
 ### Audit system
 
@@ -103,6 +107,7 @@ Company ──< InventoryAdjustment ──< InventoryAdjustmentLine ──> Item
                                 └──> Warehouse
 Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment and future transactions)
 Item + Warehouse ──< InventoryBalance (running quantity/transitQuantity cache, one row per item+warehouse)
+Company ──< DocumentTemplate (documentType + opaque layout JSON; one default per company+documentType)
 User ──< Role (many-to-many) ──< Permission (many-to-many)
 AuditLog  (append-only, references entities by type+id strings)
 ```
@@ -201,14 +206,7 @@ Transactional Data are data that exist as day-to-day business recordings that ut
 - Every inventory transaction should commit their Post Transaction Company Id, Warehouse Id, ItemId, Source Type, Reference Number, Sheet Number, Posting Date, Posted By data to the Inventory Movement table
 
 ## Transactions
-- Transactions are non-master data records. This includes inventory movements, financial transaction, and other executions that makes use of master data
-- Always auto-generate a transaction reference number value for each new transaction
-- Most transaction will have a sheet number value. Sheet number is based from the control number in the physical document of that transaction
-- Always have a Notes column for comments or remarks
-Implementation: `TransactionReferenceService.next(companyId, transactionType, prefix)` is the shared mechanism every transaction type should call to satisfy the auto-generated reference number rule — do not hand-roll numbering per transaction type. It's backed by `TransactionSequence` (table `transaction_sequences`, one row per `(company_id, transaction_type)`, locked with `PESSIMISTIC_WRITE` and incremented in its own `REQUIRES_NEW` transaction so the counter still advances if the caller's transaction rolls back — numbers may have gaps but never repeat). Reference numbers are formatted `{PREFIX}-{6-digit zero-padded number}` (e.g. `IA-000001` for Inventory Adjustment) and are unique per `(company_id, reference_number)` on the owning transaction table. `sheetNumber` is plain user input (nullable, not generated) — only capture it on request DTOs, never derive it.
-
-## Purchase Order
-- This transaction lets the users buy goods from different Suppliers
+See `docs/TRANSACTIONS.md` (imported at the top of this file) for the full spec: general transaction rules, reference number generation, per-type details (Inventory Adjustment, Purchase Order, Sales Order), and the standard transaction document/print layout.
 
 ## Suppliers
 - These are entities where we buy goods or avail services
@@ -218,9 +216,46 @@ Implementation: `TransactionReferenceService.next(companyId, transactionType, pr
 - There are two Customers: Customers (Direct buyers of products) and Outlets (Branches where we deliver our goods for selling)
 - Outlets maintain their own inventory count. So it is important the inventory side-by-side with the warehouses our main warehouse monitor
 
-## Inventory Adjustment
-- This is inventory movement transaction to increase or decrease item inventory
-
 ## Reports
 - Reports special queries that users generate. 
 - The main categories are: Inventory, Purchases, Sales (for now)
+
+## Document Templates & Printing
+Fully frontend-customizable document printing: a designer module (sibling repo `Norbiz-Web`) where a user freely positions elements on a page and binds them to backend record fields, plus a print action that renders a real record through the saved layout via the browser's native print (`window.print()` + `@media print` CSS — no PDF library on either side for now).
+
+**Split of responsibility**: mainly frontend. The backend's role is narrow — persist template layouts (company-scoped, like every other master-data entity) and expose a "what fields can I bind to" schema per document type. The backend does not understand or validate what's inside a layout; it is stored and returned as **opaque JSON** (deliberately exempt from the general "strings under 255 chars" rule — this is structured config, not a display string).
+
+- `DocumentTemplate` extends `Auditable` (it's editable config, not a ledger). Fields: `company` (FK), `documentType` (free-text, e.g. `"INVENTORY_ADJUSTMENT"` — same convention as `InventoryMovement.sourceType`), `name`, `layout` (`TEXT`, opaque JSON), `defaultTemplate` (boolean — **not** `isDefault`, see naming gotcha below), `active`.
+- Only one `defaultTemplate=true` per `(company, documentType)`. Not a DB constraint — enforced in `DocumentTemplateService` by unsetting any other default for that `(company, documentType)` in the same transaction whenever a template is saved with `defaultTemplate=true`.
+- **Permission model**: a single global `MANAGE_DOCUMENT_TEMPLATES` gates the entire feature — designing templates *and* the print/preview lookup. Deliberately not per-verb CRUD, not reusing the target document's own VIEW permission (e.g. `VIEW_INVENTORY_ADJUSTMENT`). Matches the flat `MANAGE_SYSTEM` precedent rather than the usual VIEW/CREATE/UPDATE/DELETE-per-entity convention.
+- **Bindable-field registry**: `DocumentSchemaRegistry` is a hand-maintained (not reflection-based) static map from `documentType` → header fields + repeating groups (e.g. `INVENTORY_ADJUSTMENT` → `referenceNumber`, `sheetNumber`, `companyName`, `warehouseName`, `adjustmentDate`, `reason`, `createdBy`, plus a repeating group `lines` with `itemCode`/`itemName`/`quantity`). Adding a new document type means adding one registry entry here **and** mirroring it in the frontend's `DOCUMENT_TYPES` array (`DocumentTemplatesPage.tsx`) — the two lists must stay in sync manually, there's no shared source of truth between them yet.
+- **Company-scoping gotcha (found live, not a bug)**: the print action's default-template lookup (`GET /document-templates/default?companyId=X&documentType=Y`) is scoped to the *record being printed*'s own company, not whatever company is currently active in the user's session. A template created while Company A is active only ever applies to Company A's documents. A user managing multiple companies needs a separate default template per `(company, documentType)` pair — switch the active company before creating each one. The frontend's "no template" error message names the missing company explicitly for this reason.
+
+See `docs/TRANSACTIONS.md` for the **standard transaction document layout** (the required base layout every transaction-type template must follow) and the canonical starting-layout JSON to copy when wiring up a new document type.
+
+### Frontend layout JSON (owned entirely by `Norbiz-Web`, backend never inspects it)
+```json
+{
+  "pageSize": "A4", "orientation": "portrait",
+  "elements": [
+    { "id": "...", "type": "text", "x": 20, "y": 20, "width": 200, "height": 24, "binding": "referenceNumber", "style": { "fontSize": 14, "bold": true } },
+    { "id": "...", "type": "static", "x": 20, "y": 50, "width": 100, "height": 20, "text": "Reference #:" },
+    { "id": "...", "type": "line", "orientation": "horizontal", "x": 20, "y": 80, "width": 400, "height": 1, "style": { "borderWidth": 1, "borderColor": "#000000" } },
+    { "id": "...", "type": "shape", "x": 20, "y": 100, "width": 150, "height": 80, "style": { "borderWidth": 1, "borderColor": "#000000", "fillColor": "transparent" } },
+    { "id": "...", "type": "table", "x": 20, "y": 200, "width": 400, "height": 300, "binding": "lines",
+      "columns": [ { "binding": "itemCode", "label": "Code", "width": 80 }, { "binding": "itemName", "label": "Item", "width": 200 }, { "binding": "quantity", "label": "Qty", "width": 60 } ] }
+  ]
+}
+```
+Five element types: `text` (bound to a single field), `static` (literal label), `table` (bound to a repeating array, one row per item, per-column bindings and per-column adjustable `width` — renders as plain unstyled repeated rows, deliberately **no** table/grid chrome, borders, or header row), `line` (horizontal/vertical rule), `shape` (bordered/filled rectangle for sectioning). `TemplateElementStyle` carries `fontSize`, `bold`, `align`, plus `borderWidth`/`borderColor`/`fillColor` for line/shape.
+
+### Designer (`react-rnd`)
+Click a field/shape in the palette to drop it on the canvas at a default position, then drag/resize it via `react-rnd`. One shared `TemplateRenderer` component powers both the designer (edit mode, `Rnd`-wrapped, draggable/resizable) and the print view (read-only, real data substituted in), so positioning/binding logic never drifts between the two. Snap-to-grid is an edit-only aid (`react-rnd`'s `grid` prop + a visual background overlay) — the grid size/on-off state is local designer UI state, never persisted into the saved layout.
+
+**Required Vite config**: `react-rnd`'s bundled `react-draggable` dependency references the Node-only `process` global in a debug-logging guard (`process.env.DRAGGABLE_DEBUG`). Vite doesn't polyfill this in the browser, so without a shim the app throws `ReferenceError: process is not defined` inside React's render phase the instant the first draggable element mounts — an uncaught error that blanks the entire app (no error boundary). `Norbiz-Web/vite.config.ts` must keep `define: { 'process.env': {} }` — do not remove it, the designer will not function without it.
+
+### Print flow
+`useDocumentPrint` hook fetches the default template for `(companyId, documentType)`, parses its layout, and portals `<TemplateRenderer mode="print">` into an off-screen `#document-print-root` div, then calls `window.print()`. `Norbiz-Web/src/index.css` has global `@media print` rules (`visibility: hidden` on `body *`, overridden back to `visible` for `#document-print-root` and its descendants) that hide all app chrome and show only the printed document — required infrastructure, not page-specific styling.
+
+### Naming gotcha (Lombok + Jackson)
+Never name a boolean entity field `isX`. Lombok generates `isX()`/`setX(boolean)` for it (not `getIsX`/`setIsX`), and Jackson serializes that to JSON property `"x"`, not `"isX"` — a request body sending `{"isX": true}` is silently ignored. `DocumentTemplate.defaultTemplate` was renamed from `isDefault` for exactly this reason after it was found live (both templates round-tripped as `"default": false` regardless of what was sent). Use a non-`is`-prefixed name (`active`, `defaultTemplate`, etc.) for every boolean field going forward.
