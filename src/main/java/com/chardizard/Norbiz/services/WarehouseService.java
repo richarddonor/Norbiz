@@ -55,7 +55,7 @@ public class WarehouseService {
                 SpecificationUtils.containsIgnoreCase("code", filters.get("code")),
                 SpecificationUtils.containsIgnoreCase("company.name", filters.get("company")),
                 SpecificationUtils.containsIgnoreCase("createdBy", filters.get("createdBy")),
-                SpecificationUtils.containsIgnoreCase("active", filters.get("active")),
+                SpecificationUtils.booleanEquals("active", filters.get("active")),
                 SpecificationUtils.dateRange("updatedAt", updatedAtFrom, updatedAtTo)
         );
 

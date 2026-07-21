@@ -59,6 +59,17 @@ public final class SpecificationUtils {
         };
     }
 
+    /** Equality filter on a boolean-typed dotted path. Returns null (a no-op) when value is null. */
+    public static <T> Specification<T> booleanEquals(String dotPath, Boolean value) {
+        if (value == null) return null;
+        return (root, query, cb) -> cb.equal(resolvePath(root, dotPath).as(Boolean.class), value);
+    }
+
+    public static <T> Specification<T> booleanEquals(String dotPath, String value) {
+        if (!StringUtils.hasText(value)) return null;
+        return booleanEquals(dotPath, Boolean.valueOf(value));
+    }
+
     /** Folds a list of possibly-null Specifications into one, skipping nulls. */
     @SafeVarargs
     public static <T> Specification<T> allOf(Specification<T>... specs) {

@@ -27,13 +27,60 @@ public class DocumentSchemaRegistry {
                             new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
                             new DocumentFieldSchema("adjustmentDate", "Adjustment Date", "date"),
                             new DocumentFieldSchema("reason", "Remarks", "string"),
-                            new DocumentFieldSchema("createdBy", "Posted By", "string")
+                            new DocumentFieldSchema("createdBy", "Posted By", "user")
                     ),
                     List.of(
                             new DocumentRepeatingGroupSchema("lines", "Line Items", List.of(
                                     new DocumentFieldSchema("itemCode", "Item Code", "string"),
                                     new DocumentFieldSchema("itemName", "Item Name", "string"),
                                     new DocumentFieldSchema("quantity", "Quantity", "number")
+                            ))
+                    )
+            ),
+            "PURCHASE_ORDER", new DocumentSchemaResponse(
+                    "PURCHASE_ORDER",
+                    List.of(
+                            new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
+                            new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
+                            new DocumentFieldSchema("companyName", "Company", "string"),
+                            new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
+                            new DocumentFieldSchema("supplierName", "Supplier", "string"),
+                            new DocumentFieldSchema("orderDate", "Order Date", "date"),
+                            new DocumentFieldSchema("remarks", "Remarks", "string"),
+                            new DocumentFieldSchema("createdBy", "Posted By", "user")
+                    ),
+                    List.of(
+                            new DocumentRepeatingGroupSchema("lines", "Line Items", List.of(
+                                    new DocumentFieldSchema("itemCode", "Item Code", "string"),
+                                    new DocumentFieldSchema("itemName", "Item Name", "string"),
+                                    new DocumentFieldSchema("quantity", "Quantity", "number"),
+                                    new DocumentFieldSchema("costPrice", "Cost Price", "currency")
+                            ))
+                    )
+            ),
+            "PURCHASE_INVOICE", new DocumentSchemaResponse(
+                    "PURCHASE_INVOICE",
+                    List.of(
+                            new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
+                            new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
+                            new DocumentFieldSchema("companyName", "Company", "string"),
+                            new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
+                            new DocumentFieldSchema("supplierName", "Supplier", "string"),
+                            new DocumentFieldSchema("invoiceDate", "Invoice Date", "date"),
+                            new DocumentFieldSchema("remarks", "Remarks", "string"),
+                            new DocumentFieldSchema("paymentStatus", "Payment Status", "string"),
+                            new DocumentFieldSchema("createdBy", "Posted By", "user")
+                    ),
+                    List.of(
+                            new DocumentRepeatingGroupSchema("lines", "Line Items", List.of(
+                                    new DocumentFieldSchema("itemCode", "Item Code", "string"),
+                                    new DocumentFieldSchema("itemName", "Item Name", "string"),
+                                    new DocumentFieldSchema("quantity", "Quantity", "number"),
+                                    new DocumentFieldSchema("costPrice", "Cost Price", "currency")
+                            )),
+                            new DocumentRepeatingGroupSchema("fees", "Additional Fees", List.of(
+                                    new DocumentFieldSchema("description", "Description", "string"),
+                                    new DocumentFieldSchema("amount", "Amount", "currency")
                             ))
                     )
             )

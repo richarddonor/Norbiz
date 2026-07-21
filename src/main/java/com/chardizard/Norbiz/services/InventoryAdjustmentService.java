@@ -27,6 +27,7 @@ public class InventoryAdjustmentService {
 
     private static final Logger log = LoggerFactory.getLogger(InventoryAdjustmentService.class);
     private static final String TRANSACTION_TYPE = "INVENTORY_ADJUSTMENT";
+    private static final String VOID_SOURCE_TYPE = "INVENTORY_ADJUSTMENT_VOID";
     private static final String REFERENCE_PREFIX = "IA";
 
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
@@ -132,7 +133,7 @@ public class InventoryAdjustmentService {
         InventoryAdjustment saved = inventoryAdjustmentRepository.save(adjustment);
 
         for (InventoryAdjustmentLine line : saved.getLines()) {
-            postMovement(company, line.getItem(), warehouse, line.getQuantity(), adjustmentDate, saved.getId(),
+            postMovement(TRANSACTION_TYPE, company, line.getItem(), warehouse, line.getQuantity(), adjustmentDate, saved.getId(),
                     saved.getReferenceNumber(), saved.getSheetNumber(), now, username);
         }
 
@@ -141,8 +142,40 @@ public class InventoryAdjustmentService {
         return saved;
     }
 
-    private void postMovement(Company company, Item item, Warehouse warehouse, BigDecimal quantityDelta, Instant movementDate,
-                               Long adjustmentId, String referenceNumber, String sheetNumber, Instant now, String username) {
+    // Voiding is the only sanctioned way to cancel an immutable transaction (docs/TRANSACTIONS.md "Voiding").
+    // Reverses every posted movement so the stock effect doesn't stay live after the transaction is cancelled.
+    @Transactional
+    public InventoryAdjustment voidAdjustment(Long id, String username) {
+        InventoryAdjustment adjustment = findById(id, username);
+
+        if (adjustment.isVoided()) {
+            throw new IllegalArgumentException("Adjustment already voided: " + id);
+        }
+        boolean hasLoadedQuantity = adjustment.getLines().stream()
+                .anyMatch(l -> l.getQuantityLoaded().compareTo(BigDecimal.ZERO) > 0);
+        if (adjustment.isLoaded() || hasLoadedQuantity) {
+            throw new IllegalArgumentException("Cannot void an adjustment that has been loaded: " + id);
+        }
+
+        Instant now = Instant.now();
+        for (InventoryAdjustmentLine line : adjustment.getLines()) {
+            postMovement(VOID_SOURCE_TYPE, adjustment.getCompany(), line.getItem(), adjustment.getWarehouse(),
+                    line.getQuantity().negate(), adjustment.getAdjustmentDate(), adjustment.getId(),
+                    adjustment.getReferenceNumber(), adjustment.getSheetNumber(), now, username);
+        }
+
+        adjustment.setVoided(true);
+        adjustment.setVoidedAt(now);
+        adjustment.setVoidedBy(username);
+
+        InventoryAdjustment saved = inventoryAdjustmentRepository.save(adjustment);
+        log.info("User '{}' voided inventory adjustment (id={})", username, id);
+        return saved;
+    }
+
+    private void postMovement(String sourceType, Company company, Item item, Warehouse warehouse, BigDecimal quantityDelta,
+                               Instant movementDate, Long adjustmentId, String referenceNumber, String sheetNumber,
+                               Instant now, String username) {
         InventoryMovement movement = new InventoryMovement();
         movement.setCompany(company);
         movement.setItem(item);
@@ -150,7 +183,7 @@ public class InventoryAdjustmentService {
         movement.setQuantityDelta(quantityDelta);
         movement.setTransitQuantityDelta(BigDecimal.ZERO);
         movement.setMovementDate(movementDate);
-        movement.setSourceType(TRANSACTION_TYPE);
+        movement.setSourceType(sourceType);
         movement.setSourceId(adjustmentId);
         movement.setReferenceNumber(referenceNumber);
         movement.setSheetNumber(sheetNumber);

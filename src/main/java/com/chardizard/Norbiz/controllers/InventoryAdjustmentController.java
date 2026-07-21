@@ -29,8 +29,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-@Tag(name = "Inventory Adjustments", description = "Inventory adjustment transactions — requires VIEW_INVENTORY_ADJUSTMENT / CREATE_INVENTORY_ADJUSTMENT permissions. " +
-        "Adjustments are immutable once posted: only create and view are supported.")
+@Tag(name = "Inventory Adjustments", description = "Inventory adjustment transactions — requires VIEW_INVENTORY_ADJUSTMENT / CREATE_INVENTORY_ADJUSTMENT / VOID_INVENTORY_ADJUSTMENT permissions. " +
+        "Adjustments are immutable once posted: only create, view, and void are supported.")
 @RestController
 @RequestMapping("/inventory-adjustments")
 @RequiredArgsConstructor
@@ -87,6 +87,18 @@ public class InventoryAdjustmentController {
                 .body(AppResponse.of(toResponse(inventoryAdjustmentService.create(request, userDetails.getUsername()))));
     }
 
+    @Operation(summary = "Void inventory adjustment", description = "Cancels an adjustment by reversing every ledger entry it posted. " +
+            "Fails if already voided or if the adjustment has been loaded (fully or partially) into a downstream transaction.")
+    @ApiResponse(responseCode = "200", description = "Adjustment voided")
+    @ApiResponse(responseCode = "400", description = "Already voided, or has been loaded")
+    @ApiResponse(responseCode = "403", description = "Missing VOID_INVENTORY_ADJUSTMENT permission or no access to company")
+    @PostMapping("/{id}/void")
+    @PreAuthorize("hasAuthority('VOID_INVENTORY_ADJUSTMENT')")
+    public ResponseEntity<AppResponse<InventoryAdjustmentResponse>> voidAdjustment(@Parameter(description = "Adjustment ID") @PathVariable Long id,
+                                                                                    @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(toResponse(inventoryAdjustmentService.voidAdjustment(id, userDetails.getUsername()))));
+    }
+
     private InventoryAdjustmentResponse toResponse(InventoryAdjustment adjustment) {
         InventoryAdjustmentResponse res = new InventoryAdjustmentResponse();
         res.setId(adjustment.getId());
@@ -100,6 +112,10 @@ public class InventoryAdjustmentController {
         res.setReason(adjustment.getReason());
         res.setCreatedAt(adjustment.getCreatedAt());
         res.setCreatedBy(adjustment.getCreatedBy());
+        res.setVoided(adjustment.isVoided());
+        res.setVoidedAt(adjustment.getVoidedAt());
+        res.setVoidedBy(adjustment.getVoidedBy());
+        res.setLoaded(adjustment.isLoaded());
         res.setLines(adjustment.getLines().stream().map(this::toLineResponse).collect(Collectors.toList()));
         return res;
     }
@@ -111,6 +127,7 @@ public class InventoryAdjustmentController {
         res.setItemCode(line.getItem().getItemCode());
         res.setItemName(line.getItem().getName());
         res.setQuantity(line.getQuantity());
+        res.setQuantityLoaded(line.getQuantityLoaded());
         return res;
     }
 }

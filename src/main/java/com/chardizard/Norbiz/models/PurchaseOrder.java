@@ -8,16 +8,16 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-// Not Auditable: adjustments are immutable once posted (no update/delete endpoint),
-// so there is nothing to diff/track over time.
+// Not Auditable: purchase orders are immutable once posted (no update endpoint, only void),
+// so there is nothing to diff/track over time — same reasoning as InventoryAdjustment.
 @Getter
 @Setter
 @Entity
 @Table(
-    name = "inventory_adjustments",
-    uniqueConstraints = @UniqueConstraint(name = "INVENTORY_ADJUSTMENTS_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
+    name = "purchase_orders",
+    uniqueConstraints = @UniqueConstraint(name = "PURCHASE_ORDERS_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
 )
-public class InventoryAdjustment {
+public class PurchaseOrder {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -25,13 +25,21 @@ public class InventoryAdjustment {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false,
-        foreignKey = @ForeignKey(name = "INVENTORY_ADJUSTMENTS_COMPANY_ID_FK"))
+        foreignKey = @ForeignKey(name = "PURCHASE_ORDERS_COMPANY_ID_FK"))
     private Company company;
 
+    // Destination warehouse — creating a PO posts a Transit Quantity increase here
+    // (see PurchaseOrderService.postTransitMovement).
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "warehouse_id", nullable = false,
-        foreignKey = @ForeignKey(name = "INVENTORY_ADJUSTMENTS_WAREHOUSE_ID_FK"))
+        foreignKey = @ForeignKey(name = "PURCHASE_ORDERS_WAREHOUSE_ID_FK"))
     private Warehouse warehouse;
+
+    // Counterparty for this transaction type — see docs/TRANSACTIONS.md "Standard transaction document layout".
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "supplier_id", nullable = false,
+        foreignKey = @ForeignKey(name = "PURCHASE_ORDERS_SUPPLIER_ID_FK"))
+    private Supplier supplier;
 
     // Auto-generated per CLAUDE.md's Transactions rule — see TransactionReferenceService.
     @Column(name = "reference_number", nullable = false, length = 50)
@@ -42,11 +50,11 @@ public class InventoryAdjustment {
     private String sheetNumber;
 
     // Business-effective date, represented as the UTC-midnight instant of that day (see InventoryMovement).
-    @Column(name = "adjustment_date", nullable = false)
-    private Instant adjustmentDate;
+    @Column(name = "order_date", nullable = false)
+    private Instant orderDate;
 
     @Column(length = 255)
-    private String reason;
+    private String remarks;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -64,12 +72,11 @@ public class InventoryAdjustment {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // Nothing currently loads *from* an Inventory Adjustment (only Purchase Order -> future Purchase Receive
-    // is documented) — this field is inert for now, kept for parity with docs/TRANSACTIONS.md "Transaction Loading"
-    // so the void-blocks-on-loaded check is uniform across every transaction type.
+    // Set once this PO has been fully received via the future Purchase Receive transaction
+    // (see docs/TRANSACTIONS.md "Transaction Loading") — inert until that transaction exists.
     @Column(nullable = false)
     private boolean loaded = false;
 
-    @OneToMany(mappedBy = "adjustment", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<InventoryAdjustmentLine> lines = new ArrayList<>();
+    @OneToMany(mappedBy = "purchaseOrder", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PurchaseOrderLine> lines = new ArrayList<>();
 }

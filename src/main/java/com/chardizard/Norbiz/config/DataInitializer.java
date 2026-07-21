@@ -68,6 +68,13 @@ public class DataInitializer implements CommandLineRunner {
         Permission deleteCustomerPermission       = findOrCreate("DELETE_CUSTOMER",       "Maintenance - Customer Delete");
         Permission viewInventoryAdjustmentPermission   = findOrCreate("VIEW_INVENTORY_ADJUSTMENT",   "Inventory - Adjustment View");
         Permission createInventoryAdjustmentPermission = findOrCreate("CREATE_INVENTORY_ADJUSTMENT", "Inventory - Adjustment Create");
+        Permission voidInventoryAdjustmentPermission   = findOrCreate("VOID_INVENTORY_ADJUSTMENT",   "Inventory - Adjustment Void");
+        Permission viewPurchaseOrderPermission         = findOrCreate("VIEW_PURCHASE_ORDER",         "Purchases - Purchase Order View");
+        Permission createPurchaseOrderPermission       = findOrCreate("CREATE_PURCHASE_ORDER",       "Purchases - Purchase Order Create");
+        Permission voidPurchaseOrderPermission         = findOrCreate("VOID_PURCHASE_ORDER",         "Purchases - Purchase Order Void");
+        Permission viewPurchaseInvoicePermission       = findOrCreate("VIEW_PURCHASE_INVOICE",       "Purchases - Purchase Invoice View");
+        Permission createPurchaseInvoicePermission     = findOrCreate("CREATE_PURCHASE_INVOICE",     "Purchases - Purchase Invoice Create");
+        Permission voidPurchaseInvoicePermission       = findOrCreate("VOID_PURCHASE_INVOICE",       "Purchases - Purchase Invoice Void");
         Permission viewInventoryReportPermission       = findOrCreate("VIEW_INVENTORY_REPORT",       "Inventory - Report View");
         Permission manageDocumentTemplatesPermission   = findOrCreate("MANAGE_DOCUMENT_TEMPLATES",   "Document Templates - Manage (design + print)");
 
@@ -97,7 +104,9 @@ public class DataInitializer implements CommandLineRunner {
                 viewEmployeePermission, createEmployeePermission, updateEmployeePermission,
                 viewSupplierPermission, createSupplierPermission, updateSupplierPermission,
                 viewCustomerPermission, createCustomerPermission, updateCustomerPermission,
-                viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission,
+                viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission, voidInventoryAdjustmentPermission,
+                viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
+                viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission));
         roleRepository.save(systemAdminRole);
 
@@ -118,7 +127,9 @@ public class DataInitializer implements CommandLineRunner {
                 viewEmployeePermission, createEmployeePermission, updateEmployeePermission, deleteEmployeePermission,
                 viewSupplierPermission, createSupplierPermission, updateSupplierPermission, deleteSupplierPermission,
                 viewCustomerPermission, createCustomerPermission, updateCustomerPermission, deleteCustomerPermission,
-                viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission,
+                viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission, voidInventoryAdjustmentPermission,
+                viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
+                viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission));
         roleRepository.save(superAdminRole);
 

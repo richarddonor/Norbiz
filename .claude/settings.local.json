@@ -21,7 +21,16 @@
       "Bash(docker exec norbiz-postgres *)",
       "PowerShell(.\\\\mvnw.cmd -q -o compile -DskipTests 2>&1 | Select-Object -Last 250)",
       "PowerShell(Get-NetTCPConnection *)",
-      "PowerShell($conn = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue; if \\($conn\\) { \"IN USE by PID $\\($conn.OwningProcess\\)\" } else { \"PORT FREE\" })"
+      "PowerShell($conn = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue; if \\($conn\\) { \"IN USE by PID $\\($conn.OwningProcess\\)\" } else { \"PORT FREE\" })",
+      "PowerShell(.\\\\mvnw.cmd -q compile -DskipTests 2>&1 | Select-Object -Last 200)",
+      "Bash(docker cp *)",
+      "Bash(MSYS_NO_PATHCONV=1 docker cp /c/Users/donor/Projects/Norbiz/db/init.sql norbiz-postgres:/tmp/init.sql)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec norbiz-postgres psql -U admin -d norbiz -f /tmp/init.sql)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec norbiz-postgres psql -U admin -d norbiz -f /tmp/init2.sql)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec norbiz-postgres *)",
+      "Bash(nohup ./mvnw.cmd spring-boot:run)",
+      "Bash(echo \"started with pid $!\")"
     ]
   }
 }

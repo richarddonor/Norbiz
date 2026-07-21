@@ -56,7 +56,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - As a general rule, all Entities must belong to only one `Company`
 
 - Entities that are scoped strictly to one company. Update this list everytime there is a new entity:
-    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment, DocumentTemplate
+    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment, DocumentTemplate, PurchaseOrder, PurchaseInvoice
 - `InventoryMovement` and `InventoryBalance` are not directly created via their own endpoint (only posted internally by transactions like `InventoryAdjustment`), but are still company-scoped transitively through their `Warehouse`.
 - **Company-membership must be verified on every single-record read, not just on list/create/update/delete.** A `GET /{id}` endpoint's `@PreAuthorize("hasAuthority('VIEW_X')")` only checks the permission, not which company the record belongs to — without an explicit check, any user holding that permission could fetch any other company's record by ID (a cross-tenant IDOR). Every company-scoped entity's `findById(id, username)` must resolve the entity, then call the existing `assertCompanyAccess(username, companyId)` helper before returning it — mirror `ItemSkuService.findById` (the original correct example) or `BrandService.findById` (fixed 2026-07-09 after this exact bug was found live in Brand/ItemCategory/Employee/Warehouse/Supplier/Customer/InventoryAdjustment). `update`/`delete` should call this same scoped `findById` rather than checking access a second time separately.
 - Entities that belong to one or more companies. Use an intermediary table like `user_companies` to enforce one to many or many to many relationships. Update this list everytime there is a new entity:
@@ -105,7 +105,16 @@ Company ──< Item ──< ItemSku
                 └──> ItemCategory (unique name per company)
 Company ──< InventoryAdjustment ──< InventoryAdjustmentLine ──> Item
                                 └──> Warehouse
-Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment and future transactions)
+Company ──< PurchaseOrder ──< PurchaseOrderLine ──> Item
+                          └──> Warehouse (destination — posts Transit Quantity)
+                          └──> Supplier (counterparty)
+Company ──< PurchaseInvoice ──< PurchaseInvoiceLine ──> Item
+                             │                       └──> PurchaseOrderLine (optional — set when PO-based)
+                             ├──< PurchaseInvoiceFee
+                             ├──> Warehouse
+                             ├──> Supplier (counterparty)
+                             └──> PurchaseOrder (optional — invoiced-against PO, loaded in full 1:1)
+Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment, PurchaseOrder, Direct-mode PurchaseInvoice, and future transactions)
 Item + Warehouse ──< InventoryBalance (running quantity/transitQuantity cache, one row per item+warehouse)
 Company ──< DocumentTemplate (documentType + opaque layout JSON; one default per company+documentType)
 User ──< Role (many-to-many) ──< Permission (many-to-many)
@@ -158,7 +167,7 @@ Norbiz should observe the OpenTelemetry specification for logging. Have loggers 
 
 ## Database
 
-`db/init.sql` creates all tables and seeds 41 permissions, 3 roles (`ADMIN`, `SYSTEM_ADMIN`, `SUPER_ADMIN`), and 3 default users (`admin`, `super_admin`, `system_admin`) with BCrypt passwords.
+`db/init.sql` creates all tables and seeds 49 permissions, 3 roles (`ADMIN`, `SYSTEM_ADMIN`, `SUPER_ADMIN`), and 3 default users (`admin`, `super_admin`, `system_admin`) with BCrypt passwords.
 
 `db/drop_all.sql` tears down the entire schema.
 
@@ -202,7 +211,7 @@ Transactional Data are data that exist as day-to-day business recordings that ut
 - Inventory Balance report should show the current value of the item per warehouse within a time period. Further drilling this report should forward to the Inventory Ledger report
 - The Inventory Ledger report will provide all the transactions that contributed to the Inventory Balance
 - Quantity is referred to as main stock level of an item in a warehouse. Transit Quantity is a count that are not yet added or subtracted from the main stock
-- Transit Quantity is posted by transactions that have not been fully received or dispatched by Norbiz. Example of this are, purchase ordered items but have not received by the warehouse. 
+- Transit Quantity is posted by transactions that have not been fully received or dispatched by Norbiz. Example of this are, purchase ordered items but have not received by the warehouse. Implemented: `PurchaseOrder` posts `transitQuantityDelta = +quantity` per line on creation (leaving `quantity` untouched), and reverses it (`-quantity`) on void — see `docs/TRANSACTIONS.md`. A "Direct" `PurchaseInvoice` (no backing PO) posts the same way; a PO-based `PurchaseInvoice` doesn't — it loads the PO's existing transit posting instead.
 - Every inventory transaction should commit their Post Transaction Company Id, Warehouse Id, ItemId, Source Type, Reference Number, Sheet Number, Posting Date, Posted By data to the Inventory Movement table
 
 ## Transactions
@@ -221,19 +230,25 @@ See `docs/TRANSACTIONS.md` (imported at the top of this file) for the full spec:
 - The main categories are: Inventory, Purchases, Sales (for now)
 
 ## Document Templates & Printing
-Fully frontend-customizable document printing: a designer module (sibling repo `Norbiz-Web`) where a user freely positions elements on a page and binds them to backend record fields, plus a print action that renders a real record through the saved layout via the browser's native print (`window.print()` + `@media print` CSS — no PDF library on either side for now).
+Fully frontend-customizable document printing: a designer module (sibling frontend repo) where a user freely positions elements on a page and binds them to backend record fields, plus a print action that renders a real record through the saved layout via the browser's native print (`window.print()` + `@media print` CSS — no PDF library on either side for now).
+Follow existing frontend conventions like 
+    currency formatting, 
+    user display name use instead of username,
+    amounts and numbers should be right aligned,
+    make sure labels are aligned vertically with one another
 
 **Split of responsibility**: mainly frontend. The backend's role is narrow — persist template layouts (company-scoped, like every other master-data entity) and expose a "what fields can I bind to" schema per document type. The backend does not understand or validate what's inside a layout; it is stored and returned as **opaque JSON** (deliberately exempt from the general "strings under 255 chars" rule — this is structured config, not a display string).
 
 - `DocumentTemplate` extends `Auditable` (it's editable config, not a ledger). Fields: `company` (FK), `documentType` (free-text, e.g. `"INVENTORY_ADJUSTMENT"` — same convention as `InventoryMovement.sourceType`), `name`, `layout` (`TEXT`, opaque JSON), `defaultTemplate` (boolean — **not** `isDefault`, see naming gotcha below), `active`.
+- **No seeding mechanism**: neither `db/init.sql` nor `DataInitializer` creates any `DocumentTemplate` rows — don't go looking for one. Every default template that exists (`INVENTORY_ADJUSTMENT`, `PURCHASE_ORDER`, `PURCHASE_INVOICE`, one per company) was created by hand via `POST /document-templates` with `defaultTemplate: true`, mirroring the canonical starting layout in `docs/TRANSACTIONS.md`. A freshly reset DB or a newly created company starts with **zero** templates for every document type until someone POSTs them.
 - Only one `defaultTemplate=true` per `(company, documentType)`. Not a DB constraint — enforced in `DocumentTemplateService` by unsetting any other default for that `(company, documentType)` in the same transaction whenever a template is saved with `defaultTemplate=true`.
 - **Permission model**: a single global `MANAGE_DOCUMENT_TEMPLATES` gates the entire feature — designing templates *and* the print/preview lookup. Deliberately not per-verb CRUD, not reusing the target document's own VIEW permission (e.g. `VIEW_INVENTORY_ADJUSTMENT`). Matches the flat `MANAGE_SYSTEM` precedent rather than the usual VIEW/CREATE/UPDATE/DELETE-per-entity convention.
 - **Bindable-field registry**: `DocumentSchemaRegistry` is a hand-maintained (not reflection-based) static map from `documentType` → header fields + repeating groups (e.g. `INVENTORY_ADJUSTMENT` → `referenceNumber`, `sheetNumber`, `companyName`, `warehouseName`, `adjustmentDate`, `reason`, `createdBy`, plus a repeating group `lines` with `itemCode`/`itemName`/`quantity`). Adding a new document type means adding one registry entry here **and** mirroring it in the frontend's `DOCUMENT_TYPES` array (`DocumentTemplatesPage.tsx`) — the two lists must stay in sync manually, there's no shared source of truth between them yet.
-- **Company-scoping gotcha (found live, not a bug)**: the print action's default-template lookup (`GET /document-templates/default?companyId=X&documentType=Y`) is scoped to the *record being printed*'s own company, not whatever company is currently active in the user's session. A template created while Company A is active only ever applies to Company A's documents. A user managing multiple companies needs a separate default template per `(company, documentType)` pair — switch the active company before creating each one. The frontend's "no template" error message names the missing company explicitly for this reason.
+- **Company-scoping gotcha (found live, not a bug)**: the print action's default-template lookup is scoped to the *record being printed*'s own company, not whatever company is currently active in the user's session. A template created while Company A is active only ever applies to Company A's documents. A user managing multiple companies needs a separate default template per `(company, documentType)` pair — switch the active company before creating each one. The frontend's "no template" error message names the missing company explicitly for this reason.
 
 See `docs/TRANSACTIONS.md` for the **standard transaction document layout** (the required base layout every transaction-type template must follow) and the canonical starting-layout JSON to copy when wiring up a new document type.
 
-### Frontend layout JSON (owned entirely by `Norbiz-Web`, backend never inspects it)
+### Frontend layout JSON (owned entirely by the frontend, backend never inspects it)
 ```json
 {
   "pageSize": "A4", "orientation": "portrait",
@@ -252,10 +267,10 @@ Five element types: `text` (bound to a single field), `static` (literal label), 
 ### Designer (`react-rnd`)
 Click a field/shape in the palette to drop it on the canvas at a default position, then drag/resize it via `react-rnd`. One shared `TemplateRenderer` component powers both the designer (edit mode, `Rnd`-wrapped, draggable/resizable) and the print view (read-only, real data substituted in), so positioning/binding logic never drifts between the two. Snap-to-grid is an edit-only aid (`react-rnd`'s `grid` prop + a visual background overlay) — the grid size/on-off state is local designer UI state, never persisted into the saved layout.
 
-**Required Vite config**: `react-rnd`'s bundled `react-draggable` dependency references the Node-only `process` global in a debug-logging guard (`process.env.DRAGGABLE_DEBUG`). Vite doesn't polyfill this in the browser, so without a shim the app throws `ReferenceError: process is not defined` inside React's render phase the instant the first draggable element mounts — an uncaught error that blanks the entire app (no error boundary). `Norbiz-Web/vite.config.ts` must keep `define: { 'process.env': {} }` — do not remove it, the designer will not function without it.
+**Required Vite config**: `react-rnd`'s bundled `react-draggable` dependency references the Node-only `process` global in a debug-logging guard (`process.env.DRAGGABLE_DEBUG`). Vite doesn't polyfill this in the browser, so without a shim the app throws `ReferenceError: process is not defined` inside React's render phase the instant the first draggable element mounts — an uncaught error that blanks the entire app (no error boundary). The frontend's `vite.config.ts` must keep `define: { 'process.env': {} }` — do not remove it, the designer will not function without it.
 
 ### Print flow
-`useDocumentPrint` hook fetches the default template for `(companyId, documentType)`, parses its layout, and portals `<TemplateRenderer mode="print">` into an off-screen `#document-print-root` div, then calls `window.print()`. `Norbiz-Web/src/index.css` has global `@media print` rules (`visibility: hidden` on `body *`, overridden back to `visible` for `#document-print-root` and its descendants) that hide all app chrome and show only the printed document — required infrastructure, not page-specific styling.
+`useDocumentPrint` hook fetches the default template for `(companyId, documentType)`, parses its layout, and portals `<TemplateRenderer mode="print">` into an off-screen `#document-print-root` div, then calls `window.print()`. The frontend's global stylesheet has `@media print` rules (`visibility: hidden` on `body *`, overridden back to `visible` for `#document-print-root` and its descendants) that hide all app chrome and show only the printed document — required infrastructure, not page-specific styling.
 
 ### Naming gotcha (Lombok + Jackson)
 Never name a boolean entity field `isX`. Lombok generates `isX()`/`setX(boolean)` for it (not `getIsX`/`setIsX`), and Jackson serializes that to JSON property `"x"`, not `"isX"` — a request body sending `{"isX": true}` is silently ignored. `DocumentTemplate.defaultTemplate` was renamed from `isDefault` for exactly this reason after it was found live (both templates round-tripped as `"default": false` regardless of what was sent). Use a non-`is`-prefixed name (`active`, `defaultTemplate`, etc.) for every boolean field going forward.

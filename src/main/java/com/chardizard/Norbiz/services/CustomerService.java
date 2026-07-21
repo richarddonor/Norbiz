@@ -56,7 +56,8 @@ public class CustomerService {
                 SpecificationUtils.containsIgnoreCase("type", filters.get("type")),
                 SpecificationUtils.containsIgnoreCase("company.name", filters.get("company")),
                 SpecificationUtils.containsIgnoreCase("createdBy", filters.get("createdBy")),
-                SpecificationUtils.containsIgnoreCase("active", filters.get("active")),
+                SpecificationUtils.booleanEquals("active", filters.get("active")),
+                (root, query, cb) -> cb.equal(root.get("active"), Boolean.valueOf(filters.get("active"))),
                 SpecificationUtils.dateRange("updatedAt", updatedAtFrom, updatedAtTo)
         );
 

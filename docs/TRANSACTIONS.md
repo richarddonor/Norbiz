@@ -20,14 +20,16 @@ Specification for **Transactional Data** in Norbiz — day-to-day business recor
 - Counterparty field: `Warehouse` — Inventory Adjustment has no customer/supplier.
 - Posts to `InventoryMovement` (append-only ledger) and `InventoryBalance` (running quantity/transitQuantity cache) — see root `CLAUDE.md`'s `## Inventory Management` section for the full ledger/balance model.
 - Document type for printing: `INVENTORY_ADJUSTMENT`. Notes field is `reason`, labeled "Remarks" in the `DocumentSchemaRegistry` entry to match the general Notes/Remarks convention above.
+- Carries `voided`/`voidedAt`/`voidedBy` and `loaded` (header) / `quantityLoaded` (line) — see `## Voiding` / `## Transaction Loading` below. `loaded`/`quantityLoaded` are inert here: nothing currently loads *from* an Inventory Adjustment.
 
-### Purchase Order
-- This transaction lets users buy goods from different Suppliers.
-- Counterparty field: `Supplier`.
-- User will specify which Supplier they are buying the items from
-- In the line item user will provide the quantity and for how much (cost price). Cost price will be preloaded based from `Item` cost price
-- There will be field Payment Status for tracking if the Purchase Order is paid or not. This will be linked to a future Supplier Invoice Transaction
-- This transaction can be loaded to the Purchase Receive to record how many items are received. 
+### Purchase Order — implemented
+- This transaction lets users buy goods from different Suppliers. It is a requisition for items into inventory (transit) — it carries no payable/payment status; Purchase Invoice is the payable transaction (see `## Purchase Invoice` below).
+- Reference prefix: `PO`.
+- Counterparty field: `Supplier`. Also carries a destination `Warehouse` — creating a PO posts a Transit Quantity increase there (`transitQuantityDelta = +quantity` per line), reversed on void; see root `CLAUDE.md`'s `## Inventory Management`.
+- User specifies which Supplier they are buying the items from.
+- Each line carries `quantity` (must be `> 0`) and `costPrice` — sensitive, gated by the existing `VIEW_COST_PRICE` permission (not a new one); preloaded from the item's current cost price when the request omits it, but overridable per line (a PO can legitimately negotiate a different price than the item's master cost price).
+- Carries `voided`/`voidedAt`/`voidedBy` and `loaded`/`quantityLoaded`, same as Inventory Adjustment. `loaded`/`quantityLoaded` are **no longer inert**: creating a Purchase Invoice against a PO (see `## Purchase Invoice` below) loads it in full, blocking further invoicing and voiding until the invoice is voided.
+- Document type for printing: `PURCHASE_ORDER`. Notes field is `remarks` (named directly, not `reason`, since this was a fresh entity).
 
 ### Sales Order (future)
 - Sells goods to Customers, or consigns them to Outlets (see root `CLAUDE.md`'s `## Customers` section).
@@ -48,7 +50,7 @@ The `INVENTORY_ADJUSTMENT` default templates (one per company, named `Inventory 
 **Checklist for wiring up a new transaction type's print template** (e.g. when `PurchaseOrder` is built):
 1. Add a `DocumentSchemaRegistry` entry on the backend for the new `documentType`, with the notes field labeled "Remarks" and the counterparty field (Supplier/Customer/Outlet) included as a header field.
 2. Mirror it in the frontend's `DOCUMENT_TYPES` array (`DocumentTemplatesPage.tsx`).
-3. Build a default template per company using the coordinate layout below as the starting point — swap the field `binding`s for the new type's schema paths, keep the structure (letterhead → title → separator → ref#/sheet#/date row → counterparty row → remarks row → separator → line items title → column headers → separator → table → footer) and the same x/y positions where the field role is equivalent.
+3. Build a default template per company using the coordinate layout below as the starting point — swap the field `binding`s for the new type's schema paths, keep the structure (letterhead → title → separator → ref#/sheet#/date row → counterparty row → remarks row → separator → line items title → column headers → separator → table → footer) and the same x/y positions where the field role is equivalent. **There is no seed script for this** — `db/init.sql`/`DataInitializer` never create `DocumentTemplate` rows (see root `CLAUDE.md`). Do it by hand: `POST /document-templates` once per existing company with this layout and `defaultTemplate: true`.
 4. Set `defaultTemplate: true` per company and verify the print action resolves it (see root `CLAUDE.md`'s company-scoping gotcha under Document Templates & Printing — one default per `(company, documentType)`).
 
 ### Canonical starting layout (A4 portrait, 794×1123px) — copy and re-bind for a new document type
@@ -101,9 +103,39 @@ The `INVENTORY_ADJUSTMENT` default templates (one per company, named `Inventory 
 - If a transaction can be loaded to another transaction (see next section of this .md), disallow voiding if transaction is already loaded(full or partially) 
 - User can only void if he/she has a voiding permission VOID_<transaction>  
 
+**Implementation notes** (Inventory Adjustment, Purchase Order, Purchase Invoice):
+- Entity field is named `voided` (not `isVoided`) — Lombok/Jackson naming gotcha, see root `CLAUDE.md`'s "Naming gotcha (Lombok + Jackson)" under Document Templates & Printing. Lombok still generates `isVoided()`; frontend label stays "Void"/"Voided".
+- Voiding also stamps `voidedAt`/`voidedBy` for accountability (not part of the original spec text, but the natural minimum to know who/when).
+- **Voiding reverses the ledger effects the transaction posted**, not just the flag — otherwise "voided" would be cosmetic while the stock/transit change stays live. Inventory Adjustment posts a compensating `InventoryMovement` (`quantityDelta` negated); Purchase Order and Direct-mode Purchase Invoice post a compensating transit movement (`transitQuantityDelta` negated). Reversals use a distinguishable `sourceType` (`INVENTORY_ADJUSTMENT_VOID` / `PURCHASE_ORDER_VOID` / `PURCHASE_INVOICE_VOID`) with the same `sourceId`/`referenceNumber` as the original, for ledger traceability. This is safe because void is only allowed when nothing has been loaded yet, so the full original quantity is always outstanding to reverse. A PO-based Purchase Invoice has no transit movement of its own to reverse — voiding it instead unloads the originating Purchase Order (see `## Purchase Invoice`).
+- Endpoint: `POST /{resource}/{id}/void`, gated by `VOID_<TRANSACTION>`, returns the updated resource.
+
 ## Transaction Loading
 - Some transactions can be loaded to another transaction. 
 - For example, a Purchase Order can be loaded to Purchase Receive to process what purchased items are already received.
 - They are can be loaded (processed) partially or it full.
 - This is represented in the source transaction as isLoaded boolean field. A isLoaded true field means it fully processed while false means it is partially or not processed at all
 - For partial loading, this happens usually for itemized transactions, have a quantityLoaded to track how many were already processed. When all items are loaded then set the isLoaded field to true
+
+**Implementation notes**: fields are named `loaded`/`quantityLoaded` (not `isLoaded`), same naming gotcha as above. Inventory Adjustment carries these fields but they remain **inert** — nothing loads from it. Purchase Order's fields are **no longer inert**: Purchase Invoice (PO-based mode) is the first real consumer, loading a PO in full (1:1) per line. Purchase Invoice itself also carries `loaded`/`quantityLoaded`, which stay inert for Direct-mode invoices pending the future Purchase Receive transaction (PO-based invoices have nothing of their own to load, since the goods movement belongs to the originating PO).
+
+
+## Purchase Invoice — implemented
+- This transaction posts a payable to a supplier. 
+- The payable can be based on a Purchase Order. Purchase Order is `loaded` per line item to the Purchase Invoice. Purchase Order is loaded in full thus maintaining a 1:1 relationship with Purchase Invoice
+- The total payable amount from Purchase Order is the net of quantity times cost price
+- Discounting can be done per item and for the transaction as a whole. Allow discounting by percentage.
+- There will be additional payable entries for additional fees
+- The net payable will be settled in a future module Supplier Payments
+- Purchase Invoice Direct. There can be a transaction flow that merges Purchase Order and Purchase Invoice into one. This Purchase Invoice will post the same inventory movement behavior (posting to intransit quantity) and can be received/loadable to the Purchase Receive module
+
+**Implementation notes**:
+- Reference prefix: `PINV`.
+- Counterparty field: `Supplier`, same as Purchase Order.
+- Two creation modes, selected by whether the request supplies a `purchaseOrderId`:
+  - **PO-based**: loads the given Purchase Order in full (1:1) — lines are copied verbatim (`quantity`, `costPrice`) from the PO's lines; the request's `lines` are only used to supply an optional per-item `discountPercentage` override, matched by `itemId`. `warehouseId`/`supplierId` on the request must match the PO's own warehouse/supplier. Rejected if the PO is voided or already `loaded` (a PO can only be invoiced once). Posts **no** inventory movement — the PO already posted Transit Quantity at its own creation. Sets `PurchaseOrder.loaded = true` and each `PurchaseOrderLine.quantityLoaded = quantity` (full).
+  - **Direct** (`purchaseOrderId` omitted): behaves like a merged PO+Invoice — `lines` is required, each line posts a Transit Quantity increase exactly like `PurchaseOrder.create` does (`sourceType = "PURCHASE_INVOICE"`). Its own `loaded`/`quantityLoaded` fields stay inert pending the future Purchase Receive transaction, same as `PurchaseOrder.loaded` was inert before this transaction existed.
+- `discountPercentage` (0–100) exists at both the header (`PurchaseInvoice`) and line (`PurchaseInvoiceLine`) level, per the discounting rule above. Additional fees are separate `PurchaseInvoiceFee` rows (`description` + `amount`), added to the payable after discounts.
+- `itemsSubtotal`/`discountAmount`/`netPayable` are **computed on the fly** in the response, not persisted (mirrors how Purchase Order doesn't store a total either — nothing here changes after creation). They're derived from cost price, so they're gated by `VIEW_COST_PRICE` the same way `costPrice` itself is; `feesTotal` is always visible since it's independent of cost price.
+- `paymentStatus`: 3-state enum `UNPAID` / `PARTIALLY_PAID` / `PAID` — Purchase Invoice is the payable transaction (Purchase Order is just a requisition/inventory-transit posting and carries no payment status). Not settable via the request, always starts `UNPAID`, changed only by the future Supplier Payments module.
+- Carries `voided`/`voidedAt`/`voidedBy` and `loaded`/`quantityLoaded`, same shape as Purchase Order. Void is blocked if `loaded` (or any line `quantityLoaded > 0`) — i.e. once a Direct invoice has itself been loaded by a future Purchase Receive. Voiding a **Direct** invoice reverses its own transit movement (`sourceType = "PURCHASE_INVOICE_VOID"`). Voiding a **PO-based** invoice instead unloads the originating PO (`loaded = false`, `quantityLoaded` reset to 0 on each line), making it voidable/invoiceable again.
+- Document type for printing: `PURCHASE_INVOICE`. Notes field is `remarks`, labeled "Remarks" per the general convention. Its `DocumentSchemaRegistry` entry has two repeating groups, not just one — `lines` (`itemCode`/`itemName`/`quantity`/`costPrice`, same as Purchase Order) plus `fees` (`description`/`amount`) — the first document type with more than one repeating group, since it's the first with a second itemized collection alongside line items.
