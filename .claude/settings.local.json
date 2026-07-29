@@ -30,7 +30,8 @@
       "Bash(MSYS_NO_PATHCONV=1 docker exec norbiz-postgres psql -U admin -d norbiz -f /tmp/init2.sql)",
       "Bash(MSYS_NO_PATHCONV=1 docker exec norbiz-postgres *)",
       "Bash(nohup ./mvnw.cmd spring-boot:run)",
-      "Bash(echo \"started with pid $!\")"
+      "Bash(echo \"started with pid $!\")",
+      "Bash(docker exec *)"
     ]
   }
 }

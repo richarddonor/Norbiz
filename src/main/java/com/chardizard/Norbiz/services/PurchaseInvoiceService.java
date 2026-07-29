@@ -226,6 +226,14 @@ public class PurchaseInvoiceService {
         if (purchaseOrder.isLoaded()) {
             throw new IllegalArgumentException("Purchase order already invoiced: " + purchaseOrderId);
         }
+        // A Purchase Receive may have already (partially) consumed this PO's lines — invoicing here
+        // copies quantity verbatim and would silently overwrite that tracking. See docs/TRANSACTIONS.md
+        // "Purchase Receive": a PO can be consumed by an invoice OR receives, not both.
+        boolean hasAnyReceived = purchaseOrder.getLines().stream()
+                .anyMatch(l -> l.getQuantityLoaded().compareTo(BigDecimal.ZERO) > 0);
+        if (hasAnyReceived) {
+            throw new IllegalArgumentException("Cannot invoice a purchase order that has already been (partially) received: " + purchaseOrderId);
+        }
         if (!purchaseOrder.getWarehouse().getId().equals(warehouse.getId())) {
             throw new IllegalArgumentException("warehouseId does not match the purchase order's warehouse");
         }

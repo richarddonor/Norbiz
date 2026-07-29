@@ -28,8 +28,11 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger("http.request");
     private static final int MAX_PAYLOAD_LENGTH = 4000;
+    // Matches any JSON key containing "password"/"token"/"secret" as a substring — not just an
+    // exact match — so fields like "newPassword"/"currentPassword" (added for change/reset
+    // password) are redacted too, without needing every new field name enumerated here.
     private static final Pattern SENSITIVE_FIELD_PATTERN =
-            Pattern.compile("(?i)(\"(password|token|secret)\"\\s*:\\s*)\"[^\"]*\"");
+            Pattern.compile("(?i)(\"\\w*(password|token|secret)\\w*\"\\s*:\\s*)\"[^\"]*\"");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)

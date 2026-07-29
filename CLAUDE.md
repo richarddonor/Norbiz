@@ -56,7 +56,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - As a general rule, all Entities must belong to only one `Company`
 
 - Entities that are scoped strictly to one company. Update this list everytime there is a new entity:
-    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment, DocumentTemplate, PurchaseOrder, PurchaseInvoice
+    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment, DocumentTemplate, PurchaseOrder, PurchaseInvoice, PurchaseReceive
 - `InventoryMovement` and `InventoryBalance` are not directly created via their own endpoint (only posted internally by transactions like `InventoryAdjustment`), but are still company-scoped transitively through their `Warehouse`.
 - **Company-membership must be verified on every single-record read, not just on list/create/update/delete.** A `GET /{id}` endpoint's `@PreAuthorize("hasAuthority('VIEW_X')")` only checks the permission, not which company the record belongs to — without an explicit check, any user holding that permission could fetch any other company's record by ID (a cross-tenant IDOR). Every company-scoped entity's `findById(id, username)` must resolve the entity, then call the existing `assertCompanyAccess(username, companyId)` helper before returning it — mirror `ItemSkuService.findById` (the original correct example) or `BrandService.findById` (fixed 2026-07-09 after this exact bug was found live in Brand/ItemCategory/Employee/Warehouse/Supplier/Customer/InventoryAdjustment). `update`/`delete` should call this same scoped `findById` rather than checking access a second time separately.
 - Entities that belong to one or more companies. Use an intermediary table like `user_companies` to enforce one to many or many to many relationships. Update this list everytime there is a new entity:
@@ -114,7 +114,14 @@ Company ──< PurchaseInvoice ──< PurchaseInvoiceLine ──> Item
                              ├──> Warehouse
                              ├──> Supplier (counterparty)
                              └──> PurchaseOrder (optional — invoiced-against PO, loaded in full 1:1)
-Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment, PurchaseOrder, Direct-mode PurchaseInvoice, and future transactions)
+Company ──< PurchaseReceive ──< PurchaseReceiveLine ──> Item
+                             │                       ├──> PurchaseOrderLine (optional — set when source is a PO)
+                             │                       └──> PurchaseInvoiceLine (optional — set when source is a Direct invoice)
+                             ├──> Warehouse
+                             ├──> Supplier (counterparty)
+                             ├──> PurchaseOrder (optional — one of two possible sources)
+                             └──> PurchaseInvoice (optional — the other possible source, Direct-mode only)
+Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment, PurchaseOrder, Direct-mode PurchaseInvoice, PurchaseReceive, and future transactions)
 Item + Warehouse ──< InventoryBalance (running quantity/transitQuantity cache, one row per item+warehouse)
 Company ──< DocumentTemplate (documentType + opaque layout JSON; one default per company+documentType)
 User ──< Role (many-to-many) ──< Permission (many-to-many)
@@ -153,7 +160,7 @@ As General rule, Strings must be less than 255 characters
 All endpoints that return a list of records should be paginated. Have 50 records per page as default.
 
 ## List Filtering & Search
-The frontend (sibling repo `Norbiz-Web`, see its `CLAUDE.md`) drives these requirements — check there when a list-page task's backend shape is unclear.
+The frontend (sibling repo `Norbiz-Web`, see its `CLAUDE.md`) drives these requirements — check there when a list-page task's backend shape is unclear. The `Norbiz-Web` repo is typically at same level as this `Norbiz` project.
 - Column filters must be backend-side, case-insensitive partial-match ("contains") queries, one filter per column, combined with AND.
 - Repositories backing a filterable list should extend `JpaSpecificationExecutor<T>` in addition to `JpaRepository<T, Long>`. Compose filters via `com.chardizard.Norbiz.util.SpecificationUtils` (`containsIgnoreCase`, `anyContainsIgnoreCase`, `allOf`) rather than hand-rolling a derived-name/`@Query` method per filter combination — this is the established pattern going forward (see `ItemRepository`/`ItemService` for the initial wiring).
 - Date-type columns must support range filtering (`from`/`to` query params resolved to actual dates). The frontend resolves canned ranges (Today, Current Week, Current Month, Last 30 Days, Last 3 Months, Current Year) to concrete dates client-side — the backend only ever receives `from`/`to`, never a range label.
