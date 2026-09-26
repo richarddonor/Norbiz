@@ -18,21 +18,21 @@ Specification for **Transactional Data** in Norbiz — day-to-day business recor
 - This is an inventory movement transaction to increase or decrease item inventory.
 - Reference prefix: `IA`.
 - Counterparty field: `Warehouse` — Inventory Adjustment has no customer/supplier.
-- Posts to `InventoryMovement` (append-only ledger) and `InventoryBalance` (running quantity/transitQuantity cache) — see root `CLAUDE.md`'s `## Inventory Management` section for the full ledger/balance model.
+- Posts to `InventoryMovement` (append-only ledger) and `InventoryBalance` (running quantity/transitQuantity cache) — see `docs/INVENTORY.md` for the full ledger/balance model.
 - Document type for printing: `INVENTORY_ADJUSTMENT`. Notes field is `reason`, labeled "Remarks" in the `DocumentSchemaRegistry` entry to match the general Notes/Remarks convention above.
 - Carries `voided`/`voidedAt`/`voidedBy` and `loaded` (header) / `quantityLoaded` (line) — see `## Voiding` / `## Transaction Loading` below. `loaded`/`quantityLoaded` are inert here: nothing currently loads *from* an Inventory Adjustment.
 
 ### Purchase Order — implemented
 - This transaction lets users buy goods from different Suppliers. It is a requisition for items into inventory (transit) — it carries no payable/payment status; Purchase Invoice is the payable transaction (see `## Purchase Invoice` below).
 - Reference prefix: `PO`.
-- Counterparty field: `Supplier`. Also carries a destination `Warehouse` — creating a PO posts a Transit Quantity increase there (`transitQuantityDelta = +quantity` per line), reversed on void; see root `CLAUDE.md`'s `## Inventory Management`.
+- Counterparty field: `Supplier`. Also carries a destination `Warehouse` — creating a PO posts a Transit Quantity increase there (`transitQuantityDelta = +quantity` per line), reversed on void; see `docs/INVENTORY.md`.
 - User specifies which Supplier they are buying the items from.
 - Each line carries `quantity` (must be `> 0`) and `costPrice` — sensitive, gated by the existing `VIEW_COST_PRICE` permission (not a new one); preloaded from the item's current cost price when the request omits it, but overridable per line (a PO can legitimately negotiate a different price than the item's master cost price).
 - Carries `voided`/`voidedAt`/`voidedBy` and `loaded`/`quantityLoaded`, same as Inventory Adjustment. `loaded`/`quantityLoaded` are **no longer inert**: creating a Purchase Invoice against a PO (see `## Purchase Invoice` below) loads it in full, blocking further invoicing and voiding until the invoice is voided.
 - Document type for printing: `PURCHASE_ORDER`. Notes field is `remarks` (named directly, not `reason`, since this was a fresh entity).
 
 ### Sales Order (future)
-- Sells goods to Customers, or consigns them to Outlets (see root `CLAUDE.md`'s `## Customers` section).
+- Sells goods to Customers, or consigns them to Outlets (see `docs/MASTER_DATA.md`'s `## Customers` section).
 - Counterparty field: Customer/Outlet.
 - Not yet implemented.
 
@@ -104,7 +104,7 @@ The `INVENTORY_ADJUSTMENT` default templates (one per company, named `Inventory 
 - User can only void if he/she has a voiding permission VOID_<transaction>  
 
 **Implementation notes** (Inventory Adjustment, Purchase Order, Purchase Invoice):
-- Entity field is named `voided` (not `isVoided`) — Lombok/Jackson naming gotcha, see root `CLAUDE.md`'s "Naming gotcha (Lombok + Jackson)" under Document Templates & Printing. Lombok still generates `isVoided()`; frontend label stays "Void"/"Voided".
+- Entity field is named `voided` (not `isVoided`) — Lombok/Jackson naming gotcha, see root `CLAUDE.md`'s `## Gotchas` section. Lombok still generates `isVoided()`; frontend label stays "Void"/"Voided".
 - Voiding also stamps `voidedAt`/`voidedBy` for accountability (not part of the original spec text, but the natural minimum to know who/when).
 - **Voiding reverses the ledger effects the transaction posted**, not just the flag — otherwise "voided" would be cosmetic while the stock/transit change stays live. Inventory Adjustment posts a compensating `InventoryMovement` (`quantityDelta` negated); Purchase Order and Direct-mode Purchase Invoice post a compensating transit movement (`transitQuantityDelta` negated). Reversals use a distinguishable `sourceType` (`INVENTORY_ADJUSTMENT_VOID` / `PURCHASE_ORDER_VOID` / `PURCHASE_INVOICE_VOID`) with the same `sourceId`/`referenceNumber` as the original, for ledger traceability. This is safe because void is only allowed when nothing has been loaded yet, so the full original quantity is always outstanding to reverse. A PO-based Purchase Invoice has no transit movement of its own to reverse — voiding it instead unloads the originating Purchase Order (see `## Purchase Invoice`).
 - Endpoint: `POST /{resource}/{id}/void`, gated by `VOID_<TRANSACTION>`, returns the updated resource.

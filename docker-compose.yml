@@ -31,6 +31,12 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
       SERVER_PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      ITEM_IMAGE_UPLOAD_DIR: /home/appuser/norbiz
+    volumes:
+      - item_images:/home/appuser/norbiz
     ports:
       - "8080:8080"
     networks:
@@ -39,8 +45,22 @@ services:
       db:
         condition: service_healthy
 
+  web:
+    build:
+      context: ../Norbiz-Web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8080}
+    ports:
+      - "5173:80"
+    networks:
+      - backend
+    depends_on:
+      - app
+
 volumes:
   postgres_data:
+  item_images:
 
 networks:
   backend:
