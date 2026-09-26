@@ -3,6 +3,7 @@ package com.chardizard.Norbiz.controllers;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.AuthRequest;
 import com.chardizard.Norbiz.dto.AuthResponse;
+import com.chardizard.Norbiz.dto.ChangePasswordRequest;
 import com.chardizard.Norbiz.dto.MeResponse;
 import com.chardizard.Norbiz.models.User;
 import com.chardizard.Norbiz.security.JwtUtil;
@@ -93,5 +94,16 @@ public class AuthController {
                 .collect(Collectors.toList()));
 
         return ResponseEntity.ok(AppResponse.of(me));
+    }
+
+    @Operation(summary = "Change own password", description = "Lets the currently authenticated user change their own password. Requires the current password.")
+    @ApiResponse(responseCode = "200", description = "Password changed")
+    @ApiResponse(responseCode = "400", description = "Current password is incorrect")
+    @ApiResponse(responseCode = "401", description = "Not authenticated")
+    @PostMapping("/change-password")
+    public ResponseEntity<AppResponse<String>> changePassword(@Valid @RequestBody ChangePasswordRequest request,
+                                                               @AuthenticationPrincipal UserDetails userDetails) {
+        userService.changePassword(userDetails.getUsername(), request.getCurrentPassword(), request.getNewPassword());
+        return ResponseEntity.ok(AppResponse.of("Password changed successfully."));
     }
 }

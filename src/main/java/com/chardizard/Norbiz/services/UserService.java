@@ -87,6 +87,30 @@ public class UserService {
     }
 
     /**
+     * Admin-assisted password reset — sets a new password for another user.
+     * Gated by RESET_USER_PASSWORD at the controller; does not require the old password.
+     */
+    public void resetPassword(Long id, String newPassword) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + id));
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        log.info("Password reset for user '{}' (id={})", user.getUsername(), id);
+    }
+
+    /** Self-service password change — requires the caller's current password. */
+    public void changePassword(String username, String currentPassword, String newPassword) {
+        User user = findByUsername(username);
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            log.warn("Change-password rejected for user '{}': current password mismatch", username);
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        log.info("Password changed for user '{}'", username);
+    }
+
+    /**
      * Resolves which companies to assign to a user being created/updated.
      * SUPER_ADMIN can assign any companies.
      * All other callers are restricted to companies they themselves belong to.

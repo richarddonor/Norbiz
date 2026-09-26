@@ -3,6 +3,7 @@ package com.chardizard.Norbiz.controllers;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.CreateUserRequest;
 import com.chardizard.Norbiz.dto.PageResponse;
+import com.chardizard.Norbiz.dto.ResetPasswordRequest;
 import com.chardizard.Norbiz.dto.UpdateUserRequest;
 import com.chardizard.Norbiz.dto.UserResponse;
 import com.chardizard.Norbiz.models.User;
@@ -105,6 +106,18 @@ public class UserController {
     public ResponseEntity<Void> deleteUser(@Parameter(description = "User ID") @PathVariable Long id) {
         userService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Reset another user's password", description = "Admin-assisted password reset for a user who forgot their password. Does not require the old password. Requires RESET_USER_PASSWORD.")
+    @ApiResponse(responseCode = "200", description = "Password reset")
+    @ApiResponse(responseCode = "403", description = "Missing RESET_USER_PASSWORD permission")
+    @ApiResponse(responseCode = "404", description = "User not found")
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasAuthority('RESET_USER_PASSWORD')")
+    public ResponseEntity<AppResponse<String>> resetPassword(@Parameter(description = "User ID") @PathVariable Long id,
+                                                              @Valid @RequestBody ResetPasswordRequest request) {
+        userService.resetPassword(id, request.getNewPassword());
+        return ResponseEntity.ok(AppResponse.of("Password reset successfully."));
     }
 
     private UserResponse toResponse(User user) {

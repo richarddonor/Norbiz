@@ -33,6 +33,7 @@ public class DataInitializer implements CommandLineRunner {
         Permission createUserPermission   = findOrCreate("CREATE_USER",   "Security - User Create");
         Permission updateUserPermission   = findOrCreate("UPDATE_USER",   "Security - User Update");
         Permission deleteUserPermission   = findOrCreate("DELETE_USER",   "Security - User Delete");
+        Permission resetUserPasswordPermission = findOrCreate("RESET_USER_PASSWORD", "Security - User Reset Password");
         Permission viewRolePermission     = findOrCreate("VIEW_ROLE",     "Security - Role View");
         Permission createRolePermission   = findOrCreate("CREATE_ROLE",   "Security - Role Create");
         Permission updateRolePermission   = findOrCreate("UPDATE_ROLE",   "Security - Role Update");
@@ -75,6 +76,9 @@ public class DataInitializer implements CommandLineRunner {
         Permission viewPurchaseInvoicePermission       = findOrCreate("VIEW_PURCHASE_INVOICE",       "Purchases - Purchase Invoice View");
         Permission createPurchaseInvoicePermission     = findOrCreate("CREATE_PURCHASE_INVOICE",     "Purchases - Purchase Invoice Create");
         Permission voidPurchaseInvoicePermission       = findOrCreate("VOID_PURCHASE_INVOICE",       "Purchases - Purchase Invoice Void");
+        Permission viewPurchaseReceivePermission       = findOrCreate("VIEW_PURCHASE_RECEIVE",       "Purchases - Purchase Receive View");
+        Permission createPurchaseReceivePermission     = findOrCreate("CREATE_PURCHASE_RECEIVE",     "Purchases - Purchase Receive Create");
+        Permission voidPurchaseReceivePermission       = findOrCreate("VOID_PURCHASE_RECEIVE",       "Purchases - Purchase Receive Void");
         Permission viewInventoryReportPermission       = findOrCreate("VIEW_INVENTORY_REPORT",       "Inventory - Report View");
         Permission manageDocumentTemplatesPermission   = findOrCreate("MANAGE_DOCUMENT_TEMPLATES",   "Document Templates - Manage (design + print)");
 
@@ -107,6 +111,7 @@ public class DataInitializer implements CommandLineRunner {
                 viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission, voidInventoryAdjustmentPermission,
                 viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
                 viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
+                viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission));
         roleRepository.save(systemAdminRole);
 
@@ -118,7 +123,7 @@ public class DataInitializer implements CommandLineRunner {
         });
         superAdminRole.setDisplayName("Super Administrator");
         superAdminRole.setPermissions(Set.of(manageSystemPermission,
-                viewUserPermission, createUserPermission, updateUserPermission, deleteUserPermission,
+                viewUserPermission, createUserPermission, updateUserPermission, deleteUserPermission, resetUserPasswordPermission,
                 viewRolePermission, createRolePermission, updateRolePermission, deleteRolePermission,
                 viewItemPermission, createItemPermission, updateItemPermission, deleteItemPermission, viewCostPricePermission,
                 viewBrandPermission, createBrandPermission, updateBrandPermission, deleteBrandPermission,
@@ -130,6 +135,7 @@ public class DataInitializer implements CommandLineRunner {
                 viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission, voidInventoryAdjustmentPermission,
                 viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
                 viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
+                viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission));
         roleRepository.save(superAdminRole);
 

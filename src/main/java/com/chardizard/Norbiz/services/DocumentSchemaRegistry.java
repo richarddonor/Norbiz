@@ -83,6 +83,26 @@ public class DocumentSchemaRegistry {
                                     new DocumentFieldSchema("amount", "Amount", "currency")
                             ))
                     )
+            ),
+            "PURCHASE_RECEIVE", new DocumentSchemaResponse(
+                    "PURCHASE_RECEIVE",
+                    List.of(
+                            new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
+                            new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
+                            new DocumentFieldSchema("companyName", "Company", "string"),
+                            new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
+                            new DocumentFieldSchema("supplierName", "Supplier", "string"),
+                            new DocumentFieldSchema("receiptDate", "Receipt Date", "date"),
+                            new DocumentFieldSchema("remarks", "Remarks", "string"),
+                            new DocumentFieldSchema("createdBy", "Posted By", "user")
+                    ),
+                    List.of(
+                            new DocumentRepeatingGroupSchema("lines", "Line Items", List.of(
+                                    new DocumentFieldSchema("itemCode", "Item Code", "string"),
+                                    new DocumentFieldSchema("itemName", "Item Name", "string"),
+                                    new DocumentFieldSchema("quantity", "Quantity", "number")
+                            ))
+                    )
             )
     );
 

@@ -23,9 +23,16 @@ Company ──< PurchaseInvoice ──< PurchaseInvoiceLine ──> Item
                              ├──> Warehouse
                              ├──> Supplier (counterparty)
                              └──> PurchaseOrder (optional — invoiced-against PO, loaded in full 1:1)
-Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment, PurchaseOrder, Direct-mode PurchaseInvoice, and future transactions)
+Company ──< PurchaseReceive ──< PurchaseReceiveLine ──> Item
+                             │                       ├──> PurchaseOrderLine (optional — set when source is a PO)
+                             │                       └──> PurchaseInvoiceLine (optional — set when source is a Direct invoice)
+                             ├──> Warehouse
+                             ├──> Supplier (counterparty)
+                             ├──> PurchaseOrder (optional — one of two possible sources)
+                             └──> PurchaseInvoice (optional — the other possible source, Direct-mode only)
+Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment, PurchaseOrder, Direct-mode PurchaseInvoice, PurchaseReceive, and future transactions)
 Item + Warehouse ──< InventoryBalance (running quantity/transitQuantity cache, one row per item+warehouse)
-Company ──< DocumentTemplate (documentType + opaque layout JSON; one default per company+documentType)
+Company ──< DocumentTemplate (documentType + opaque layout JSON; one default per company+documentType)  
 User ──< Role (many-to-many) ──< Permission (many-to-many)
 AuditLog  (append-only, references entities by type+id strings)
 ```
