@@ -141,6 +141,7 @@ public class PurchaseOrderController {
         res.setItemCode(line.getItem().getItemCode());
         res.setItemName(line.getItem().getName());
         res.setQuantity(line.getQuantity());
+        res.setLineNumber(line.getLineNumber());
         res.setCostPrice(canViewCostPrice ? line.getCostPrice() : null);
         res.setQuantityLoaded(line.getQuantityLoaded());
         return res;

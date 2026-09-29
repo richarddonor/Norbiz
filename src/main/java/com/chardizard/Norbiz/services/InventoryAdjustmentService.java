@@ -106,6 +106,7 @@ public class InventoryAdjustmentService {
         adjustment.setCreatedAt(now);
         adjustment.setCreatedBy(username);
 
+        int lineNumber = 1;
         for (InventoryAdjustmentLineRequest lineRequest : request.getLines()) {
             Item item = itemRepository.findById(lineRequest.getItemId())
                     .orElseThrow(() -> new IllegalArgumentException("Item not found: " + lineRequest.getItemId()));
@@ -123,6 +124,7 @@ public class InventoryAdjustmentService {
             line.setAdjustment(adjustment);
             line.setItem(item);
             line.setQuantity(lineRequest.getQuantity());
+            line.setLineNumber(lineNumber++);
             adjustment.getLines().add(line);
         }
 

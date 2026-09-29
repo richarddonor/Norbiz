@@ -13,6 +13,7 @@ public class PurchaseOrderLineResponse {
     private String itemCode;
     private String itemName;
     private BigDecimal quantity;
+    private Integer lineNumber;
     // Null when the caller lacks VIEW_COST_PRICE — see PurchaseOrderController.toLineResponse.
     private BigDecimal costPrice;
     private BigDecimal quantityLoaded;

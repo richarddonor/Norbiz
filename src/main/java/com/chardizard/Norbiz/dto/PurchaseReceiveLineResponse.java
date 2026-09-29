@@ -16,5 +16,6 @@ public class PurchaseReceiveLineResponse {
     private Long purchaseOrderLineId;
     private Long purchaseInvoiceLineId;
     private BigDecimal quantity;
+    private Integer lineNumber;
     private BigDecimal quantityLoaded;
 }

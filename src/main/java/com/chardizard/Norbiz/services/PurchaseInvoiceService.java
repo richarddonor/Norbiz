@@ -148,6 +148,7 @@ public class PurchaseInvoiceService {
                 line.setQuantity(poLine.getQuantity());
                 line.setCostPrice(poLine.getCostPrice());
                 line.setDiscountPercentage(discountByItemId.getOrDefault(poLine.getItem().getId(), BigDecimal.ZERO));
+                line.setLineNumber(poLine.getLineNumber());
                 invoice.getLines().add(line);
 
                 poLine.setQuantityLoaded(poLine.getQuantity());
@@ -159,6 +160,7 @@ public class PurchaseInvoiceService {
                 throw new IllegalArgumentException("lines is required when purchaseOrderId is not supplied (Direct mode)");
             }
 
+            int lineNumber = 1;
             for (PurchaseInvoiceLineRequest lineRequest : request.getLines()) {
                 Item item = itemRepository.findById(lineRequest.getItemId())
                         .orElseThrow(() -> new IllegalArgumentException("Item not found: " + lineRequest.getItemId()));
@@ -178,6 +180,7 @@ public class PurchaseInvoiceService {
                 line.setQuantity(lineRequest.getQuantity());
                 line.setCostPrice(resolveCostPrice(lineRequest, item, canViewCostPrice));
                 line.setDiscountPercentage(lineRequest.getDiscountPercentage() != null ? lineRequest.getDiscountPercentage() : BigDecimal.ZERO);
+                line.setLineNumber(lineNumber++);
                 invoice.getLines().add(line);
             }
         }

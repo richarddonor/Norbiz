@@ -15,6 +15,7 @@ public class PurchaseInvoiceLineResponse {
     // Null for Direct-mode lines.
     private Long purchaseOrderLineId;
     private BigDecimal quantity;
+    private Integer lineNumber;
     // Null when the caller lacks VIEW_COST_PRICE — see PurchaseInvoiceController.toLineResponse.
     private BigDecimal costPrice;
     private BigDecimal discountPercentage;

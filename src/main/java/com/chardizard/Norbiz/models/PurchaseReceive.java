@@ -92,5 +92,6 @@ public class PurchaseReceive {
     private boolean loaded = false;
 
     @OneToMany(mappedBy = "purchaseReceive", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("lineNumber ASC")
     private List<PurchaseReceiveLine> lines = new ArrayList<>();
 }

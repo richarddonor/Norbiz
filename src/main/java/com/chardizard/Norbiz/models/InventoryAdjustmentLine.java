@@ -31,6 +31,10 @@ public class InventoryAdjustmentLine {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal quantity;
 
+    // Order the user entered this line in on the frontend — lines are always displayed/returned sorted by this.
+    @Column(name = "line_number", nullable = false)
+    private Integer lineNumber;
+
     // Inert until a downstream "loading" transaction exists — see InventoryAdjustment.loaded.
     @Column(name = "quantity_loaded", nullable = false, precision = 19, scale = 4)
     private BigDecimal quantityLoaded = BigDecimal.ZERO;

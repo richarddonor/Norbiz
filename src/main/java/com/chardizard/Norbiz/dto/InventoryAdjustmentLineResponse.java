@@ -13,5 +13,6 @@ public class InventoryAdjustmentLineResponse {
     private String itemCode;
     private String itemName;
     private BigDecimal quantity;
+    private Integer lineNumber;
     private BigDecimal quantityLoaded;
 }

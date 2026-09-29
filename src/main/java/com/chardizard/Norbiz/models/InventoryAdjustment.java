@@ -71,5 +71,6 @@ public class InventoryAdjustment {
     private boolean loaded = false;
 
     @OneToMany(mappedBy = "adjustment", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("lineNumber ASC")
     private List<InventoryAdjustmentLine> lines = new ArrayList<>();
 }

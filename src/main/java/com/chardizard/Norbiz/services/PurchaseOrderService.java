@@ -117,6 +117,7 @@ public class PurchaseOrderService {
         order.setCreatedAt(now);
         order.setCreatedBy(username);
 
+        int lineNumber = 1;
         for (PurchaseOrderLineRequest lineRequest : request.getLines()) {
             Item item = itemRepository.findById(lineRequest.getItemId())
                     .orElseThrow(() -> new IllegalArgumentException("Item not found: " + lineRequest.getItemId()));
@@ -135,6 +136,7 @@ public class PurchaseOrderService {
             line.setItem(item);
             line.setQuantity(lineRequest.getQuantity());
             line.setCostPrice(resolveCostPrice(lineRequest, item, canViewCostPrice));
+            line.setLineNumber(lineNumber++);
             order.getLines().add(line);
         }
 

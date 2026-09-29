@@ -178,6 +178,7 @@ public class PurchaseInvoiceController {
             res.setPurchaseOrderLineId(line.getPurchaseOrderLine().getId());
         }
         res.setQuantity(line.getQuantity());
+        res.setLineNumber(line.getLineNumber());
         res.setDiscountPercentage(line.getDiscountPercentage());
         res.setQuantityLoaded(line.getQuantityLoaded());
         if (canViewCostPrice) {

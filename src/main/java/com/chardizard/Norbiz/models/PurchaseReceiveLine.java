@@ -45,6 +45,12 @@ public class PurchaseReceiveLine {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal quantity;
 
+    // Order the user entered this line in on the frontend — lines are always displayed/returned sorted by this.
+    // A single request line that gets split across multiple source lines (see PurchaseReceiveService)
+    // produces multiple PurchaseReceiveLine rows sharing the same lineNumber.
+    @Column(name = "line_number", nullable = false)
+    private Integer lineNumber;
+
     // Inert: nothing currently loads from a Purchase Receive, same as InventoryAdjustmentLine.
     @Column(name = "quantity_loaded", nullable = false, precision = 19, scale = 4)
     private BigDecimal quantityLoaded = BigDecimal.ZERO;

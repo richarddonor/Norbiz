@@ -127,6 +127,7 @@ public class InventoryAdjustmentController {
         res.setItemCode(line.getItem().getItemCode());
         res.setItemName(line.getItem().getName());
         res.setQuantity(line.getQuantity());
+        res.setLineNumber(line.getLineNumber());
         res.setQuantityLoaded(line.getQuantityLoaded());
         return res;
     }

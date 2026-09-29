@@ -38,6 +38,11 @@ public class PurchaseInvoiceLine {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal quantity;
 
+    // Order the user entered this line in on the frontend — lines are always displayed/returned sorted by this.
+    // PO-based mode: copied verbatim from the PO line, same as quantity/costPrice.
+    @Column(name = "line_number", nullable = false)
+    private Integer lineNumber;
+
     // Sensitive — gated by the existing VIEW_COST_PRICE permission, same as PurchaseOrderLine.costPrice.
     @Column(name = "cost_price", nullable = false, precision = 19, scale = 4)
     private BigDecimal costPrice = BigDecimal.ZERO;

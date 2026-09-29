@@ -153,6 +153,7 @@ public class PurchaseReceiveController {
             res.setPurchaseInvoiceLineId(line.getPurchaseInvoiceLine().getId());
         }
         res.setQuantity(line.getQuantity());
+        res.setLineNumber(line.getLineNumber());
         res.setQuantityLoaded(line.getQuantityLoaded());
         return res;
     }

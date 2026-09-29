@@ -140,6 +140,7 @@ public class PurchaseReceiveService {
                     .sorted(java.util.Comparator.comparing(PurchaseOrderLine::getId))
                     .collect(Collectors.groupingBy(l -> l.getItem().getId()));
 
+            int lineNumber = 1;
             for (PurchaseReceiveLineRequest lineRequest : request.getLines()) {
                 List<PurchaseOrderLine> sourceLines = linesByItemId.get(lineRequest.getItemId());
                 if (sourceLines == null) {
@@ -165,11 +166,13 @@ public class PurchaseReceiveService {
                     line.setItem(sourceLine.getItem());
                     line.setPurchaseOrderLine(sourceLine);
                     line.setQuantity(allocated);
+                    line.setLineNumber(lineNumber);
                     receive.getLines().add(line);
 
                     sourceLine.setQuantityLoaded(sourceLine.getQuantityLoaded().add(allocated));
                     remaining = remaining.subtract(allocated);
                 }
+                lineNumber++;
             }
 
             purchaseOrder.setLoaded(isFullyLoaded(purchaseOrder.getLines(), PurchaseOrderLine::getQuantity, PurchaseOrderLine::getQuantityLoaded));
@@ -183,6 +186,7 @@ public class PurchaseReceiveService {
                     .sorted(java.util.Comparator.comparing(PurchaseInvoiceLine::getId))
                     .collect(Collectors.groupingBy(l -> l.getItem().getId()));
 
+            int lineNumber = 1;
             for (PurchaseReceiveLineRequest lineRequest : request.getLines()) {
                 List<PurchaseInvoiceLine> sourceLines = linesByItemId.get(lineRequest.getItemId());
                 if (sourceLines == null) {
@@ -208,11 +212,13 @@ public class PurchaseReceiveService {
                     line.setItem(sourceLine.getItem());
                     line.setPurchaseInvoiceLine(sourceLine);
                     line.setQuantity(allocated);
+                    line.setLineNumber(lineNumber);
                     receive.getLines().add(line);
 
                     sourceLine.setQuantityLoaded(sourceLine.getQuantityLoaded().add(allocated));
                     remaining = remaining.subtract(allocated);
                 }
+                lineNumber++;
             }
 
             purchaseInvoice.setLoaded(isFullyLoaded(purchaseInvoice.getLines(), PurchaseInvoiceLine::getQuantity, PurchaseInvoiceLine::getQuantityLoaded));

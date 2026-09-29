@@ -98,6 +98,7 @@ public class PurchaseInvoice {
     private boolean loaded = false;
 
     @OneToMany(mappedBy = "purchaseInvoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("lineNumber ASC")
     private List<PurchaseInvoiceLine> lines = new ArrayList<>();
 
     @OneToMany(mappedBy = "purchaseInvoice", cascade = CascadeType.ALL, orphanRemoval = true)
