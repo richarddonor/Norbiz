@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 public class PurchaseOrderService {
 
     private static final Logger log = LoggerFactory.getLogger(PurchaseOrderService.class);
-    private static final String TRANSACTION_TYPE = "PURCHASE_ORDER";
+    private static final String TRANSACTION_TYPE = TransactionType.PURCHASE_ORDER.name();
     private static final String VOID_SOURCE_TYPE = "PURCHASE_ORDER_VOID";
     private static final String REFERENCE_PREFIX = "PO";
 
@@ -40,6 +40,7 @@ public class PurchaseOrderService {
     private final ItemPriceRepository itemPriceRepository;
     private final UserRepository userRepository;
     private final TransactionReferenceService transactionReferenceService;
+    private final TransactionEventService transactionEventService;
 
     public Page<PurchaseOrder> findAllForUser(String username, Long warehouseId, Long supplierId,
                                                Map<String, String> filters, Instant dateFrom, Instant dateTo, Pageable pageable) {
@@ -145,6 +146,8 @@ public class PurchaseOrderService {
         order.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
 
         PurchaseOrder saved = purchaseOrderRepository.save(order);
+        transactionEventService.recordSystemEvent(company, TransactionType.PURCHASE_ORDER, saved.getId(), saved.getReferenceNumber(),
+                TransactionEventType.CREATED, username, saved.getCreatedAt());
 
         for (PurchaseOrderLine line : saved.getLines()) {
             postTransitMovement(TRANSACTION_TYPE, company, line.getItem(), warehouse, line.getQuantity(), orderDate, saved.getId(),
@@ -201,6 +204,8 @@ public class PurchaseOrderService {
         order.setVoidedBy(username);
 
         PurchaseOrder saved = purchaseOrderRepository.save(order);
+        transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.PURCHASE_ORDER, saved.getId(), saved.getReferenceNumber(),
+                TransactionEventType.VOIDED, username, saved.getVoidedAt());
         log.info("User '{}' voided purchase order (id={})", username, id);
         return saved;
     }

@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 public class PurchaseReceiveService {
 
     private static final Logger log = LoggerFactory.getLogger(PurchaseReceiveService.class);
-    private static final String TRANSACTION_TYPE = "PURCHASE_RECEIVE";
+    private static final String TRANSACTION_TYPE = TransactionType.PURCHASE_RECEIVE.name();
     private static final String VOID_SOURCE_TYPE = "PURCHASE_RECEIVE_VOID";
     private static final String REFERENCE_PREFIX = "PR";
 
@@ -40,6 +40,7 @@ public class PurchaseReceiveService {
     private final SupplierRepository supplierRepository;
     private final UserRepository userRepository;
     private final TransactionReferenceService transactionReferenceService;
+    private final TransactionEventService transactionEventService;
 
     public Page<PurchaseReceive> findAllForUser(String username, Long warehouseId, Long supplierId,
                                                  Map<String, String> filters, Instant dateFrom, Instant dateTo, Pageable pageable) {
@@ -229,6 +230,8 @@ public class PurchaseReceiveService {
         receive.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
 
         PurchaseReceive saved = purchaseReceiveRepository.save(receive);
+        transactionEventService.recordSystemEvent(company, TransactionType.PURCHASE_RECEIVE, saved.getId(), saved.getReferenceNumber(),
+                TransactionEventType.CREATED, username, saved.getCreatedAt());
 
         for (PurchaseReceiveLine line : saved.getLines()) {
             postMovement(TRANSACTION_TYPE, company, line.getItem(), warehouse, line.getQuantity(), receiptDate, saved.getId(),
@@ -342,6 +345,8 @@ public class PurchaseReceiveService {
         receive.setVoidedBy(username);
 
         PurchaseReceive saved = purchaseReceiveRepository.save(receive);
+        transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.PURCHASE_RECEIVE, saved.getId(), saved.getReferenceNumber(),
+                TransactionEventType.VOIDED, username, saved.getVoidedAt());
         log.info("User '{}' voided purchase receive (id={})", username, id);
         return saved;
     }

@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 public class PurchaseInvoiceService {
 
     private static final Logger log = LoggerFactory.getLogger(PurchaseInvoiceService.class);
-    private static final String TRANSACTION_TYPE = "PURCHASE_INVOICE";
+    private static final String TRANSACTION_TYPE = TransactionType.PURCHASE_INVOICE.name();
     private static final String VOID_SOURCE_TYPE = "PURCHASE_INVOICE_VOID";
     private static final String REFERENCE_PREFIX = "PINV";
 
@@ -43,6 +43,7 @@ public class PurchaseInvoiceService {
     private final ItemPriceRepository itemPriceRepository;
     private final UserRepository userRepository;
     private final TransactionReferenceService transactionReferenceService;
+    private final TransactionEventService transactionEventService;
 
     public Page<PurchaseInvoice> findAllForUser(String username, Long warehouseId, Long supplierId, PaymentStatus paymentStatus,
                                                  Map<String, String> filters, Instant dateFrom, Instant dateTo, Pageable pageable) {
@@ -200,6 +201,8 @@ public class PurchaseInvoiceService {
         invoice.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
 
         PurchaseInvoice saved = purchaseInvoiceRepository.save(invoice);
+        transactionEventService.recordSystemEvent(company, TransactionType.PURCHASE_INVOICE, saved.getId(), saved.getReferenceNumber(),
+                TransactionEventType.CREATED, username, saved.getCreatedAt());
 
         if (purchaseOrder == null) {
             // Direct mode: post a transit movement per line, same as PurchaseOrderService.create.
@@ -301,6 +304,8 @@ public class PurchaseInvoiceService {
         invoice.setVoidedBy(username);
 
         PurchaseInvoice saved = purchaseInvoiceRepository.save(invoice);
+        transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.PURCHASE_INVOICE, saved.getId(), saved.getReferenceNumber(),
+                TransactionEventType.VOIDED, username, saved.getVoidedAt());
         log.info("User '{}' voided purchase invoice (id={})", username, id);
         return saved;
     }

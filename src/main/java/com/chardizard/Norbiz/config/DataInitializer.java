@@ -81,6 +81,7 @@ public class DataInitializer implements CommandLineRunner {
         Permission voidPurchaseReceivePermission       = findOrCreate("VOID_PURCHASE_RECEIVE",       "Purchases - Purchase Receive Void");
         Permission viewInventoryReportPermission       = findOrCreate("VIEW_INVENTORY_REPORT",       "Inventory - Report View");
         Permission manageDocumentTemplatesPermission   = findOrCreate("MANAGE_DOCUMENT_TEMPLATES",   "Document Templates - Manage (design + print)");
+        Permission manageTransactionActionsPermission  = findOrCreate("MANAGE_TRANSACTION_ACTIONS",  "Configuration - Transaction Actions Manage");
 
         // Roles — permissions are always synced on startup
         Role adminRole = roleRepository.findByName("ADMIN").orElseGet(() -> {
@@ -112,7 +113,7 @@ public class DataInitializer implements CommandLineRunner {
                 viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
                 viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
                 viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
-                viewInventoryReportPermission, manageDocumentTemplatesPermission));
+                viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(systemAdminRole);
 
         // SUPER_ADMIN: complete access including system management
@@ -136,7 +137,7 @@ public class DataInitializer implements CommandLineRunner {
                 viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
                 viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
                 viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
-                viewInventoryReportPermission, manageDocumentTemplatesPermission));
+                viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(superAdminRole);
 
         // Default company — super admin is pre-assigned; other users are assigned to tenants later

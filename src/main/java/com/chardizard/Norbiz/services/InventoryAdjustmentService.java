@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 public class InventoryAdjustmentService {
 
     private static final Logger log = LoggerFactory.getLogger(InventoryAdjustmentService.class);
-    private static final String TRANSACTION_TYPE = "INVENTORY_ADJUSTMENT";
+    private static final String TRANSACTION_TYPE = TransactionType.INVENTORY_ADJUSTMENT.name();
     private static final String VOID_SOURCE_TYPE = "INVENTORY_ADJUSTMENT_VOID";
     private static final String REFERENCE_PREFIX = "IA";
 
@@ -38,6 +38,7 @@ public class InventoryAdjustmentService {
     private final ItemRepository itemRepository;
     private final UserRepository userRepository;
     private final TransactionReferenceService transactionReferenceService;
+    private final TransactionEventService transactionEventService;
 
     public Page<InventoryAdjustment> findAllForUser(String username, Long warehouseId, Map<String, String> filters,
                                                      Instant dateFrom, Instant dateTo, Pageable pageable) {
@@ -133,6 +134,8 @@ public class InventoryAdjustmentService {
         adjustment.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
 
         InventoryAdjustment saved = inventoryAdjustmentRepository.save(adjustment);
+        transactionEventService.recordSystemEvent(company, TransactionType.INVENTORY_ADJUSTMENT, saved.getId(), saved.getReferenceNumber(),
+                TransactionEventType.CREATED, username, saved.getCreatedAt());
 
         for (InventoryAdjustmentLine line : saved.getLines()) {
             postMovement(TRANSACTION_TYPE, company, line.getItem(), warehouse, line.getQuantity(), adjustmentDate, saved.getId(),
@@ -171,6 +174,8 @@ public class InventoryAdjustmentService {
         adjustment.setVoidedBy(username);
 
         InventoryAdjustment saved = inventoryAdjustmentRepository.save(adjustment);
+        transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.INVENTORY_ADJUSTMENT, saved.getId(), saved.getReferenceNumber(),
+                TransactionEventType.VOIDED, username, saved.getVoidedAt());
         log.info("User '{}' voided inventory adjustment (id={})", username, id);
         return saved;
     }

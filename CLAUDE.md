@@ -3,6 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. It intentionally covers only what's cross-cutting and security-critical. Everything else lives in `docs/` and is referenced, not imported, so it's only pulled into context when a task actually touches that area:
 
 - `docs/TRANSACTIONS.md` — Transactional Data (transaction types, reference numbering, standard transaction document/print layout).
+- `docs/TRANSACTION_ACTIONS.md` — Transaction history (CREATED/VOIDED) and company-configured actions/sign-offs with prerequisites and per-action roles.
 - `docs/DOCUMENT_TEMPLATES.md` — Document Templates & Printing system.
 - `docs/AUDIT.md` — Audit logging internals.
 - `docs/MASTER_DATA.md` — Users, Employees, Items, Warehouses, Suppliers, Customers.
@@ -64,7 +65,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - `Company` is the tenant boundary. `Brand`, `Item`, `ItemCategory`, and `Warehouse` are scoped to a company via FK.
 - As a general rule, all Entities must belong to only one `Company`
 - Entities that are scoped strictly to one company. Update this list everytime there is a new entity:
-    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment, DocumentTemplate, PurchaseOrder, PurchaseInvoice, PurchaseReceive
+    Brand, Item, ItemCategory, Employee, Warehouse, Supplier, Customer, InventoryAdjustment, DocumentTemplate, PurchaseOrder, PurchaseInvoice, PurchaseReceive, TransactionActionDefinition, TransactionEvent
 - `InventoryMovement` and `InventoryBalance` are not directly created via their own endpoint (only posted internally by transactions like `InventoryAdjustment`), but are still company-scoped transitively through their `Warehouse`.
 - **Company-membership must be verified on every single-record read, not just on list/create/update/delete.** A `GET /{id}` endpoint's `@PreAuthorize("hasAuthority('VIEW_X')")` only checks the permission, not which company the record belongs to — without an explicit check, any user holding that permission could fetch any other company's record by ID (a cross-tenant IDOR). Every company-scoped entity's `findById(id, username)` must resolve the entity, then call the existing `assertCompanyAccess(username, companyId)` helper before returning it — mirror `ItemSkuService.findById` or `BrandService.findById`. `update`/`delete` should call this same scoped `findById` rather than checking access a second time separately.
 - Entities that belong to one or more companies. Use an intermediary table like `user_companies` to enforce one to many or many to many relationships. Update this list everytime there is a new entity:
@@ -87,7 +88,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 
 ### Audit system
 
-See `docs/AUDIT.md` for how `AuditableEntityListener` hooks into JPA lifecycle events. Key facts worth knowing without opening that doc: every entity extending `Auditable` is automatically logged (CREATE/UPDATE-diff/DELETE); `AuditLog` itself does **not** extend `Auditable` (avoids infinite recursion); `User.password` is `@AuditExclude`; inventory ledger entities (`InventoryMovement`, `InventoryBalance`, `InventoryAdjustment`, `InventoryAdjustmentLine`) deliberately do **not** extend `Auditable` since they're append-only/immutable — the ledger itself is already the audit trail.
+See `docs/AUDIT.md` for how `AuditableEntityListener` hooks into JPA lifecycle events. Key facts worth knowing without opening that doc: every entity extending `Auditable` is automatically logged (CREATE/UPDATE-diff/DELETE); `AuditLog` itself does **not** extend `Auditable` (avoids infinite recursion); `User.password` is `@AuditExclude`; inventory ledger entities (`InventoryMovement`, `InventoryBalance`, `InventoryAdjustment`, `InventoryAdjustmentLine`) deliberately do **not** extend `Auditable` since they're append-only/immutable — the ledger itself is already the audit trail. `TransactionEvent` (transaction history/actions) is likewise append-only and not `Auditable`.
 
 ## API Call
 All API response must implement `AppResponse` dto. In case of an exception, return `AppErrorResponse` instead that contains the error message handled by a `GlobalExceptionHandler`

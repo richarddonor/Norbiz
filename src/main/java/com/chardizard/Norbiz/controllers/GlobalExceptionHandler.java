@@ -12,7 +12,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.filter.ServerHttpObservationFilter;
@@ -67,6 +69,21 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
         log.warn("Validation failed: {}", message);
         return ResponseEntity.badRequest().body(error(message));
+    }
+
+    // e.g. an unknown enum value in a path variable/query param (/transactions/NOT_A_TYPE/1/history).
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<AppErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String message = "Invalid value for " + ex.getName() + ": " + ex.getValue();
+        log.warn("Bad request: {}", message);
+        return ResponseEntity.badRequest().body(error(message));
+    }
+
+    // Malformed JSON or a value that can't be bound to the field type (e.g. unknown enum in a request body).
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<AppErrorResponse> handleNotReadable(HttpMessageNotReadableException ex) {
+        log.warn("Bad request: unreadable body: {}", ex.getMostSpecificCause().getMessage());
+        return ResponseEntity.badRequest().body(error("Malformed request body or invalid field value"));
     }
 
     @ExceptionHandler(Exception.class)

@@ -8,6 +8,7 @@ Specification for **Transactional Data** in Norbiz — day-to-day business recor
 - Most transactions will have a sheet number value. Sheet number is based on the control number in the physical document of that transaction.
 - Always have a Notes column for comments or remarks.
 - Always add a default document template for printing (see `## Standard transaction document layout` below).
+- Every create and void records a `TransactionEvent` (CREATED / VOIDED), and users can take company-configured actions on a transaction. See `docs/TRANSACTION_ACTIONS.md`, including its checklist for wiring up a new transaction type.
 - Every transaction line carries a `lineNumber` — the order the user entered that line in on the frontend (1-based, assigned server-side from request array order, not client-supplied). The line collection is always returned sorted by it (`@OrderBy("lineNumber ASC")` on the owning entity's `lines` field), so line item detail always displays in entry order. A Purchase Invoice copying lines from a Purchase Order (PO-based mode) copies the PO line's `lineNumber` verbatim, preserving the original entry order. A Purchase Receive line that gets split across more than one source line (see `## Purchase Receive` below) has every split sharing the request line's `lineNumber`.
 
 ### Reference number generation

@@ -33,6 +33,8 @@ Company ──< PurchaseReceive ──< PurchaseReceiveLine ──> Item
 Item + Warehouse ──< InventoryMovement (append-only ledger; posted by InventoryAdjustment, PurchaseOrder, Direct-mode PurchaseInvoice, PurchaseReceive, and future transactions)
 Item + Warehouse ──< InventoryBalance (running quantity/transitQuantity cache, one row per item+warehouse)
 Company ──< DocumentTemplate (documentType + opaque layout JSON; one default per company+documentType)  
+Company ──< TransactionActionDefinition (per transactionType; ──< prerequisites (self, many-to-many), ──< allowedRoles (Role, many-to-many))
+Company ──< TransactionEvent (append-only history keyed by transactionType+transactionId: CREATED / VOIDED / ACTION ──> TransactionActionDefinition)
 User ──< Role (many-to-many) ──< Permission (many-to-many)
 AuditLog  (append-only, references entities by type+id strings)
 ```
