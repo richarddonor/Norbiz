@@ -7,6 +7,8 @@ import com.chardizard.Norbiz.repositories.RoleRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -21,6 +23,8 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class RoleService {
+
+    private static final Logger log = LoggerFactory.getLogger(RoleService.class);
 
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
@@ -45,7 +49,9 @@ public class RoleService {
         role.setName(name);
         role.setDisplayName(displayName);
         role.setPermissions(resolvePermissions(permissionIds));
-        return roleRepository.save(role);
+        Role saved = roleRepository.save(role);
+        log.info("Created role '{}' (id={}) with {} permission(s)", saved.getName(), saved.getId(), saved.getPermissions().size());
+        return saved;
     }
 
     public Role update(Long id, String name, String displayName, Set<Long> permissionIds) {
@@ -54,7 +60,9 @@ public class RoleService {
         role.setName(name);
         role.setDisplayName(displayName);
         role.setPermissions(resolvePermissions(permissionIds));
-        return roleRepository.save(role);
+        Role saved = roleRepository.save(role);
+        log.info("Updated role '{}' (id={}) with {} permission(s)", saved.getName(), saved.getId(), saved.getPermissions().size());
+        return saved;
     }
 
     @Transactional
@@ -66,6 +74,7 @@ public class RoleService {
             userRepository.save(user);
         });
         roleRepository.delete(role);
+        log.info("Deleted role '{}' (id={})", role.getName(), id);
     }
 
     private Set<Permission> resolvePermissions(Set<Long> permissionIds) {

@@ -87,7 +87,9 @@ public class ItemSkuService {
         sku.setSkuCode(request.getSkuCode());
         sku.setUnitPrice(request.getUnitPrice());
 
-        return itemSkuRepository.save(sku);
+        ItemSku saved = itemSkuRepository.save(sku);
+        log.info("User '{}' created SKU '{}' (id={}) for item {}", username, saved.getSkuCode(), saved.getId(), item.getId());
+        return saved;
     }
 
     @Transactional
@@ -112,7 +114,9 @@ public class ItemSkuService {
         sku.setSkuCode(request.getSkuCode());
         sku.setUnitPrice(request.getUnitPrice());
 
-        return itemSkuRepository.save(sku);
+        ItemSku saved = itemSkuRepository.save(sku);
+        log.info("User '{}' updated SKU '{}' (id={})", username, saved.getSkuCode(), saved.getId());
+        return saved;
     }
 
     @Transactional
@@ -122,6 +126,7 @@ public class ItemSkuService {
 
         assertCompanyAccess(username, sku.getItem().getCompany().getId());
         itemSkuRepository.delete(sku);
+        log.info("User '{}' deleted SKU '{}' (id={})", username, sku.getSkuCode(), id);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

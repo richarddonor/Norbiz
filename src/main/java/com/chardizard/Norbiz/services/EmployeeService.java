@@ -81,7 +81,9 @@ public class EmployeeService {
             employee.setUser(user);
         }
 
-        return employeeRepository.save(employee);
+        Employee saved = employeeRepository.save(employee);
+        log.info("User '{}' created employee '{}' (id={}) for company {}", username, saved.getEmployeeCode(), saved.getId(), company.getId());
+        return saved;
     }
 
     @Transactional
@@ -109,13 +111,16 @@ public class EmployeeService {
             employee.setUser(null);
         }
 
-        return employeeRepository.save(employee);
+        Employee saved = employeeRepository.save(employee);
+        log.info("User '{}' updated employee '{}' (id={})", username, saved.getEmployeeCode(), saved.getId());
+        return saved;
     }
 
     @Transactional
     public void delete(Long id, String username) {
         Employee employee = findById(id, username);
         employeeRepository.delete(employee);
+        log.info("User '{}' deleted employee '{}' (id={})", username, employee.getEmployeeCode(), id);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

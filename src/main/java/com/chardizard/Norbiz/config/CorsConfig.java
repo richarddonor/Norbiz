@@ -21,6 +21,8 @@ public class    CorsConfig {
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        // Let the frontend read the trace id so users can quote it when reporting an error.
+        config.setExposedHeaders(List.of(RequestLoggingFilter.TRACE_ID_HEADER));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

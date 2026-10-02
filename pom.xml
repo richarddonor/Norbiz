@@ -29,6 +29,9 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<datasource-micrometer.version>2.2.0</datasource-micrometer.version>
+		<!-- Must track the OpenTelemetry SDK version managed by Spring Boot (1.55.0 for Boot 4.0.4) -->
+		<opentelemetry-logback-appender.version>2.21.0-alpha</opentelemetry-logback-appender.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -39,13 +42,22 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
+		<!-- OpenTelemetry: tracing autoconfig + OTLP export of traces/metrics/logs (see docs/OBSERVABILITY.md) -->
 		<dependency>
-			<groupId>io.micrometer</groupId>
-			<artifactId>micrometer-tracing-bridge-otel</artifactId>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-opentelemetry</artifactId>
 		</dependency>
+		<!-- A span per JDBC query/connection, nested under the request span -->
 		<dependency>
-			<groupId>io.opentelemetry</groupId>
-			<artifactId>opentelemetry-exporter-logging</artifactId>
+			<groupId>net.ttddyy.observation</groupId>
+			<artifactId>datasource-micrometer-spring-boot</artifactId>
+			<version>${datasource-micrometer.version}</version>
+		</dependency>
+		<!-- Bridges Logback events into the OpenTelemetry SDK so logs ship over OTLP, linked to their trace -->
+		<dependency>
+			<groupId>io.opentelemetry.instrumentation</groupId>
+			<artifactId>opentelemetry-logback-appender-1.0</artifactId>
+			<version>${opentelemetry-logback-appender.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

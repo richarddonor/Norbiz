@@ -1,0 +1,8 @@
+#Build postgres docker image
+docker run --name norbiz-db \
+    -v norbiz_postgres_data:/var/lib/postgresql/data \
+    -p 5432:5432 \
+     norbiz-db
+
+#Backup Item Images
+docker cp norbiz-app-1:/home/appuser/norbiz /Users/rdonor

@@ -2,6 +2,7 @@ package com.chardizard.Norbiz.config;
 
 import com.chardizard.Norbiz.security.CsrfCookieFilter;
 import com.chardizard.Norbiz.security.JwtAuthFilter;
+import com.chardizard.Norbiz.security.RestAuthErrorHandler;
 import com.chardizard.Norbiz.services.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -30,6 +31,7 @@ public class SecurityConfig {
     private final UserDetailsServiceImpl userDetailsService;
     private final JwtAuthFilter jwtAuthFilter;
     private final CorsConfigurationSource corsConfigurationSource;
+    private final RestAuthErrorHandler restAuthErrorHandler;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -57,6 +59,11 @@ public class SecurityConfig {
 //                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
             )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // 401 for missing/invalid tokens, 403 for insufficient role — both as AppErrorResponse JSON
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(restAuthErrorHandler)
+                .accessDeniedHandler(restAuthErrorHandler)
+            )
             .authenticationProvider(authenticationProvider())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()

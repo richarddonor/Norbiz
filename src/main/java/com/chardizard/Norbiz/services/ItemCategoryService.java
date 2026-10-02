@@ -80,7 +80,9 @@ public class ItemCategoryService {
         ItemCategory category = new ItemCategory();
         category.setCompany(company);
         category.setName(request.getName());
-        return itemCategoryRepository.save(category);
+        ItemCategory saved = itemCategoryRepository.save(category);
+        log.info("User '{}' created item category '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
+        return saved;
     }
 
     @Transactional
@@ -93,13 +95,16 @@ public class ItemCategoryService {
         }
 
         category.setName(request.getName());
-        return itemCategoryRepository.save(category);
+        ItemCategory saved = itemCategoryRepository.save(category);
+        log.info("User '{}' updated item category '{}' (id={})", username, saved.getName(), saved.getId());
+        return saved;
     }
 
     @Transactional
     public void delete(Long id, String username) {
         ItemCategory category = findById(id, username);
         itemCategoryRepository.delete(category);
+        log.info("User '{}' deleted item category '{}' (id={})", username, category.getName(), id);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

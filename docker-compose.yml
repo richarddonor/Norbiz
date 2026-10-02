@@ -35,6 +35,11 @@ services:
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       ITEM_IMAGE_UPLOAD_DIR: /home/appuser/norbiz
+      # OpenTelemetry — traces, logs and metrics go to the lgtm service over OTLP/HTTP
+      OTEL_EXPORT_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+      DEPLOYMENT_ENVIRONMENT: dev
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     volumes:
       - item_images:/home/appuser/norbiz
     ports:
@@ -44,6 +49,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      lgtm:
+        condition: service_started
+
+  # Dev-only observability backend: OTel Collector + Tempo (traces) + Loki (logs) +
+  # Prometheus (metrics) + Grafana in one container. Grafana UI: http://localhost:3000
+  # Ports are bound to localhost — Grafana here runs with anonymous admin access.
+  lgtm:
+    image: grafana/otel-lgtm:0.34.0
+    ports:
+      - "127.0.0.1:3000:3000"   # Grafana
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP (also lets a local `mvn spring-boot:run` export)
+    volumes:
+      - lgtm_data:/data
+    networks:
+      - backend
 
   web:
     build:
@@ -61,6 +82,7 @@ services:
 volumes:
   postgres_data:
   item_images:
+  lgtm_data:
 
 networks:
   backend:
