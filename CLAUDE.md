@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/CONFIGURATION.md` — Runtime config properties and database seeding.
 - `docs/LIST_FILTERING.md` — Backend contract for filterable/paginated list endpoints.
 - `docs/ENTITY_MODEL.md` — Entity relationship diagram and key service implementation patterns.
+- `docs/OBSERVABILITY.md` — OpenTelemetry tracing/metrics/logs wiring, config, and telemetry rules.
 
 `docs/` is where all non-`CLAUDE.md` project markdown lives — `CLAUDE.md` itself stays at the repo root since Claude Code only auto-discovers it there.
 
@@ -41,9 +42,9 @@ psql -f db/drop_all.sql && psql -f db/init.sql
 
 The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 
-## Project Architecture
+## Project ArchitectureXO
 
-**Norbiz** is a multi-tenant ERP backend: Java 21, Spring Boot 4.0.4, PostgreSQL 17, JWT auth, WAR packaging.
+**Norbiz** is a multi-tenant ERP backend: Java 25, Spring Boot 4.0.4, PostgreSQL 17, JWT auth, WAR packaging.
 
 ### Package layout (`com.chardizard.Norbiz`)
 
@@ -101,6 +102,8 @@ All endpoints that return a list of records should be paginated. Have 50 records
 
 ## Logging
 Norbiz should observe the OpenTelemetry specification for logging. Have loggers in all strategic places of the code. Make sure that we are logging the incoming request including the payload. I should be able to see the transaction span from end to finish
+
+See `docs/OBSERVABILITY.md`. Key rules: put ids/usernames/payloads on spans as high-cardinality key values, never as metric tags; never put secrets in telemetry; log every service-layer mutation at INFO.
 
 ## Transactions
 See `docs/TRANSACTIONS.md` for the full spec: general transaction rules, reference number generation, per-type details (Inventory Adjustment, Purchase Order, Sales Order), and the standard transaction document/print layout.

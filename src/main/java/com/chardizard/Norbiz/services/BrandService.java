@@ -79,7 +79,9 @@ public class BrandService {
         Brand brand = new Brand();
         brand.setCompany(company);
         brand.setName(request.getName());
-        return brandRepository.save(brand);
+        Brand saved = brandRepository.save(brand);
+        log.info("User '{}' created brand '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
+        return saved;
     }
 
     @Transactional
@@ -92,13 +94,16 @@ public class BrandService {
         }
 
         brand.setName(request.getName());
-        return brandRepository.save(brand);
+        Brand saved = brandRepository.save(brand);
+        log.info("User '{}' updated brand '{}' (id={})", username, saved.getName(), saved.getId());
+        return saved;
     }
 
     @Transactional
     public void delete(Long id, String username) {
         Brand brand = findById(id, username);
         brandRepository.delete(brand);
+        log.info("User '{}' deleted brand '{}' (id={})", username, brand.getName(), id);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {
