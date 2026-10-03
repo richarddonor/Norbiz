@@ -2,6 +2,7 @@ package com.chardizard.Norbiz.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -12,6 +13,7 @@ import java.util.List;
 // or receives against. Line costPrice is null unless the caller holds VIEW_COST_PRICE.
 @Getter
 @AllArgsConstructor
+@NoArgsConstructor // for reading cached entries back from Redis
 public class TransactionLookupResponse {
     private Long id;
     private Long companyId;
@@ -29,6 +31,7 @@ public class TransactionLookupResponse {
 
     @Getter
     @AllArgsConstructor
+    @NoArgsConstructor
     public static class Line {
         private Long id;
         private Integer lineNumber;

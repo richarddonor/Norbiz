@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScope;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.RoleRequest;
@@ -30,6 +33,7 @@ import java.util.stream.Collectors;
 public class RoleController {
 
     private final RoleService roleService;
+    private final QueryCache queryCache;
 
     @Operation(summary = "List roles", description = "Returns all roles except SUPER_ADMIN.")
     @ApiResponse(responseCode = "200", description = "Role list returned")
@@ -46,7 +50,8 @@ public class RoleController {
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(permissions)) filters.put("permissions", permissions);
 
-        var roles = roleService.findAll(filters, pageable).map(this::toResponse);
+        var roles = queryCache.page(CacheRegion.LIST_ROLE, CacheScope.global(), QueryCache.params("filters", filters), pageable,
+                RoleResponse.class, () -> roleService.findAll(filters, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(roles)));
     }
 

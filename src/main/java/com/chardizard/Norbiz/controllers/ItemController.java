@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.ItemRequest;
 import com.chardizard.Norbiz.dto.ItemResponse;
@@ -35,6 +38,8 @@ import java.util.stream.Collectors;
 public class ItemController {
 
     private final ItemService itemService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List items", description = "Returns items belonging to the caller's accessible companies. SUPER_ADMIN sees all items.")
     @ApiResponse(responseCode = "200", description = "Item list returned")
@@ -58,8 +63,10 @@ public class ItemController {
         if (StringUtils.hasText(skus)) filters.put("skus", skus);
         if (StringUtils.hasText(unitPrice)) filters.put("unitPrice", unitPrice);
 
-        var items = itemService.findAllForUser(userDetails.getUsername(), filters, pageable)
-                .map(item -> toResponse(item, userDetails));
+        // canViewCostPrice is in the key: toResponse hides the cost price from callers without VIEW_COST_PRICE.
+        var items = queryCache.page(CacheRegion.LIST_ITEM, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters, "canViewCostPrice", hasCostPriceAuthority(userDetails)), pageable, ItemResponse.class,
+                () -> itemService.findAllForUser(userDetails.getUsername(), filters, pageable).map(item -> toResponse(item, userDetails)));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(items)));
     }
 

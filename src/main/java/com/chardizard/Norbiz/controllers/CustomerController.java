@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.CustomerRequest;
 import com.chardizard.Norbiz.dto.CustomerResponse;
@@ -33,6 +36,8 @@ import java.util.Map;
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List customers", description = "Returns customers/outlets belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "Customer list returned")
@@ -61,7 +66,9 @@ public class CustomerController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(updatedAtFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
-        var customers = customerService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse);
+        var customers = queryCache.page(CacheRegion.LIST_CUSTOMER, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, CustomerResponse.class,
+                () -> customerService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(customers)));
     }
 

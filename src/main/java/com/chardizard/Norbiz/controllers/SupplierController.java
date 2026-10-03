@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.SupplierRequest;
@@ -33,6 +36,8 @@ import java.util.Map;
 public class SupplierController {
 
     private final SupplierService supplierService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List suppliers", description = "Returns suppliers belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "Supplier list returned")
@@ -59,7 +64,9 @@ public class SupplierController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(updatedAtFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
-        var suppliers = supplierService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse);
+        var suppliers = queryCache.page(CacheRegion.LIST_SUPPLIER, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, SupplierResponse.class,
+                () -> supplierService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(suppliers)));
     }
 

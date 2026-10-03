@@ -59,6 +59,11 @@
 			<artifactId>opentelemetry-logback-appender-1.0</artifactId>
 			<version>${opentelemetry-logback-appender.version}</version>
 		</dependency>
+		<!-- Redis query cache for lookup/list endpoints (see docs/CACHING.md) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>

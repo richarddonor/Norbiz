@@ -10,6 +10,10 @@ All runtime config is environment-driven via `src/main/resources/application.pro
 | `jwt.expiration` | `86400000` | JWT TTL in ms (24 h) |
 | `cors.allowed-origins` | `http://localhost:5173` | Frontend origin |
 | `app.item-image.upload-dir` | `./item-images` | Image upload path |
+| `spring.data.redis.host` / `.port` / `.password` (`REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`) | `localhost` / `6379` / empty | Redis for the query cache (see `docs/CACHING.md`) |
+| `spring.data.redis.timeout` / `.connect-timeout` | `200ms` / `500ms` | Kept short so a slow Redis falls back to Postgres instead of slowing requests |
+| `app.cache.enabled` (`CACHE_ENABLED`) | `true` | Query cache master switch; tests set it `false` via `src/test/resources/config/application.properties` |
+| `app.cache.ttl.lookup` / `.list` (`CACHE_TTL_LOOKUP`, `CACHE_TTL_LIST`) | `10m` / `2m` | Entry TTLs — bound memory only, not freshness |
 
 ## Database
 

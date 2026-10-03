@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.WarehouseRequest;
@@ -33,6 +36,8 @@ import java.util.Map;
 public class WarehouseController {
 
     private final WarehouseService warehouseService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List warehouses", description = "Returns warehouses belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "Warehouse list returned")
@@ -59,7 +64,9 @@ public class WarehouseController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(updatedAtFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
-        var warehouses = warehouseService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse);
+        var warehouses = queryCache.page(CacheRegion.LIST_WAREHOUSE, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, WarehouseResponse.class,
+                () -> warehouseService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(warehouses)));
     }
 

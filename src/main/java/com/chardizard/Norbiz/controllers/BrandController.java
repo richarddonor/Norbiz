@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.BrandRequest;
 import com.chardizard.Norbiz.dto.BrandResponse;
@@ -33,6 +36,8 @@ import java.util.Map;
 public class BrandController {
 
     private final BrandService brandService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List brands")
     @ApiResponse(responseCode = "200", description = "Brand list returned")
@@ -53,7 +58,9 @@ public class BrandController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(updatedAtFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
-        var brands = brandService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse);
+        var brands = queryCache.page(CacheRegion.LIST_BRAND, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, BrandResponse.class,
+                () -> brandService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(brands)));
     }
 

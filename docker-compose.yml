@@ -40,6 +40,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
       DEPLOYMENT_ENVIRONMENT: dev
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      REDIS_HOST: redis
     volumes:
       - item_images:/home/appuser/norbiz
     ports:
@@ -49,8 +50,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       lgtm:
         condition: service_started
+
+  # Query cache for lookup/list endpoints (docs/CACHING.md). volatile-lru evicts only cached
+  # entries (which carry a TTL), never the TTL-less generation counters — evicting a counter would
+  # reset it to 0 and could resurrect a stale entry.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru", "--save", ""]
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   # Dev-only observability backend: OTel Collector + Tempo (traces) + Loki (logs) +
   # Prometheus (metrics) + Grafana in one container. Grafana UI: http://localhost:3000

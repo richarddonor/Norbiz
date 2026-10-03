@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScope;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.CreateUserRequest;
 import com.chardizard.Norbiz.dto.PageResponse;
@@ -36,6 +39,7 @@ import java.util.stream.Collectors;
 public class UserController {
 
     private final UserService userService;
+    private final QueryCache queryCache;
 
     @Operation(summary = "List users", description = "Returns all users visible to the caller. SUPER_ADMIN sees all; others see users within their companies.")
     @ApiResponse(responseCode = "200", description = "User list returned")
@@ -56,7 +60,9 @@ public class UserController {
         if (StringUtils.hasText(roles)) filters.put("roles", roles);
         if (StringUtils.hasText(companies)) filters.put("companies", companies);
 
-        var users = userService.findAll(filters, pageable).map(this::toResponse);
+        // UserService.findAll is not company-scoped, so neither is the cache entry.
+        var users = queryCache.page(CacheRegion.LIST_USER, CacheScope.global(), QueryCache.params("filters", filters), pageable,
+                UserResponse.class, () -> userService.findAll(filters, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(users)));
     }
 

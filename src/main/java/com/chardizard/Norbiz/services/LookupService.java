@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.services;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScope;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
 import com.chardizard.Norbiz.dto.TransactionLookupResponse;
@@ -21,14 +24,20 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+
+import static com.chardizard.Norbiz.cache.QueryCache.params;
 
 /**
  * Backs the slim {@code /lookups/*} dropdown endpoints. Every list is scoped to exactly one company
  * (the form's company, defaulting to the session's X-Company-Id), access-checked against the caller's
  * memberships (SUPER_ADMIN bypasses), and every by-id read verifies company membership — opening
  * these endpoints to more permissions (see LookupAccess) must not open them across tenants.
+ *
+ * List results are cached in Redis per company (see docs/CACHING.md); the access check always runs
+ * before the cache is consulted. By-id reads are plain primary-key fetches and are not cached.
  */
 @Service
 @RequiredArgsConstructor
@@ -47,11 +56,13 @@ public class LookupService {
     private final RoleRepository roleRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
+    private final QueryCache queryCache;
 
     // ---- master data ----
 
     public Page<LookupResponse> suppliers(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
-        return search(supplierRepository, username, companyId, Supplier.class,
+        return search(CacheRegion.LOOKUP_SUPPLIER, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+                supplierRepository, username, companyId, Supplier.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "code", "name"),
                         activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
@@ -66,7 +77,8 @@ public class LookupService {
     }
 
     public Page<LookupResponse> customers(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
-        return search(customerRepository, username, companyId, Customer.class,
+        return search(CacheRegion.LOOKUP_CUSTOMER, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+                customerRepository, username, companyId, Customer.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "code", "name"),
                         activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
@@ -81,7 +93,8 @@ public class LookupService {
     }
 
     public Page<LookupResponse> warehouses(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
-        return search(warehouseRepository, username, companyId, Warehouse.class,
+        return search(CacheRegion.LOOKUP_WAREHOUSE, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+                warehouseRepository, username, companyId, Warehouse.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "code", "name"),
                         activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
@@ -101,7 +114,9 @@ public class LookupService {
             query.distinct(true);
             return cb.equal(root.join("tags"), tag);
         };
-        return search(itemRepository, username, companyId, Item.class,
+        return search(CacheRegion.LOOKUP_ITEM,
+                params("q", q, "tag", tag, "activeOnly", activeOnly, "canViewCostPrice", canViewCostPrice), ItemLookupResponse.class,
+                itemRepository, username, companyId, Item.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "itemCode", "name"),
                         tagged,
@@ -117,7 +132,8 @@ public class LookupService {
     }
 
     public Page<LookupResponse> itemCategories(String username, Long companyId, String q, Pageable pageable) {
-        return search(itemCategoryRepository, username, companyId, ItemCategory.class,
+        return search(CacheRegion.LOOKUP_ITEM_CATEGORY, params("q", q), LookupResponse.class,
+                itemCategoryRepository, username, companyId, ItemCategory.class,
                 SpecificationUtils.containsIgnoreCase("name", q),
                 withDefaultSort(pageable, "name"), this::toLookup);
     }
@@ -130,7 +146,8 @@ public class LookupService {
     }
 
     public Page<LookupResponse> employees(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
-        return search(employeeRepository, username, companyId, Employee.class,
+        return search(CacheRegion.LOOKUP_EMPLOYEE, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+                employeeRepository, username, companyId, Employee.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "employeeCode", "firstName", "lastName"),
                         activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
@@ -157,7 +174,9 @@ public class LookupService {
                 member,
                 SpecificationUtils.anyContainsIgnoreCase(q, "username", "displayName"));
         log.debug("User '{}' looking up User (companyId={})", username, companyId);
-        return userRepository.findAll(spec, withDefaultSort(pageable, "displayName")).map(this::toLookup);
+        Pageable sorted = withDefaultSort(pageable, "displayName");
+        return queryCache.page(CacheRegion.LOOKUP_USER, CacheScope.company(companyId), params("q", q), sorted,
+                LookupResponse.class, () -> userRepository.findAll(spec, sorted).map(this::toLookup));
     }
 
     public LookupResponse user(Long id, String username) {
@@ -178,8 +197,9 @@ public class LookupService {
     // Roles are system-wide (not company-scoped), so no company filter applies.
     public Page<LookupResponse> roles(String q, Pageable pageable) {
         Specification<Role> spec = SpecificationUtils.anyContainsIgnoreCase(q, "name", "displayName");
-        return roleRepository.findAll(SpecificationUtils.allOf(spec), withDefaultSort(pageable, "displayName"))
-                .map(this::toLookup);
+        Pageable sorted = withDefaultSort(pageable, "displayName");
+        return queryCache.page(CacheRegion.LOOKUP_ROLE, CacheScope.global(), params("q", q), sorted, LookupResponse.class,
+                () -> roleRepository.findAll(SpecificationUtils.allOf(spec), sorted).map(this::toLookup));
     }
 
     public LookupResponse role(Long id) {
@@ -195,7 +215,10 @@ public class LookupService {
     public Page<TransactionLookupResponse> purchaseOrders(String username, Long companyId, String q, Long supplierId,
                                                           Long warehouseId, boolean openOnly, boolean canViewCostPrice,
                                                           Pageable pageable) {
-        return search(purchaseOrderRepository, username, companyId, PurchaseOrder.class,
+        return search(CacheRegion.LOOKUP_PURCHASE_ORDER,
+                params("q", q, "supplierId", supplierId, "warehouseId", warehouseId, "openOnly", openOnly,
+                        "canViewCostPrice", canViewCostPrice), TransactionLookupResponse.class,
+                purchaseOrderRepository, username, companyId, PurchaseOrder.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "referenceNumber", "sheetNumber"),
                         idEquals("supplier", supplierId),
@@ -218,7 +241,10 @@ public class LookupService {
                                                             Long warehouseId, boolean openOnly, boolean canViewCostPrice,
                                                             Pageable pageable) {
         Specification<PurchaseInvoice> directOnly = openOnly ? (root, query, cb) -> cb.isNull(root.get("purchaseOrder")) : null;
-        return search(purchaseInvoiceRepository, username, companyId, PurchaseInvoice.class,
+        return search(CacheRegion.LOOKUP_PURCHASE_INVOICE,
+                params("q", q, "supplierId", supplierId, "warehouseId", warehouseId, "openOnly", openOnly,
+                        "canViewCostPrice", canViewCostPrice), TransactionLookupResponse.class,
+                purchaseInvoiceRepository, username, companyId, PurchaseInvoice.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "referenceNumber", "sheetNumber"),
                         idEquals("supplier", supplierId),
@@ -301,14 +327,20 @@ public class LookupService {
 
     // ---- helpers ----
 
-    private <E, R> Page<R> search(JpaSpecificationExecutor<E> repository, String username, Long companyId, Class<E> type,
+    // params must hold every input that changes the result besides company and paging — including
+    // permission-dependent shaping like canViewCostPrice — since it is what distinguishes cache entries.
+    private <E, R> Page<R> search(CacheRegion region, Map<String, Object> params, Class<R> resultType,
+                                  JpaSpecificationExecutor<E> repository, String username, Long companyId, Class<E> type,
                                   Specification<E> filters, Pageable pageable, Function<E, R> mapper) {
+        // Access check first, always: the cache is keyed by company and must never be reached unchecked.
         assertCompanyAccess(username, requireCompany(companyId));
         Specification<E> companyScope = (root, query, cb) -> cb.equal(root.get("company").get("id"), companyId);
 
         log.debug("User '{}' looking up {} (companyId={})", username, type.getSimpleName(), companyId);
-        return repository.findAll(SpecificationUtils.allOf(companyScope, filters), pageable).map(mapper);
+        return queryCache.page(region, CacheScope.company(companyId), params, pageable, resultType,
+                () -> repository.findAll(SpecificationUtils.allOf(companyScope, filters), pageable).map(mapper));
     }
+
 
     // Every company-scoped entity belongs to exactly one company, so a dropdown never mixes
     // companies: the caller must say which one (the controller falls back to X-Company-Id).

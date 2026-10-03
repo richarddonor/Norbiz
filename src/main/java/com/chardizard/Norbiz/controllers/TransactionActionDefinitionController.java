@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.TransactionActionDefinitionRequest;
@@ -34,6 +37,8 @@ import java.util.Map;
 public class TransactionActionDefinitionController {
 
     private final TransactionActionDefinitionService definitionService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List transaction action definitions")
     @ApiResponse(responseCode = "200", description = "Definition list returned")
@@ -51,8 +56,11 @@ public class TransactionActionDefinitionController {
         if (StringUtils.hasText(code)) filters.put("code", code);
         if (StringUtils.hasText(name)) filters.put("name", name);
 
-        var definitions = definitionService.findAllForUser(userDetails.getUsername(), transactionType, filters, active, pageable)
-                .map(this::toResponse);
+        var definitions = queryCache.page(CacheRegion.LIST_TRANSACTION_ACTION_DEFINITION, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters, "transactionType", transactionType, "active", active), pageable,
+                TransactionActionDefinitionResponse.class,
+                () -> definitionService.findAllForUser(userDetails.getUsername(), transactionType, filters, active, pageable)
+                        .map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(definitions)));
     }
 

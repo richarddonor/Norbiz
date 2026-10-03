@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.DocumentSchemaResponse;
 import com.chardizard.Norbiz.dto.DocumentTemplateRequest;
@@ -34,6 +37,8 @@ import java.util.Map;
 public class DocumentTemplateController {
 
     private final DocumentTemplateService documentTemplateService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
     private final DocumentSchemaRegistry documentSchemaRegistry;
 
     @Operation(summary = "List document templates", description = "Returns templates belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
@@ -50,7 +55,9 @@ public class DocumentTemplateController {
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(documentType)) filters.put("documentType", documentType);
 
-        var templates = documentTemplateService.findAllForUser(userDetails.getUsername(), filters, pageable).map(this::toResponse);
+        var templates = queryCache.page(CacheRegion.LIST_DOCUMENT_TEMPLATE, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters), pageable, DocumentTemplateResponse.class,
+                () -> documentTemplateService.findAllForUser(userDetails.getUsername(), filters, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(templates)));
     }
 

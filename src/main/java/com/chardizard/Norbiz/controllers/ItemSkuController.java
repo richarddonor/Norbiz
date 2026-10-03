@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.ItemSkuRequest;
 import com.chardizard.Norbiz.dto.ItemSkuResponse;
@@ -31,6 +34,8 @@ import java.util.Map;
 public class ItemSkuController {
 
     private final ItemSkuService itemSkuService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List SKUs", description = "Returns all SKUs accessible to the caller. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "SKU list returned")
@@ -50,7 +55,9 @@ public class ItemSkuController {
         if (StringUtils.hasText(itemName)) filters.put("itemName", itemName);
         if (StringUtils.hasText(unitPrice)) filters.put("unitPrice", unitPrice);
 
-        var skus = itemSkuService.findAll(userDetails.getUsername(), filters, pageable).map(this::toResponse);
+        var skus = queryCache.page(CacheRegion.LIST_ITEM_SKU, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters), pageable, ItemSkuResponse.class,
+                () -> itemSkuService.findAll(userDetails.getUsername(), filters, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(skus)));
     }
 

@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.ItemCategoryRequest;
 import com.chardizard.Norbiz.dto.ItemCategoryResponse;
@@ -33,6 +36,8 @@ import java.util.Map;
 public class ItemCategoryController {
 
     private final ItemCategoryService itemCategoryService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List item categories", description = "Returns categories belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "Item category list returned")
@@ -55,7 +60,9 @@ public class ItemCategoryController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(updatedAtFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
-        var categories = itemCategoryService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse);
+        var categories = queryCache.page(CacheRegion.LIST_ITEM_CATEGORY, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, ItemCategoryResponse.class,
+                () -> itemCategoryService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(categories)));
     }
 

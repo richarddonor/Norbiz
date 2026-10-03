@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.cache.CacheRegion;
+import com.chardizard.Norbiz.cache.CacheScopeResolver;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.EmployeeRequest;
 import com.chardizard.Norbiz.dto.EmployeeResponse;
@@ -27,6 +30,8 @@ import org.springframework.web.bind.annotation.*;
 public class EmployeeController {
 
     private final EmployeeService employeeService;
+    private final QueryCache queryCache;
+    private final CacheScopeResolver cacheScopes;
 
     @Operation(summary = "List employees", description = "Returns employees belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "Employee list returned")
@@ -35,7 +40,9 @@ public class EmployeeController {
     @PreAuthorize("hasAuthority('VIEW_EMPLOYEE')")
     public ResponseEntity<AppResponse<PageResponse<EmployeeResponse>>> getAll(@AuthenticationPrincipal UserDetails userDetails,
                                                                               Pageable pageable) {
-        var employees = employeeService.findAllForUser(userDetails.getUsername(), pageable).map(this::toResponse);
+        var employees = queryCache.page(CacheRegion.LIST_EMPLOYEE, cacheScopes.forUser(userDetails.getUsername()),
+                QueryCache.params(), pageable, EmployeeResponse.class,
+                () -> employeeService.findAllForUser(userDetails.getUsername(), pageable).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(employees)));
     }
 

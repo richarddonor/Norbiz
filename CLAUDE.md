@@ -12,6 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/LIST_FILTERING.md` — Backend contract for filterable/paginated list endpoints.
 - `docs/ENTITY_MODEL.md` — Entity relationship diagram and key service implementation patterns.
 - `docs/OBSERVABILITY.md` — OpenTelemetry tracing/metrics/logs wiring, config, and telemetry rules.
+- `docs/CACHING.md` — Redis query cache for lookup/list endpoints: generation-counter invalidation, key safety rules.
 
 `docs/` is where all non-`CLAUDE.md` project markdown lives — `CLAUDE.md` itself stays at the repo root since Claude Code only auto-discovers it there.
 
@@ -106,6 +107,13 @@ All endpoints that return a list of records should be paginated. Have 50 records
 Norbiz should observe the OpenTelemetry specification for logging. Have loggers in all strategic places of the code. Make sure that we are logging the incoming request including the payload. I should be able to see the transaction span from end to finish
 
 See `docs/OBSERVABILITY.md`. Key rules: put ids/usernames/payloads on spans as high-cardinality key values, never as metric tags; never put secrets in telemetry; log every service-layer mutation at INFO.
+
+## Caching
+Lookup and master-data list endpoints are cached in Redis — see `docs/CACHING.md`. Rules that bite if forgotten:
+- A new company-scoped entity without a `getCompany()` must be mapped in `cache/CompanyResolver`, or writes to it won't invalidate anything.
+- A cached endpoint's `CacheRegion` must list **every** entity whose fields appear in its response (including names copied from associations).
+- Authorization/company-access checks run *before* `QueryCache.page`; anything permission-dependent in the response (e.g. `canViewCostPrice`) goes into the cache params.
+- Bulk JPQL/native `UPDATE`/`DELETE` bypass the invalidation listener — bump `GenerationStore` manually.
 
 ## Transactions
 See `docs/TRANSACTIONS.md` for the full spec: general transaction rules, reference number generation, per-type details (Inventory Adjustment, Purchase Order, Sales Order), and the standard transaction document/print layout.
