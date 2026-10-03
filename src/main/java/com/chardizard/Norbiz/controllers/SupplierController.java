@@ -110,6 +110,7 @@ public class SupplierController {
     @ApiResponse(responseCode = "204", description = "Supplier deleted")
     @ApiResponse(responseCode = "403", description = "Missing DELETE_SUPPLIER permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Supplier not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('DELETE_SUPPLIER')")
     public ResponseEntity<Void> delete(@Parameter(description = "Supplier ID") @PathVariable Long id,

@@ -8,6 +8,7 @@ import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.ItemCategoryRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,7 +104,7 @@ public class ItemCategoryService {
     @Transactional
     public void delete(Long id, String username) {
         ItemCategory category = findById(id, username);
-        itemCategoryRepository.delete(category);
+        ForeignKeyViolations.deleteOrThrow(itemCategoryRepository, category, "Item Category", id);
         log.info("User '{}' deleted item category '{}' (id={})", username, category.getName(), id);
     }
 

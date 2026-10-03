@@ -112,6 +112,7 @@ public class CustomerController {
     @ApiResponse(responseCode = "204", description = "Customer deleted")
     @ApiResponse(responseCode = "403", description = "Missing DELETE_CUSTOMER permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Customer not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('DELETE_CUSTOMER')")
     public ResponseEntity<Void> delete(@Parameter(description = "Customer ID") @PathVariable Long id,

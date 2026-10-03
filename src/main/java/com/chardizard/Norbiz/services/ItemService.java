@@ -8,6 +8,7 @@ import com.chardizard.Norbiz.repositories.ItemGroupRepository;
 import com.chardizard.Norbiz.repositories.ItemRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -156,7 +157,7 @@ public class ItemService {
                 .orElseThrow(() -> new IllegalArgumentException("Item not found: " + id));
 
         assertCompanyAccess(username, item.getCompany().getId());
-        itemRepository.delete(item);
+        ForeignKeyViolations.deleteOrThrow(itemRepository, item, "Item", id);
         log.info("User '{}' deleted item '{}' (id={})", username, item.getItemCode(), id);
     }
 

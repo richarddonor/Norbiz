@@ -113,6 +113,7 @@ public class ItemGroupController {
     @ApiResponse(responseCode = "400", description = "Item group is still assigned to items")
     @ApiResponse(responseCode = "403", description = "Missing DELETE_ITEM_GROUP permission")
     @ApiResponse(responseCode = "404", description = "Item group not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('DELETE_ITEM_GROUP')")
     public ResponseEntity<Void> delete(@Parameter(description = "Item group ID") @PathVariable Long id,

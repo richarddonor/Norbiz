@@ -8,6 +8,7 @@ import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.SupplierRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -118,7 +119,7 @@ public class SupplierService {
     @Transactional
     public void delete(Long id, String username) {
         Supplier supplier = findById(id, username);
-        supplierRepository.delete(supplier);
+        ForeignKeyViolations.deleteOrThrow(supplierRepository, supplier, "Supplier", id);
         log.info("User '{}' deleted supplier '{}' (id={})", username, supplier.getName(), id);
     }
 

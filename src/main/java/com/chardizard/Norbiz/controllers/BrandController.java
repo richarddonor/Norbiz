@@ -104,6 +104,7 @@ public class BrandController {
     @ApiResponse(responseCode = "204", description = "Brand deleted")
     @ApiResponse(responseCode = "403", description = "Missing DELETE_BRAND permission")
     @ApiResponse(responseCode = "404", description = "Brand not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('DELETE_BRAND')")
     public ResponseEntity<Void> delete(@Parameter(description = "Brand ID") @PathVariable Long id,

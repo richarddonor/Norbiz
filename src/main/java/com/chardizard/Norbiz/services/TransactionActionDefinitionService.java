@@ -4,6 +4,8 @@ import com.chardizard.Norbiz.dto.TransactionActionDefinitionRequest;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.*;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.exceptions.EntityInUseException;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -117,15 +119,15 @@ public class TransactionActionDefinitionService {
         TransactionActionDefinition definition = findById(id, username);
 
         if (transactionEventRepository.existsByActionDefinitionId(id)) {
-            throw new IllegalArgumentException("Action '" + definition.getCode()
+            throw new EntityInUseException("Transaction Action", id, "Transaction Event", "Action '" + definition.getCode()
                     + "' has already been taken on transactions; deactivate it (active=false) instead of deleting");
         }
         if (definitionRepository.existsByPrerequisitesId(id)) {
-            throw new IllegalArgumentException("Action '" + definition.getCode()
+            throw new EntityInUseException("Transaction Action", id, "Transaction Action", "Action '" + definition.getCode()
                     + "' is a prerequisite of another action; remove it from those prerequisites first");
         }
 
-        definitionRepository.delete(definition);
+        ForeignKeyViolations.deleteOrThrow(definitionRepository, definition, "Transaction Action", id);
         log.info("User '{}' deleted transaction action '{}' (id={})", username, definition.getCode(), id);
     }
 

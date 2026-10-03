@@ -101,6 +101,7 @@ public class ItemSkuController {
     @ApiResponse(responseCode = "204", description = "SKU deleted")
     @ApiResponse(responseCode = "403", description = "Missing DELETE_ITEM permission or no access to company")
     @ApiResponse(responseCode = "404", description = "SKU not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('DELETE_ITEM')")
     public ResponseEntity<Void> delete(@Parameter(description = "SKU ID") @PathVariable Long id,

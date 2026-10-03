@@ -8,6 +8,7 @@ import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.DocumentTemplateRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,7 +117,7 @@ public class DocumentTemplateService {
     @Transactional
     public void delete(Long id, String username) {
         DocumentTemplate template = findById(id, username);
-        documentTemplateRepository.delete(template);
+        ForeignKeyViolations.deleteOrThrow(documentTemplateRepository, template, "Document Template", id);
         log.info("User '{}' deleted document template '{}' (id={})", username, template.getName(), id);
     }
 

@@ -9,6 +9,8 @@ import com.chardizard.Norbiz.repositories.ItemGroupRepository;
 import com.chardizard.Norbiz.repositories.ItemRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.exceptions.EntityInUseException;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,9 +111,10 @@ public class ItemGroupService {
     public void delete(Long id, String username) {
         ItemGroup group = findById(id, username);
         if (itemRepository.existsByItemGroupId(id)) {
-            throw new IllegalArgumentException("Item group '" + group.getName() + "' is still assigned to items; reassign them or deactivate the group instead");
+            throw new EntityInUseException("Item Group", id, "Item",
+                    "Item group '" + group.getName() + "' is still assigned to items; reassign them or deactivate the group instead");
         }
-        itemGroupRepository.delete(group);
+        ForeignKeyViolations.deleteOrThrow(itemGroupRepository, group, "Item Group", id);
         log.info("User '{}' deleted item group '{}' (id={})", username, group.getName(), id);
     }
 

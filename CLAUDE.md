@@ -97,6 +97,8 @@ All API response must implement `AppResponse` dto. In case of an exception, retu
 Make sure that requests are properly validated (Java validation: javax.validation / jakarta.validation) to ensure that required (non-null), min, max, data type enforcement (String, Int, BigDecimal) are checked. Bug me if i do not have these set in API requests
 As General rule, Strings must be less than 255 characters
 
+Deleting a record that other records still reference must surface as `EntityInUseException` (409, `code: "ENTITY_IN_USE"`, `details: {entity, entityId, referencedBy}`) so the frontend can show why the delete failed. In a service `delete`, call `ForeignKeyViolations.deleteOrThrow(repository, entity, "<Entity Label>", id)` instead of `repository.delete(entity)` — it flushes immediately and turns the Postgres FK violation into that exception. Explicit "still in use" pre-checks should throw `EntityInUseException` too, not `IllegalArgumentException`.
+
 All endpoints that return a list of records should be paginated. Have 50 records per page as default. See `docs/LIST_FILTERING.md` for the backend filtering/search contract.
 
 ## Gotchas

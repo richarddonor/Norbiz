@@ -110,6 +110,7 @@ public class TransactionActionDefinitionController {
     @ApiResponse(responseCode = "400", description = "Definition is in use")
     @ApiResponse(responseCode = "403", description = "Missing MANAGE_TRANSACTION_ACTIONS permission")
     @ApiResponse(responseCode = "404", description = "Definition not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('MANAGE_TRANSACTION_ACTIONS')")
     public ResponseEntity<Void> delete(@Parameter(description = "Definition ID") @PathVariable Long id,

@@ -8,6 +8,7 @@ import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.CustomerRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -122,7 +123,7 @@ public class CustomerService {
     @Transactional
     public void delete(Long id, String username) {
         Customer customer = findById(id, username);
-        customerRepository.delete(customer);
+        ForeignKeyViolations.deleteOrThrow(customerRepository, customer, "Customer", id);
         log.info("User '{}' deleted customer '{}' (id={})", username, customer.getName(), id);
     }
 

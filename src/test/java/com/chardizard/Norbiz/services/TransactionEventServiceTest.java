@@ -1,5 +1,7 @@
 package com.chardizard.Norbiz.services;
 
+import com.chardizard.Norbiz.exceptions.EntityInUseException;
+import jakarta.persistence.EntityManager;
 import com.chardizard.Norbiz.dto.InventoryAdjustmentLineRequest;
 import com.chardizard.Norbiz.dto.InventoryAdjustmentRequest;
 import com.chardizard.Norbiz.dto.TransactionActionDefinitionRequest;
@@ -35,6 +37,8 @@ class TransactionEventServiceTest {
     @Autowired TransactionEventService transactionEventService;
     @Autowired TransactionActionDefinitionService definitionService;
     @Autowired InventoryAdjustmentService inventoryAdjustmentService;
+    @Autowired WarehouseService warehouseService;
+    @Autowired EntityManager entityManager;
     @Autowired CompanyRepository companyRepository;
     @Autowired WarehouseRepository warehouseRepository;
     @Autowired ItemCategoryRepository itemCategoryRepository;
@@ -54,6 +58,7 @@ class TransactionEventServiceTest {
     private String bob;        // distributor only
     private String outsider;   // printer, but other company
     private Long adjustmentId;
+    private Long warehouseId;
     private TransactionActionDefinition distribution;
     private TransactionActionDefinition printing;
     private TransactionActionDefinition encoded;
@@ -78,6 +83,7 @@ class TransactionEventServiceTest {
         warehouse.setCode("TA" + suffix);
         warehouse.setName("TA Warehouse");
         warehouse = warehouseRepository.save(warehouse);
+        warehouseId = warehouse.getId();
 
         ItemCategory category = new ItemCategory();
         category.setCompany(company);
@@ -176,12 +182,33 @@ class TransactionEventServiceTest {
     }
 
     @Test
+    void warehouseWithPostedInventoryCannotBeDeleted() {
+        // Fresh persistence context (as in a real request), so the violation comes from Postgres's
+        // FK constraint rather than Hibernate's in-session reference check.
+        entityManager.flush();
+        entityManager.clear();
+        assertThatThrownBy(() -> warehouseService.delete(warehouseId, alice))
+                .isInstanceOfSatisfying(EntityInUseException.class, ex -> {
+                    assertThat(ex.getEntity()).isEqualTo("Warehouse");
+                    assertThat(ex.getEntityId()).isEqualTo(warehouseId);
+                    assertThat(ex.getReferencedBy()).isNotBlank();
+                });
+    }
+
+    @Test
+    void warehouseReferencedInSessionCannotBeDeleted() {
+        assertThatThrownBy(() -> warehouseService.delete(warehouseId, alice))
+                .isInstanceOfSatisfying(EntityInUseException.class,
+                        ex -> assertThat(ex.getReferencedBy()).isEqualTo("Inventory Adjustment"));
+    }
+
+    @Test
     void definitionInUseCannotBeDeleted() {
         assertThatThrownBy(() -> definitionService.delete(distribution.getId(), alice))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("prerequisite");
+                .isInstanceOf(EntityInUseException.class).hasMessageContaining("prerequisite");
         take(alice, encoded);
         assertThatThrownBy(() -> definitionService.delete(encoded.getId(), alice))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("deactivate");
+                .isInstanceOf(EntityInUseException.class).hasMessageContaining("deactivate");
     }
 
     private void take(String username, TransactionActionDefinition definition) {

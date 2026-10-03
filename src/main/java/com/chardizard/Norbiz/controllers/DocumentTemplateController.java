@@ -123,6 +123,7 @@ public class DocumentTemplateController {
     @ApiResponse(responseCode = "204", description = "Template deleted")
     @ApiResponse(responseCode = "403", description = "Missing MANAGE_DOCUMENT_TEMPLATES permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Template not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('MANAGE_DOCUMENT_TEMPLATES')")
     public ResponseEntity<Void> delete(@Parameter(description = "Template ID") @PathVariable Long id,

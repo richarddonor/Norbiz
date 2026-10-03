@@ -86,6 +86,7 @@ public class EmployeeController {
     @ApiResponse(responseCode = "204", description = "Employee deleted")
     @ApiResponse(responseCode = "403", description = "Missing DELETE_EMPLOYEE permission")
     @ApiResponse(responseCode = "404", description = "Employee not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('DELETE_EMPLOYEE')")
     public ResponseEntity<Void> delete(@Parameter(description = "Employee ID") @PathVariable Long id,

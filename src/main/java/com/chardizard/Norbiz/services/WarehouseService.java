@@ -8,6 +8,7 @@ import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.repositories.WarehouseRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,7 +115,7 @@ public class WarehouseService {
     @Transactional
     public void delete(Long id, String username) {
         Warehouse warehouse = findById(id, username);
-        warehouseRepository.delete(warehouse);
+        ForeignKeyViolations.deleteOrThrow(warehouseRepository, warehouse, "Warehouse", id);
         log.info("User '{}' deleted warehouse '{}' (id={})", username, warehouse.getName(), id);
     }
 

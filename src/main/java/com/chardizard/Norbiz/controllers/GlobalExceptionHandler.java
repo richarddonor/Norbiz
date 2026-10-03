@@ -1,6 +1,8 @@
 package com.chardizard.Norbiz.controllers;
 
 import com.chardizard.Norbiz.dto.AppErrorResponse;
+import com.chardizard.Norbiz.exceptions.EntityInUseException;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.handler.TracingObservationHandler;
@@ -8,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authorization.AuthorizationDeniedException;
@@ -20,6 +23,8 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.filter.ServerHttpObservationFilter;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -97,6 +102,32 @@ public class GlobalExceptionHandler {
     public ResponseEntity<AppErrorResponse> handleNotReadable(HttpMessageNotReadableException ex) {
         log.warn("Bad request: unreadable body: {}", ex.getMostSpecificCause().getMessage());
         return ResponseEntity.badRequest().body(error("Malformed request body or invalid field value"));
+    }
+
+    // Deleting a record that other records still reference. Services raise this via
+    // ForeignKeyViolations.deleteOrThrow (or an explicit pre-check) so the frontend can show which
+    // record type is blocking the delete.
+    @ExceptionHandler(EntityInUseException.class)
+    public ResponseEntity<AppErrorResponse> handleEntityInUse(EntityInUseException ex) {
+        log.warn("Delete blocked: {} (entity={}, id={}, referencedBy={})",
+                ex.getMessage(), ex.getEntity(), ex.getEntityId(), ex.getReferencedBy());
+        Map<String, Object> details = new LinkedHashMap<>();
+        if (ex.getEntity() != null) details.put("entity", ex.getEntity());
+        if (ex.getEntityId() != null) details.put("entityId", ex.getEntityId());
+        if (ex.getReferencedBy() != null) details.put("referencedBy", ex.getReferencedBy());
+        Span span = tracer.currentSpan();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(AppErrorResponse.of(
+                ex.getMessage(), span != null ? span.context().traceId() : null, EntityInUseException.CODE, details));
+    }
+
+    // Fallback for FK violations that weren't translated in the service (e.g. a delete path that
+    // doesn't use ForeignKeyViolations.deleteOrThrow, so the violation only surfaces at commit).
+    // Any other integrity violation is still unexpected and goes to the generic handler.
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<AppErrorResponse> handleDataIntegrity(DataIntegrityViolationException ex, HttpServletRequest request) {
+        return ForeignKeyViolations.from(ex, null, null)
+                .map(this::handleEntityInUse)
+                .orElseGet(() -> handleGeneric(ex, request));
     }
 
     @ExceptionHandler(Exception.class)

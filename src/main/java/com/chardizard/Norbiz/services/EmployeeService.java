@@ -7,6 +7,7 @@ import com.chardizard.Norbiz.models.User;
 import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.EmployeeRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -115,7 +116,7 @@ public class EmployeeService {
     @Transactional
     public void delete(Long id, String username) {
         Employee employee = findById(id, username);
-        employeeRepository.delete(employee);
+        ForeignKeyViolations.deleteOrThrow(employeeRepository, employee, "Employee", id);
         log.info("User '{}' deleted employee '{}' (id={})", username, employee.getEmployeeCode(), id);
     }
 

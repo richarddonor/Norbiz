@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.repositories.ItemRepository;
 import com.chardizard.Norbiz.repositories.ItemSkuRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
+import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,7 +126,7 @@ public class ItemSkuService {
                 .orElseThrow(() -> new IllegalArgumentException("SKU not found: " + id));
 
         assertCompanyAccess(username, sku.getItem().getCompany().getId());
-        itemSkuRepository.delete(sku);
+        ForeignKeyViolations.deleteOrThrow(itemSkuRepository, sku, "SKU", id);
         log.info("User '{}' deleted SKU '{}' (id={})", username, sku.getSkuCode(), id);
     }
 

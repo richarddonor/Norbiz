@@ -107,6 +107,7 @@ public class UserController {
     @ApiResponse(responseCode = "204", description = "User deleted")
     @ApiResponse(responseCode = "403", description = "Missing DELETE_USER permission")
     @ApiResponse(responseCode = "404", description = "User not found")
+    @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('DELETE_USER')")
     public ResponseEntity<Void> deleteUser(@Parameter(description = "User ID") @PathVariable Long id) {
