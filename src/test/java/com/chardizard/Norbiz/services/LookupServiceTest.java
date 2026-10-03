@@ -3,6 +3,7 @@ package com.chardizard.Norbiz.services;
 import com.chardizard.Norbiz.controllers.LookupController;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
+import com.chardizard.Norbiz.dto.StockLookupResponse;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.*;
 import org.junit.jupiter.api.AfterEach;
@@ -20,6 +21,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -40,6 +42,8 @@ class LookupServiceTest {
     @Autowired UserRepository userRepository;
     @Autowired ItemCategoryRepository itemCategoryRepository;
     @Autowired ItemRepository itemRepository;
+    @Autowired WarehouseRepository warehouseRepository;
+    @Autowired InventoryBalanceRepository inventoryBalanceRepository;
 
     private final String suffix = UUID.randomUUID().toString().substring(0, 8);
 
@@ -133,6 +137,68 @@ class LookupServiceTest {
         UserDetails principal = authenticate(buyer, "VIEW_INVENTORY_ADJUSTMENT");
         assertThatThrownBy(() -> lookupController.suppliers(principal, company.getId(), null, null, true, PageRequest.of(0, 50)))
                 .isInstanceOf(AuthorizationDeniedException.class);
+    }
+
+    @Test
+    void stockReturnsLiveBalancesAndZerosForUnmovedItems() {
+        ItemCategory category = category();
+        Item moved = item(category, "LKM" + suffix, Set.of(ItemTag.INVENTORY), BigDecimal.ONE);
+        Item unmoved = item(category, "LKU" + suffix, Set.of(ItemTag.INVENTORY), BigDecimal.ONE);
+        Warehouse warehouse = warehouse(company, "LK WH " + suffix);
+        InventoryBalance balance = new InventoryBalance();
+        balance.setItem(moved);
+        balance.setWarehouse(warehouse);
+        balance.setQuantity(new BigDecimal("7"));
+        balance.setTransitQuantity(new BigDecimal("3"));
+        balance.setUpdatedAt(Instant.now());
+        inventoryBalanceRepository.save(balance);
+
+        List<StockLookupResponse> rows = lookupService.stock(buyer, company.getId(), warehouse.getId(), List.of(moved.getId(), unmoved.getId()));
+
+        assertThat(rows).extracting(StockLookupResponse::getItemId).containsExactlyInAnyOrder(moved.getId(), unmoved.getId());
+        StockLookupResponse m = rows.stream().filter(r -> r.getItemId().equals(moved.getId())).findFirst().orElseThrow();
+        assertThat(m.getQuantity()).isEqualByComparingTo("7");
+        assertThat(m.getTransitQuantity()).isEqualByComparingTo("3");
+        StockLookupResponse u = rows.stream().filter(r -> r.getItemId().equals(unmoved.getId())).findFirst().orElseThrow();
+        assertThat(u.getQuantity()).isEqualByComparingTo("0");
+        assertThat(u.getTransitQuantity()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void stockDeniesWarehouseOutsideRequestedOrAccessibleCompany() {
+        Warehouse foreignWarehouse = warehouse(otherCompany, "LK Foreign WH " + suffix);
+        // Own company requested, but the warehouse belongs to another one.
+        assertThatThrownBy(() -> lookupService.stock(buyer, company.getId(), foreignWarehouse.getId(), List.of(1L)))
+                .isInstanceOf(SecurityException.class);
+        // The other company itself isn't accessible to the caller.
+        assertThatThrownBy(() -> lookupService.stock(buyer, otherCompany.getId(), foreignWarehouse.getId(), List.of(1L)))
+                .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    void stockLookupOpenToTransactionCreatorsOnly() {
+        Warehouse warehouse = warehouse(company, "LK WH2 " + suffix);
+        UserDetails creator = authenticate(buyer, "CREATE_INVENTORY_ADJUSTMENT");
+        var response = lookupController.stock(creator, null, company.getId(), warehouse.getId(), List.of(1L));
+        assertThat(response.getBody().getData()).hasSize(1);
+
+        UserDetails viewer = authenticate(buyer, "VIEW_SUPPLIER");
+        assertThatThrownBy(() -> lookupController.stock(viewer, company.getId(), null, warehouse.getId(), List.of(1L)))
+                .isInstanceOf(AuthorizationDeniedException.class);
+    }
+
+    private ItemCategory category() {
+        ItemCategory category = new ItemCategory();
+        category.setCompany(company);
+        category.setName("LK Cat " + suffix);
+        return itemCategoryRepository.save(category);
+    }
+
+    private Warehouse warehouse(Company company, String name) {
+        Warehouse w = new Warehouse();
+        w.setCompany(company);
+        w.setName(name);
+        return warehouseRepository.save(w);
     }
 
     private Item item(ItemCategory category, String code, Set<ItemTag> tags, BigDecimal cost) {

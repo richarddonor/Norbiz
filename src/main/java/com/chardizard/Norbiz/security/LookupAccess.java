@@ -21,7 +21,7 @@ public class LookupAccess {
 
     public enum LookupType {
         SUPPLIER, CUSTOMER, WAREHOUSE, ITEM, ITEM_CATEGORY, ITEM_GROUP, EMPLOYEE, USER, ROLE,
-        PURCHASE_ORDER, PURCHASE_INVOICE
+        PURCHASE_ORDER, PURCHASE_INVOICE, STOCK
     }
 
     private static final Map<LookupType, Set<String>> ALLOWED = new EnumMap<>(LookupType.class);
@@ -64,6 +64,11 @@ public class LookupAccess {
         ALLOWED.put(LookupType.PURCHASE_INVOICE, Set.of(
                 "VIEW_PURCHASE_INVOICE",
                 "CREATE_PURCHASE_RECEIVE"));
+        // Current on-hand / in-transit quantity shown beside lines while creating an inventory transaction.
+        ALLOWED.put(LookupType.STOCK, Set.of(
+                "VIEW_INVENTORY_REPORT",
+                "CREATE_INVENTORY_ADJUSTMENT",
+                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE"));
     }
 
     public boolean can(Authentication authentication, String lookupType) {

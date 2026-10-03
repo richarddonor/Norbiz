@@ -17,6 +17,7 @@ import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -93,6 +94,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<AppErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         String message = "Invalid value for " + ex.getName() + ": " + ex.getValue();
+        log.warn("Bad request: {}", message);
+        return ResponseEntity.badRequest().body(error(message));
+    }
+
+    // A required @RequestParam is absent (e.g. /lookups/stock without warehouseId).
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<AppErrorResponse> handleMissingParam(MissingServletRequestParameterException ex) {
+        String message = ex.getParameterName() + " is required";
         log.warn("Bad request: {}", message);
         return ResponseEntity.badRequest().body(error(message));
     }

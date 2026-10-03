@@ -5,6 +5,7 @@ import com.chardizard.Norbiz.cache.CacheScope;
 import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
+import com.chardizard.Norbiz.dto.StockLookupResponse;
 import com.chardizard.Norbiz.dto.TransactionLookupResponse;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.*;
@@ -23,10 +24,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static com.chardizard.Norbiz.cache.QueryCache.params;
 
@@ -57,6 +60,7 @@ public class LookupService {
     private final RoleRepository roleRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
+    private final InventoryBalanceRepository inventoryBalanceRepository;
     private final QueryCache queryCache;
 
     // ---- master data ----
@@ -277,6 +281,36 @@ public class LookupService {
                 .orElseThrow(() -> new IllegalArgumentException("Purchase invoice not found: " + id));
         assertCompanyAccess(username, pi.getCompany().getId());
         return toLookup(pi, canViewCostPrice);
+    }
+
+    // ---- stock ----
+
+    // Live on-hand/in-transit quantities for the given items in one warehouse, read straight from the
+    // running InventoryBalance (not cached: every posted movement changes it). One row per requested
+    // item — zeros when the item has never moved in that warehouse — so the form needn't special-case
+    // a missing balance. The warehouse must belong to the requested company; items from elsewhere can't
+    // have a balance in it, so they just come back as zeros without leaking anything.
+    public List<StockLookupResponse> stock(String username, Long companyId, Long warehouseId, Collection<Long> itemIds) {
+        assertCompanyAccess(username, requireCompany(companyId));
+        Warehouse warehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new IllegalArgumentException("Warehouse not found: " + warehouseId));
+        if (!warehouse.getCompany().getId().equals(companyId)) {
+            log.warn("User '{}' denied stock lookup: warehouse {} is not in company {}", username, warehouseId, companyId);
+            throw new SecurityException("Access denied to warehouse: " + warehouseId);
+        }
+        Set<Long> ids = Set.copyOf(itemIds);
+        log.debug("User '{}' looking up stock (companyId={}, warehouseId={}, items={})", username, companyId, warehouseId, ids.size());
+        Map<Long, InventoryBalance> byItem = inventoryBalanceRepository.findByWarehouseIdAndItemIdIn(warehouseId, ids).stream()
+                .collect(Collectors.toMap(b -> b.getItem().getId(), Function.identity()));
+        return ids.stream()
+                .sorted()
+                .map(itemId -> {
+                    InventoryBalance b = byItem.get(itemId);
+                    return new StockLookupResponse(itemId, warehouseId,
+                            b != null ? b.getQuantity() : BigDecimal.ZERO,
+                            b != null ? b.getTransitQuantity() : BigDecimal.ZERO);
+                })
+                .toList();
     }
 
     // ---- mapping ----

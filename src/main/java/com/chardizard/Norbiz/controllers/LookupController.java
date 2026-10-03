@@ -4,6 +4,7 @@ import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
+import com.chardizard.Norbiz.dto.StockLookupResponse;
 import com.chardizard.Norbiz.dto.TransactionLookupResponse;
 import com.chardizard.Norbiz.models.ItemTag;
 import com.chardizard.Norbiz.services.LookupService;
@@ -11,6 +12,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -21,6 +25,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 // Slim, searchable dropdown data for forms. Each lookup is open to the entity's VIEW_ permission
 // OR any permission whose form references that entity — see LookupAccess for the mapping.
@@ -36,6 +42,7 @@ public class LookupController {
     private static final String COMPANY_DESC = "Company whose options to return (must be one of the caller's companies). "
             + "Defaults to the X-Company-Id header (the session's active company); one of the two is required.";
     private static final String ACTIVE_DESC = "Return only active records (default true)";
+    private static final int MAX_STOCK_ITEMS = 500;
 
     private final LookupService lookupService;
 
@@ -334,6 +341,26 @@ public class LookupController {
     public ResponseEntity<AppResponse<TransactionLookupResponse>> purchaseInvoice(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails,
                                                                             Authentication authentication) {
         return ResponseEntity.ok(AppResponse.of(lookupService.purchaseInvoice(id, userDetails.getUsername(), canViewCostPrice(authentication))));
+    }
+
+    // ---- stock ----
+
+    @Operation(summary = "Current stock per item in a warehouse",
+            description = "Live on-hand (quantity) and in-transit (transitQuantity) balance for each requested item in one warehouse, "
+                    + "shown beside lines while creating an inventory transaction. One row per requested item (zeros if it never moved there). "
+                    + "Not paginated: bounded by itemIds (max " + MAX_STOCK_ITEMS + ").")
+    @ApiResponse(responseCode = "200", description = "Stock rows returned")
+    @ApiResponse(responseCode = "400", description = "Missing/oversized itemIds, missing company, or unknown warehouse")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission, no access to company, or warehouse outside the company")
+    @GetMapping("/stock")
+    @PreAuthorize("@lookupAccess.can(authentication, 'STOCK')")
+    public ResponseEntity<AppResponse<List<StockLookupResponse>>> stock(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Warehouse whose balances to read") @RequestParam @NotNull @Positive Long warehouseId,
+            @Parameter(description = "Item IDs (comma-separated or repeated)") @RequestParam @NotEmpty @Size(max = MAX_STOCK_ITEMS) List<@NotNull @Positive Long> itemIds) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.stock(userDetails.getUsername(), company(companyId, headerCompanyId), warehouseId, itemIds)));
     }
 
     private static Long company(Long companyId, Long headerCompanyId) {
