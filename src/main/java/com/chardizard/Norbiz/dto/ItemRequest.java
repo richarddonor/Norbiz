@@ -17,6 +17,9 @@ public class ItemRequest {
 
     @NotNull
     private Long itemCategoryId;
+
+    /** Optional — null leaves the item ungrouped. */
+    private Long itemGroupId;
     private String imagePath;
     private List<String> skus;
     private List<PriceRequest> prices;

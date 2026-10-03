@@ -4,6 +4,7 @@ import com.chardizard.Norbiz.dto.ItemRequest;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.ItemCategoryRepository;
+import com.chardizard.Norbiz.repositories.ItemGroupRepository;
 import com.chardizard.Norbiz.repositories.ItemRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
@@ -35,6 +36,7 @@ public class ItemService {
     private final ItemRepository itemRepository;
     private final CompanyRepository companyRepository;
     private final ItemCategoryRepository itemCategoryRepository;
+    private final ItemGroupRepository itemGroupRepository;
     private final UserRepository userRepository;
     private final EntityManager entityManager;
 
@@ -59,6 +61,7 @@ public class ItemService {
                 SpecificationUtils.containsIgnoreCase("itemCode", filters.get("itemCode")),
                 SpecificationUtils.containsIgnoreCase("name", filters.get("name")),
                 SpecificationUtils.containsIgnoreCase("itemCategory.name", filters.get("category")),
+                SpecificationUtils.containsIgnoreCase("itemGroup.name", filters.get("group")),
                 SpecificationUtils.containsIgnoreCase("company.name", filters.get("company")),
                 SpecificationUtils.containsIgnoreCase("skus.skuCode", filters.get("skus")),
                 unitPriceContains(filters.get("unitPrice"))
@@ -94,10 +97,12 @@ public class ItemService {
         }
 
         ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), company.getId());
+        ItemGroup group = loadGroupForCompany(request.getItemGroupId(), company.getId(), null);
 
         Item item = new Item();
         item.setCompany(company);
         item.setItemCategory(category);
+        item.setItemGroup(group);
         item.setItemCode(request.getItemCode());
         item.setName(request.getName());
         item.setImagePath(request.getImagePath());
@@ -118,6 +123,7 @@ public class ItemService {
         assertCompanyAccess(username, item.getCompany().getId());
 
         ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), item.getCompany().getId());
+        ItemGroup group = loadGroupForCompany(request.getItemGroupId(), item.getCompany().getId(), item.getItemGroup());
 
         BigDecimal existingCostPrice = item.getPrices().stream()
                 .filter(p -> p.getPriceType() == PriceType.COST_PRICE)
@@ -126,6 +132,7 @@ public class ItemService {
                 .orElse(null);
 
         item.setItemCategory(category);
+        item.setItemGroup(group);
         item.setName(request.getName());
         item.setTags(request.getTags() != null ? request.getTags() : new HashSet<>());
         // imagePath is managed exclusively by ItemImageController — do not overwrite here
@@ -206,6 +213,21 @@ public class ItemService {
             throw new IllegalArgumentException("Item category does not belong to company: " + companyId);
         }
         return category;
+    }
+
+    /** An inactive group can't be newly assigned, but an item already in it may keep it. */
+    private ItemGroup loadGroupForCompany(Long groupId, Long companyId, ItemGroup currentGroup) {
+        if (groupId == null) return null;
+        ItemGroup group = itemGroupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("Item group not found: " + groupId));
+        if (!group.getCompany().getId().equals(companyId)) {
+            throw new IllegalArgumentException("Item group does not belong to company: " + companyId);
+        }
+        boolean unchanged = currentGroup != null && currentGroup.getId().equals(groupId);
+        if (!group.isActive() && !unchanged) {
+            throw new IllegalArgumentException("Item group is inactive: " + group.getName());
+        }
+        return group;
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

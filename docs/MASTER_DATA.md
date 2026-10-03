@@ -23,7 +23,8 @@ Data in Norbiz is divided into two main categories: Master and Transactional (se
   Tags are: 
   - INVENTORY: marks that the item inventory physical count is counted and posted during Inventory Movement transactions
 - `PUT /items/{id}` deletes all existing SKUs and prices then re-inserts from the request. `entityManager.flush()` is called before re-insertion to release unique constraints within the same transaction.
-- `ItemSku.skuCode` is globally unique across all companies; `Item.itemCode` is unique per company; `Brand.name` is unique per company; `ItemCategory.name` is unique per company.
+- An Item may belong to at most one `ItemGroup` (optional, `items.item_group_id`). Groups carry a Name, Description, BN Initials, and two percentage rates (0–100, 2 dp): Commission Rate and Focal Commission Rate. An inactive group can't be newly assigned to an item (items already in it keep it), and a group can't be deleted while any item is still assigned to it.
+- `ItemSku.skuCode` is globally unique across all companies; `Item.itemCode` is unique per company; `Brand.name` is unique per company; `ItemCategory.name` is unique per company; `ItemGroup.name` is unique per company.
 
 ## Warehouses
 - Warehouses are where the `Items` are stored

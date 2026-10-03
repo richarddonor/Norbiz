@@ -20,7 +20,7 @@ import java.util.Set;
 public class LookupAccess {
 
     public enum LookupType {
-        SUPPLIER, CUSTOMER, WAREHOUSE, ITEM, ITEM_CATEGORY, EMPLOYEE, USER, ROLE,
+        SUPPLIER, CUSTOMER, WAREHOUSE, ITEM, ITEM_CATEGORY, ITEM_GROUP, EMPLOYEE, USER, ROLE,
         PURCHASE_ORDER, PURCHASE_INVOICE
     }
 
@@ -45,6 +45,9 @@ public class LookupAccess {
                 "VIEW_INVENTORY_REPORT"));
         ALLOWED.put(LookupType.ITEM_CATEGORY, Set.of(
                 "VIEW_ITEM_CATEGORY",
+                "CREATE_ITEM", "UPDATE_ITEM"));
+        ALLOWED.put(LookupType.ITEM_GROUP, Set.of(
+                "VIEW_ITEM_GROUP",
                 "CREATE_ITEM", "UPDATE_ITEM"));
         ALLOWED.put(LookupType.EMPLOYEE, Set.of(
                 "VIEW_EMPLOYEE"));

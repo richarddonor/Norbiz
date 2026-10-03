@@ -17,6 +17,8 @@ public class ItemResponse {
     private String companyName;
     private Long itemCategoryId;
     private String itemCategoryName;
+    private Long itemGroupId;
+    private String itemGroupName;
     private String itemCode;
     private String name;
     private String imagePath;

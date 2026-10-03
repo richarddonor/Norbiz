@@ -51,6 +51,10 @@ public class DataInitializer implements CommandLineRunner {
         Permission createItemCategoryPermission   = findOrCreate("CREATE_ITEM_CATEGORY",  "Maintenance - Item Category Create");
         Permission updateItemCategoryPermission   = findOrCreate("UPDATE_ITEM_CATEGORY",  "Maintenance - Item Category Update");
         Permission deleteItemCategoryPermission   = findOrCreate("DELETE_ITEM_CATEGORY",  "Maintenance - Item Category Delete");
+        Permission viewItemGroupPermission        = findOrCreate("VIEW_ITEM_GROUP",       "Maintenance - Item Group View");
+        Permission createItemGroupPermission      = findOrCreate("CREATE_ITEM_GROUP",     "Maintenance - Item Group Create");
+        Permission updateItemGroupPermission      = findOrCreate("UPDATE_ITEM_GROUP",     "Maintenance - Item Group Update");
+        Permission deleteItemGroupPermission      = findOrCreate("DELETE_ITEM_GROUP",     "Maintenance - Item Group Delete");
         Permission viewWarehousePermission        = findOrCreate("VIEW_WAREHOUSE",        "Maintenance - Warehouse View");
         Permission createWarehousePermission      = findOrCreate("CREATE_WAREHOUSE",      "Maintenance - Warehouse Create");
         Permission updateWarehousePermission      = findOrCreate("UPDATE_WAREHOUSE",      "Maintenance - Warehouse Update");
@@ -105,6 +109,7 @@ public class DataInitializer implements CommandLineRunner {
                 viewItemPermission, createItemPermission, updateItemPermission,
                 viewBrandPermission, createBrandPermission, updateBrandPermission,
                 viewItemCategoryPermission, createItemCategoryPermission, updateItemCategoryPermission,
+                viewItemGroupPermission, createItemGroupPermission, updateItemGroupPermission,
                 viewWarehousePermission, createWarehousePermission, updateWarehousePermission,
                 viewEmployeePermission, createEmployeePermission, updateEmployeePermission,
                 viewSupplierPermission, createSupplierPermission, updateSupplierPermission,
@@ -129,6 +134,7 @@ public class DataInitializer implements CommandLineRunner {
                 viewItemPermission, createItemPermission, updateItemPermission, deleteItemPermission, viewCostPricePermission,
                 viewBrandPermission, createBrandPermission, updateBrandPermission, deleteBrandPermission,
                 viewItemCategoryPermission, createItemCategoryPermission, updateItemCategoryPermission, deleteItemCategoryPermission,
+                viewItemGroupPermission, createItemGroupPermission, updateItemGroupPermission, deleteItemGroupPermission,
                 viewWarehousePermission, createWarehousePermission, updateWarehousePermission, deleteWarehousePermission,
                 viewEmployeePermission, createEmployeePermission, updateEmployeePermission, deleteEmployeePermission,
                 viewSupplierPermission, createSupplierPermission, updateSupplierPermission, deleteSupplierPermission,

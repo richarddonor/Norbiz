@@ -12,6 +12,7 @@ Company ──< Customer (type: CUSTOMER | OUTLET)
 Company ──< Item ──< ItemSku
                 └──< ItemPrice (one row per PriceType enum value)
                 └──> ItemCategory (unique name per company)
+                └──> ItemGroup (optional; unique name per company)
 Company ──< InventoryAdjustment ──< InventoryAdjustmentLine ──> Item
                                 └──> Warehouse
 Company ──< PurchaseOrder ──< PurchaseOrderLine ──> Item
@@ -47,4 +48,4 @@ For example, Foreign Key name = "ITEMS_COMPANY_ID_FK"
 ## Key service patterns
 
 - `PUT /items/{id}` deletes all existing SKUs and prices then re-inserts from the request. `entityManager.flush()` is called before re-insertion to release unique constraints within the same transaction.
-- `ItemSku.skuCode` is globally unique across all companies; `Item.itemCode` is unique per company; `Brand.name` is unique per company; `ItemCategory.name` is unique per company.
+- `ItemSku.skuCode` is globally unique across all companies; `Item.itemCode` is unique per company; `Brand.name` is unique per company; `ItemCategory.name` is unique per company; `ItemGroup.name` is unique per company.

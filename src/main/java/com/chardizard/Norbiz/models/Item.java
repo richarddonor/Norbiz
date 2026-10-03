@@ -32,6 +32,11 @@ public class Item extends Auditable {
         foreignKey = @ForeignKey(name = "ITEMS_ITEM_CATEGORY_ID_FK"))
     private ItemCategory itemCategory;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "item_group_id",
+        foreignKey = @ForeignKey(name = "ITEMS_ITEM_GROUP_ID_FK"))
+    private ItemGroup itemGroup;
+
     @Column(name = "item_code", nullable = false, length = 100)
     private String itemCode;
 

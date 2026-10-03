@@ -51,6 +51,7 @@ public class ItemController {
             @Parameter(description = "Filter by item code (contains)") @RequestParam(required = false) String itemCode,
             @Parameter(description = "Filter by name (contains)") @RequestParam(required = false) String name,
             @Parameter(description = "Filter by category name (contains)") @RequestParam(required = false) String category,
+            @Parameter(description = "Filter by item group name (contains)") @RequestParam(required = false) String group,
             @Parameter(description = "Filter by company name (contains)") @RequestParam(required = false) String company,
             @Parameter(description = "Filter by SKU code (contains)") @RequestParam(required = false) String skus,
             @Parameter(description = "Filter by unit price (contains)") @RequestParam(required = false) String unitPrice,
@@ -59,6 +60,7 @@ public class ItemController {
         if (StringUtils.hasText(itemCode)) filters.put("itemCode", itemCode);
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(category)) filters.put("category", category);
+        if (StringUtils.hasText(group)) filters.put("group", group);
         if (StringUtils.hasText(company)) filters.put("company", company);
         if (StringUtils.hasText(skus)) filters.put("skus", skus);
         if (StringUtils.hasText(unitPrice)) filters.put("unitPrice", unitPrice);
@@ -120,6 +122,10 @@ public class ItemController {
         res.setCompanyName(item.getCompany().getName());
         res.setItemCategoryId(item.getItemCategory().getId());
         res.setItemCategoryName(item.getItemCategory().getName());
+        if (item.getItemGroup() != null) {
+            res.setItemGroupId(item.getItemGroup().getId());
+            res.setItemGroupName(item.getItemGroup().getName());
+        }
         res.setItemCode(item.getItemCode());
         res.setName(item.getName());
         res.setImagePath(item.getImagePath());

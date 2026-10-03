@@ -172,6 +172,32 @@ public class LookupController {
         return ResponseEntity.ok(AppResponse.of(lookupService.itemCategory(id, userDetails.getUsername())));
     }
 
+    // ---- item groups ----
+
+    @Operation(summary = "Item group dropdown", description = "code is the group's BN initials.")
+    @ApiResponse(responseCode = "200", description = "Item group options returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/item-groups")
+    @PreAuthorize("@lookupAccess.can(authentication, 'ITEM_GROUP')")
+    public ResponseEntity<AppResponse<PageResponse<LookupResponse>>> itemGroups(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Search text (contains, case-insensitive) over name") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = ACTIVE_DESC) @RequestParam(defaultValue = "true") boolean activeOnly,
+            Pageable pageable) {
+        return ok(lookupService.itemGroups(userDetails.getUsername(), company(companyId, headerCompanyId), q, activeOnly, pageable));
+    }
+
+    @Operation(summary = "Item group option by ID")
+    @ApiResponse(responseCode = "200", description = "Item group option returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/item-groups/{id}")
+    @PreAuthorize("@lookupAccess.can(authentication, 'ITEM_GROUP')")
+    public ResponseEntity<AppResponse<LookupResponse>> itemGroup(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.itemGroup(id, userDetails.getUsername())));
+    }
+
     // ---- employees ----
 
     @Operation(summary = "Employee dropdown", description = "code is the employee code; name is \"first last\".")

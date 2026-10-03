@@ -17,6 +17,7 @@ public enum CacheRegion {
     LOOKUP_WAREHOUSE(Kind.LOOKUP, Warehouse.class),
     LOOKUP_ITEM(Kind.LOOKUP, Item.class, ItemPrice.class),
     LOOKUP_ITEM_CATEGORY(Kind.LOOKUP, ItemCategory.class),
+    LOOKUP_ITEM_GROUP(Kind.LOOKUP, ItemGroup.class),
     LOOKUP_EMPLOYEE(Kind.LOOKUP, Employee.class),
     LOOKUP_USER(Kind.LOOKUP, User.class),
     LOOKUP_ROLE(Kind.LOOKUP, Role.class),
@@ -26,7 +27,8 @@ public enum CacheRegion {
     // ---- master-data list endpoints ----
     LIST_BRAND(Kind.LIST, Brand.class, Company.class),
     LIST_ITEM_CATEGORY(Kind.LIST, ItemCategory.class, Company.class),
-    LIST_ITEM(Kind.LIST, Item.class, ItemPrice.class, ItemSku.class, ItemCategory.class, Company.class),
+    LIST_ITEM_GROUP(Kind.LIST, ItemGroup.class, Company.class),
+    LIST_ITEM(Kind.LIST, Item.class, ItemPrice.class, ItemSku.class, ItemCategory.class, ItemGroup.class, Company.class),
     LIST_ITEM_SKU(Kind.LIST, ItemSku.class, Item.class),
     LIST_WAREHOUSE(Kind.LIST, Warehouse.class, Company.class),
     LIST_SUPPLIER(Kind.LIST, Supplier.class, Company.class),

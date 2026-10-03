@@ -52,6 +52,7 @@ public class LookupService {
     private final WarehouseRepository warehouseRepository;
     private final ItemRepository itemRepository;
     private final ItemCategoryRepository itemCategoryRepository;
+    private final ItemGroupRepository itemGroupRepository;
     private final EmployeeRepository employeeRepository;
     private final RoleRepository roleRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
@@ -143,6 +144,22 @@ public class LookupService {
                 .orElseThrow(() -> new IllegalArgumentException("Item category not found: " + id));
         assertCompanyAccess(username, c.getCompany().getId());
         return toLookup(c);
+    }
+
+    public Page<LookupResponse> itemGroups(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_ITEM_GROUP, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+                itemGroupRepository, username, companyId, ItemGroup.class,
+                SpecificationUtils.allOf(
+                        SpecificationUtils.containsIgnoreCase("name", q),
+                        activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
+                withDefaultSort(pageable, "name"), this::toLookup);
+    }
+
+    public LookupResponse itemGroup(Long id, String username) {
+        ItemGroup g = itemGroupRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Item group not found: " + id));
+        assertCompanyAccess(username, g.getCompany().getId());
+        return toLookup(g);
     }
 
     public Page<LookupResponse> employees(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
@@ -287,6 +304,10 @@ public class LookupService {
 
     private LookupResponse toLookup(ItemCategory c) {
         return new LookupResponse(c.getId(), c.getCompany().getId(), null, c.getName(), true);
+    }
+
+    private LookupResponse toLookup(ItemGroup g) {
+        return new LookupResponse(g.getId(), g.getCompany().getId(), g.getBnInitials(), g.getName(), g.isActive());
     }
 
     private LookupResponse toLookup(Employee e) {

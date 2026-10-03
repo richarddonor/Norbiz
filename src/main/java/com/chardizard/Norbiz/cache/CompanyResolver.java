@@ -49,6 +49,7 @@ final class CompanyResolver {
             case InventoryMovement m -> m.getCompany().getId();
             case Item i -> i.getCompany().getId();
             case ItemCategory c -> c.getCompany().getId();
+            case ItemGroup g -> g.getCompany().getId();
             case PurchaseInvoice p -> p.getCompany().getId();
             case PurchaseOrder p -> p.getCompany().getId();
             case PurchaseReceive p -> p.getCompany().getId();
