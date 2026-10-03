@@ -8,6 +8,7 @@ import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.PermissionRepository;
 import com.chardizard.Norbiz.repositories.RoleRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
+import com.chardizard.Norbiz.services.DefaultDocumentTemplateProvisioner;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,6 +25,7 @@ public class DataInitializer implements CommandLineRunner {
     private final PermissionRepository permissionRepository;
     private final CompanyRepository companyRepository;
     private final PasswordEncoder passwordEncoder;
+    private final DefaultDocumentTemplateProvisioner defaultDocumentTemplateProvisioner;
 
     @Override
     public void run(String... args) {
@@ -152,6 +154,9 @@ public class DataInitializer implements CommandLineRunner {
             c.setName("Norbiz");
             return companyRepository.save(c);
         });
+
+        // Every company gets a default print template per document type (only missing ones are created)
+        defaultDocumentTemplateProvisioner.ensureDefaultsForAllCompanies();
 
         // Seed users (skip if already present)
         if (userRepository.findByUsername("admin").isEmpty()) {

@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.services;
 
+import com.chardizard.Norbiz.dto.DocumentTemplateLayoutRequest;
 import com.chardizard.Norbiz.dto.DocumentTemplateRequest;
 import com.chardizard.Norbiz.models.Company;
 import com.chardizard.Norbiz.models.DocumentTemplate;
@@ -13,7 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,12 +74,24 @@ public class DocumentTemplateService {
                         "No default template found for company " + companyId + " and document type " + documentType));
     }
 
+    // Active templates a record can be printed with — the print button offers a choice when there's more than one.
+    // Default first, then by name; the caller's sort is ignored so the default is always the first option.
+    public Page<DocumentTemplate> findPrintable(String username, Long companyId, String documentType, Pageable pageable) {
+        assertCompanyAccess(username, companyId);
+        Pageable ordered = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(Sort.Order.desc("defaultTemplate"), Sort.Order.asc("name")));
+        return documentTemplateRepository.findByCompanyIdAndDocumentTypeAndActiveTrue(companyId, documentType, ordered);
+    }
+
     @Transactional
     public DocumentTemplate create(DocumentTemplateRequest request, String username) {
         Company company = companyRepository.findById(request.getCompanyId())
                 .orElseThrow(() -> new IllegalArgumentException("Company not found: " + request.getCompanyId()));
 
         assertCompanyAccess(username, company.getId());
+        if (request.getLayout() == null || request.getLayout().isBlank()) {
+            throw new IllegalArgumentException("layout is required when creating a document template");
+        }
 
         DocumentTemplate template = new DocumentTemplate();
         template.setCompany(company);
@@ -101,7 +116,9 @@ public class DocumentTemplateService {
 
         template.setDocumentType(request.getDocumentType());
         template.setName(request.getName());
-        template.setLayout(request.getLayout());
+        if (request.getLayout() != null && !request.getLayout().isBlank()) {
+            template.setLayout(request.getLayout());
+        }
         template.setActive(request.isActive());
         template.setDefaultTemplate(request.isDefaultTemplate());
 
@@ -111,6 +128,15 @@ public class DocumentTemplateService {
         }
 
         log.info("User '{}' updated document template '{}' (id={})", username, saved.getName(), saved.getId());
+        return saved;
+    }
+
+    @Transactional
+    public DocumentTemplate updateLayout(Long id, DocumentTemplateLayoutRequest request, String username) {
+        DocumentTemplate template = findById(id, username);
+        template.setLayout(request.getLayout());
+        DocumentTemplate saved = documentTemplateRepository.save(template);
+        log.info("User '{}' updated layout of document template '{}' (id={})", username, saved.getName(), saved.getId());
         return saved;
     }
 

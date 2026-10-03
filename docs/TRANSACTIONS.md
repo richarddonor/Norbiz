@@ -7,7 +7,7 @@ Specification for **Transactional Data** in Norbiz — day-to-day business recor
 - Always auto-generate a transaction reference number value for each new transaction.
 - Most transactions will have a sheet number value. Sheet number is based on the control number in the physical document of that transaction.
 - Always have a Notes column for comments or remarks.
-- Always add a default document template for printing (see `## Standard transaction document layout` below).
+- Always add a default document template for printing — done by giving the type a `DocumentSchemaRegistry` entry with `DefaultDocumentLayout` hints; the template itself is generated for every company on startup (see `## Standard transaction document layout` below).
 - Every create and void records a `TransactionEvent` (CREATED / VOIDED), and users can take company-configured actions on a transaction. See `docs/TRANSACTION_ACTIONS.md`, including its checklist for wiring up a new transaction type.
 - **Inactive references are rejected on create.** A warehouse, supplier, or item a user picks fresh must be `active` (and belong to the transaction's company): enforced in Inventory Adjustment, Purchase Order, and Direct-mode Purchase Invoice create. Transactions that *load* from a source (PO-based Purchase Invoice, Purchase Receive) are exempt — they inherit the source's warehouse/supplier/items, and deactivating a record after a PO was raised must not strand that PO. The `/lookups/*` dropdowns hide inactive records by default to match.
 - Every transaction line carries a `lineNumber` — the order the user entered that line in on the frontend (1-based, assigned server-side from request array order, not client-supplied). The line collection is always returned sorted by it (`@OrderBy("lineNumber ASC")` on the owning entity's `lines` field), so line item detail always displays in entry order. A Purchase Invoice copying lines from a Purchase Order (PO-based mode) copies the PO line's `lineNumber` verbatim, preserving the original entry order. A Purchase Receive line that gets split across more than one source line (see `## Purchase Receive` below) has every split sharing the request line's `lineNumber`.
@@ -49,15 +49,15 @@ Specification for **Transactional Data** in Norbiz — day-to-day business recor
 5. **Remarks** — the transaction's notes/comments field (see `## General rules` above; on `InventoryAdjustment` this binds to `reason`, labeled "Remarks" in the schema registry to match — every transaction type's notes field should likewise be labeled "Remarks" in its schema registry entry regardless of its underlying column name).
 6. **Line items** table, positioned at the **bottom** of the page — below every header field above, occupying the remaining page height. Column widths are per-template adjustable (`TemplateTableColumn.width`), not fixed.
 
-The `INVENTORY_ADJUSTMENT` default templates (one per company, named `Inventory Adjustment - Default`) are built to this layout and are the canonical reference implementation.
+Default templates (one per company per type, named `<Display Name> - Default`, e.g. `Inventory Adjustment - Default`) are generated to this layout by `DefaultDocumentTemplateFactory`.
 
-**Checklist for wiring up a new transaction type's print template** (e.g. when `PurchaseOrder` is built):
-1. Add a `DocumentSchemaRegistry` entry on the backend for the new `documentType`, with the notes field labeled "Remarks" and the counterparty field (Supplier/Customer/Outlet) included as a header field.
+**Checklist for wiring up a new transaction type's print template** (e.g. when `SalesOrder` is built):
+1. Add a `DocumentSchemaRegistry` entry for the new `documentType`: its schema (notes field labeled "Remarks", counterparty field — Supplier/Customer/Outlet — included as a header field) **and** its `DefaultDocumentLayout` hints (display name, date field, counterparty label + field, remarks field, the repeating group(s) to print with column widths summing to ≤ 754px).
 2. Mirror it in the frontend's `DOCUMENT_TYPES` array (`DocumentTemplatesPage.tsx`).
-3. Build a default template per company using the coordinate layout below as the starting point — swap the field `binding`s for the new type's schema paths, keep the structure (letterhead → title → separator → ref#/sheet#/date row → counterparty row → remarks row → separator → line items title → column headers → separator → table → footer) and the same x/y positions where the field role is equivalent. **There is no seed script for this** — `db/init.sql`/`DataInitializer` never create `DocumentTemplate` rows (see root `CLAUDE.md`). Do it by hand: `POST /document-templates` once per existing company with this layout and `defaultTemplate: true`.
-4. Set `defaultTemplate: true` per company and verify the print action resolves it (see root `CLAUDE.md`'s company-scoping gotcha under Document Templates & Printing — one default per `(company, documentType)`).
+3. Restart the app — `DefaultDocumentTemplateProvisioner` creates the `defaultTemplate: true` template for every company. Nothing to POST by hand. `DefaultDocumentTemplateTest` checks every registered type builds a valid layout.
 
-### Canonical starting layout (A4 portrait, 794×1123px) — copy and re-bind for a new document type
+### Canonical starting layout (A4 portrait, 794×1123px) — what `DefaultDocumentTemplateFactory` generates
+Placeholders in `<...>` are filled from the type's schema and `DefaultDocumentLayout` hints; line-item header/column positions are derived from the hinted column widths. A type with more than one table (Purchase Invoice: `lines` + `fees`) splits the table area by each table's `weight`; extra tables use ids prefixed with their group path (`fees-title`, `fees-table`, ...).
 ```json
 {
   "pageSize": "A4", "orientation": "portrait",
@@ -93,7 +93,7 @@ The `INVENTORY_ADJUSTMENT` default templates (one per company, named `Inventory 
         { "binding": "<col2Path>", "label": "<Col 2>", "width": 410 },
         { "binding": "<col3Path>", "label": "<Col 3>", "width": 100 }
       ],
-      "style": { "fontSize": 11 } },
+      "style": { "fontSize": 11, "borderWidth": 1, "borderColor": "#E5E7EB" } },
 
     { "id": "sep-4", "type": "line", "orientation": "horizontal", "x": 20, "y": 1050, "width": 754, "height": 1, "style": { "borderWidth": 1, "borderColor": "#000000" } },
     { "id": "posted-label", "type": "static", "x": 20, "y": 1060, "width": 80, "height": 18, "text": "Posted by:", "style": { "fontSize": 10 } },
@@ -158,4 +158,4 @@ The `INVENTORY_ADJUSTMENT` default templates (one per company, named `Inventory 
 - **Mutual exclusion with Purchase Invoice on a Purchase Order** (see `## Purchase Order`'s implementation notes and `## Transaction Loading` above): since `PurchaseOrder.loaded`/`quantityLoaded` is shared between "invoiced" and "received" consumers, `PurchaseInvoiceService.loadAndValidatePurchaseOrder` rejects PO-based invoicing once **any** receiving has happened against that PO (even partial) — otherwise the invoice's unconditional full-quantity copy would silently clobber the receive's `quantityLoaded` tracking. In short: a given PO is consumed by an invoice *or* by receive(s), never both.
 - Carries `voided`/`voidedAt`/`voidedBy` and `loaded`/`quantityLoaded`, same shape as every other transaction type here — but **inert**: nothing currently loads from a Purchase Receive. Voiding has no "already loaded" guard as a result (see `## Voiding` above) — it reverses the goods movement (`quantityDelta`/`transitQuantityDelta` both negated relative to the original) with `sourceType = "PURCHASE_RECEIVE_VOID"`, and decrements the matched source line's `quantityLoaded` by the voided amount, recomputing the source's `loaded` flag back down as needed.
 - Document type for printing: `PURCHASE_RECEIVE`. Notes field is `remarks`, labeled "Remarks" per the general convention. Its `DocumentSchemaRegistry` entry has one repeating group, `lines` (`itemCode`/`itemName`/`quantity` — no `costPrice`, since Purchase Receive carries no cost data).
-- **No default print template exists yet** — per the checklist under `## Standard transaction document layout`, someone still needs to `POST /document-templates` once per company with `defaultTemplate: true` for `documentType: "PURCHASE_RECEIVE"`, and mirror the type in the frontend's `DOCUMENT_TYPES` array.
+- Default print template is generated on startup like every other type; the frontend's `DOCUMENT_TYPES` array still needs `PURCHASE_RECEIVE` mirrored if it isn't there yet.

@@ -19,6 +19,8 @@ All runtime config is environment-driven via `src/main/resources/application.pro
 
 `db/init.sql` creates all tables and seeds 49 permissions, 3 roles (`ADMIN`, `SYSTEM_ADMIN`, `SUPER_ADMIN`), and 3 default users (`admin`, `super_admin`, `system_admin`) with BCrypt passwords.
 
+On startup `DataInitializer` also generates any missing default print template per `(company, documentType)` — see `docs/DOCUMENT_TEMPLATES.md`.
+
 `db/drop_all.sql` tears down the entire schema.
 
 `@EnableJpaAuditing` is active; `createdAt`, `updatedAt`, `createdBy`, `updatedBy` are populated automatically on all `Auditable` subclasses via `AuditorAwareImpl`, which reads the current username from `SecurityContext`.

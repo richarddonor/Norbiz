@@ -23,7 +23,8 @@ public class DocumentTemplateRequest {
 
     // Opaque JSON layout — no size cap here beyond what the DB column allows (TEXT);
     // this deliberately does not follow the general "strings under 255 chars" rule.
-    @NotBlank
+    // Required on create; on update null keeps the stored layout, so the metadata form never
+    // overwrites the designer's work (the designer saves via PUT /{id}/layout).
     private String layout;
 
     private boolean defaultTemplate = false;

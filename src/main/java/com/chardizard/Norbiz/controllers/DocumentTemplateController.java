@@ -5,6 +5,7 @@ import com.chardizard.Norbiz.cache.CacheScopeResolver;
 import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.DocumentSchemaResponse;
+import com.chardizard.Norbiz.dto.DocumentTemplateLayoutRequest;
 import com.chardizard.Norbiz.dto.DocumentTemplateRequest;
 import com.chardizard.Norbiz.dto.DocumentTemplateResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
@@ -85,6 +86,22 @@ public class DocumentTemplateController {
         return ResponseEntity.ok(AppResponse.of(toResponse(documentTemplateService.findDefault(userDetails.getUsername(), companyId, documentType))));
     }
 
+    @Operation(summary = "List active templates a document type can be printed with",
+            description = "Active templates for one company and document type, default first then by name. The print button offers a choice when more than one is returned.")
+    @ApiResponse(responseCode = "200", description = "Printable templates returned")
+    @ApiResponse(responseCode = "403", description = "Missing MANAGE_DOCUMENT_TEMPLATES permission or no access to company")
+    @GetMapping("/printable")
+    @PreAuthorize("hasAuthority('MANAGE_DOCUMENT_TEMPLATES')")
+    public ResponseEntity<AppResponse<PageResponse<DocumentTemplateResponse>>> getPrintable(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "Company ID") @RequestParam Long companyId,
+            @Parameter(description = "Document type, e.g. PURCHASE_ORDER") @RequestParam String documentType,
+            Pageable pageable) {
+        var templates = documentTemplateService.findPrintable(userDetails.getUsername(), companyId, documentType, pageable)
+                .map(this::toResponse);
+        return ResponseEntity.ok(AppResponse.of(PageResponse.of(templates)));
+    }
+
     @Operation(summary = "Get the bindable field schema for a document type", description = "Powers the designer's field palette.")
     @ApiResponse(responseCode = "200", description = "Schema returned")
     @ApiResponse(responseCode = "400", description = "Unknown document type")
@@ -117,6 +134,19 @@ public class DocumentTemplateController {
                                                                         @Valid @RequestBody DocumentTemplateRequest request,
                                                                         @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(AppResponse.of(toResponse(documentTemplateService.update(id, request, userDetails.getUsername()))));
+    }
+
+    @Operation(summary = "Update a document template's layout only",
+            description = "Used by the designer. Leaves name, document type, default and active flags untouched.")
+    @ApiResponse(responseCode = "200", description = "Layout updated")
+    @ApiResponse(responseCode = "403", description = "Missing MANAGE_DOCUMENT_TEMPLATES permission or no access to company")
+    @ApiResponse(responseCode = "404", description = "Template not found")
+    @PutMapping("/{id}/layout")
+    @PreAuthorize("hasAuthority('MANAGE_DOCUMENT_TEMPLATES')")
+    public ResponseEntity<AppResponse<DocumentTemplateResponse>> updateLayout(@Parameter(description = "Template ID") @PathVariable Long id,
+                                                                              @Valid @RequestBody DocumentTemplateLayoutRequest request,
+                                                                              @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(toResponse(documentTemplateService.updateLayout(id, request, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Delete document template")
