@@ -90,6 +90,9 @@ public class InventoryAdjustmentService {
         if (!warehouse.getCompany().getId().equals(company.getId())) {
             throw new IllegalArgumentException("Warehouse does not belong to company: " + company.getId());
         }
+        if (!warehouse.isActive()) {
+            throw new IllegalArgumentException("Warehouse is inactive: " + warehouse.getName());
+        }
 
         Instant adjustmentDate = DateRangeUtils.startOfDayUtc(request.getAdjustmentDate());
         if (adjustmentDate == null) {
@@ -116,6 +119,9 @@ public class InventoryAdjustmentService {
             }
             if (!item.getTags().contains(ItemTag.INVENTORY)) {
                 throw new IllegalArgumentException("Item is not inventory-tracked: " + item.getItemCode());
+            }
+            if (!item.isActive()) {
+                throw new IllegalArgumentException("Item is inactive: " + item.getItemCode());
             }
             if (lineRequest.getQuantity() == null || lineRequest.getQuantity().compareTo(BigDecimal.ZERO) == 0) {
                 throw new IllegalArgumentException("Line quantity must be non-zero for item: " + item.getItemCode());

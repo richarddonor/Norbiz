@@ -16,6 +16,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.filter.ServerHttpObservationFilter;
 
@@ -66,6 +67,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<AppErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
                 .map(e -> e.getField() + ": " + e.getDefaultMessage())
+                .collect(Collectors.joining(", "));
+        log.warn("Validation failed: {}", message);
+        return ResponseEntity.badRequest().body(error(message));
+    }
+
+    // Constraint violations on @RequestParam/@PathVariable (e.g. @Size on a lookup's ?q=), which Spring
+    // MVC's built-in method validation raises instead of MethodArgumentNotValidException.
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<AppErrorResponse> handleMethodValidation(HandlerMethodValidationException ex) {
+        String message = ex.getParameterValidationResults().stream()
+                .flatMap(r -> r.getResolvableErrors().stream()
+                        .map(e -> r.getMethodParameter().getParameterName() + ": " + e.getDefaultMessage()))
                 .collect(Collectors.joining(", "));
         log.warn("Validation failed: {}", message);
         return ResponseEntity.badRequest().body(error(message));

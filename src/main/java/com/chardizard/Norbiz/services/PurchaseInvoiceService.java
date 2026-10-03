@@ -107,6 +107,16 @@ public class PurchaseInvoiceService {
         if (!supplier.getCompany().getId().equals(company.getId())) {
             throw new IllegalArgumentException("Supplier does not belong to company: " + company.getId());
         }
+        // A PO-based invoice inherits the PO's warehouse/supplier (validated to match), so a record
+        // deactivated after the PO was raised must not strand it; only Direct mode picks them fresh.
+        if (request.getPurchaseOrderId() == null) {
+            if (!warehouse.isActive()) {
+                throw new IllegalArgumentException("Warehouse is inactive: " + warehouse.getName());
+            }
+            if (!supplier.isActive()) {
+                throw new IllegalArgumentException("Supplier is inactive: " + supplier.getName());
+            }
+        }
 
         Instant invoiceDate = DateRangeUtils.startOfDayUtc(request.getInvoiceDate());
         if (invoiceDate == null) {
@@ -170,6 +180,9 @@ public class PurchaseInvoiceService {
                 }
                 if (!item.getTags().contains(ItemTag.INVENTORY)) {
                     throw new IllegalArgumentException("Item is not inventory-tracked: " + item.getItemCode());
+                }
+                if (!item.isActive()) {
+                    throw new IllegalArgumentException("Item is inactive: " + item.getItemCode());
                 }
                 if (lineRequest.getQuantity() == null || lineRequest.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
                     throw new IllegalArgumentException("Line quantity must be greater than zero for item: " + item.getItemCode());

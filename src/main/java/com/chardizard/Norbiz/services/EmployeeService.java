@@ -76,9 +76,7 @@ public class EmployeeService {
         employee.setTags(request.getTags() != null ? request.getTags() : new HashSet<>());
 
         if (request.getUserId() != null) {
-            User user = userRepository.findById(request.getUserId())
-                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + request.getUserId()));
-            employee.setUser(user);
+            employee.setUser(loadUserForCompany(request.getUserId(), employee.getCompany().getId()));
         }
 
         Employee saved = employeeRepository.save(employee);
@@ -104,9 +102,7 @@ public class EmployeeService {
         employee.setTags(request.getTags() != null ? request.getTags() : new HashSet<>());
 
         if (request.getUserId() != null) {
-            User user = userRepository.findById(request.getUserId())
-                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + request.getUserId()));
-            employee.setUser(user);
+            employee.setUser(loadUserForCompany(request.getUserId(), employee.getCompany().getId()));
         } else {
             employee.setUser(null);
         }
@@ -121,6 +117,15 @@ public class EmployeeService {
         Employee employee = findById(id, username);
         employeeRepository.delete(employee);
         log.info("User '{}' deleted employee '{}' (id={})", username, employee.getEmployeeCode(), id);
+    }
+
+    private User loadUserForCompany(Long userId, Long companyId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        if (user.getCompanies().stream().noneMatch(c -> c.getId().equals(companyId))) {
+            throw new IllegalArgumentException("User does not belong to company: " + companyId);
+        }
+        return user;
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

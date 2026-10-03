@@ -93,8 +93,7 @@ public class ItemService {
             throw new IllegalArgumentException("Item code already exists for this company");
         }
 
-        ItemCategory category = itemCategoryRepository.findById(request.getItemCategoryId())
-                .orElseThrow(() -> new IllegalArgumentException("Item category not found: " + request.getItemCategoryId()));
+        ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), company.getId());
 
         Item item = new Item();
         item.setCompany(company);
@@ -118,8 +117,7 @@ public class ItemService {
 
         assertCompanyAccess(username, item.getCompany().getId());
 
-        ItemCategory category = itemCategoryRepository.findById(request.getItemCategoryId())
-                .orElseThrow(() -> new IllegalArgumentException("Item category not found: " + request.getItemCategoryId()));
+        ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), item.getCompany().getId());
 
         BigDecimal existingCostPrice = item.getPrices().stream()
                 .filter(p -> p.getPriceType() == PriceType.COST_PRICE)
@@ -199,6 +197,15 @@ public class ItemService {
             price.setAmount(existingCostPrice);
             item.getPrices().add(price);
         }
+    }
+
+    private ItemCategory loadCategoryForCompany(Long categoryId, Long companyId) {
+        ItemCategory category = itemCategoryRepository.findById(categoryId)
+                .orElseThrow(() -> new IllegalArgumentException("Item category not found: " + categoryId));
+        if (!category.getCompany().getId().equals(companyId)) {
+            throw new IllegalArgumentException("Item category does not belong to company: " + companyId);
+        }
+        return category;
     }
 
     private void assertCompanyAccess(String username, Long companyId) {
