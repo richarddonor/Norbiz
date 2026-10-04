@@ -150,6 +150,71 @@ public class DocumentSchemaRegistry {
                                     new DefaultDocumentLayout.Column("itemName", 410),
                                     new DefaultDocumentLayout.Column("quantity", 100))))
                     )
+            ),
+            "DELIVERY_RECEIPT", new Entry(
+                    new DocumentSchemaResponse(
+                            "DELIVERY_RECEIPT",
+                            List.of(
+                                    new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
+                                    new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
+                                    new DocumentFieldSchema("companyName", "Company", "string"),
+                                    new DocumentFieldSchema("customerName", "Customer", "string"),
+                                    new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
+                                    new DocumentFieldSchema("destinationWarehouseName", "Outlet Warehouse", "string"),
+                                    new DocumentFieldSchema("deliveryDate", "Delivery Date", "date"),
+                                    new DocumentFieldSchema("totalAmount", "Total Amount", "currency"),
+                                    new DocumentFieldSchema("remarks", "Remarks", "string"),
+                                    new DocumentFieldSchema("createdBy", "Posted By", "user")
+                            ),
+                            List.of(
+                                    new DocumentRepeatingGroupSchema("lines", "Line Items", List.of(
+                                            new DocumentFieldSchema("itemCode", "Item Code", "string"),
+                                            new DocumentFieldSchema("itemName", "Item Name", "string"),
+                                            new DocumentFieldSchema("quantity", "Quantity", "number"),
+                                            new DocumentFieldSchema("unitPrice", "Unit Price", "currency"),
+                                            new DocumentFieldSchema("amount", "Amount", "currency")
+                                    ))
+                            )
+                    ),
+                    new DefaultDocumentLayout(
+                            "Delivery Receipt", "deliveryDate", "Customer:", "customerName", "remarks",
+                            List.of(new DefaultDocumentLayout.Table("lines", "Line Items", 1, List.of(
+                                    new DefaultDocumentLayout.Column("itemCode", 120),
+                                    new DefaultDocumentLayout.Column("itemName", 300),
+                                    new DefaultDocumentLayout.Column("quantity", 90),
+                                    new DefaultDocumentLayout.Column("unitPrice", 110),
+                                    new DefaultDocumentLayout.Column("amount", 120))))
+                    )
+            ),
+            "OUTLET_RECEIVE", new Entry(
+                    new DocumentSchemaResponse(
+                            "OUTLET_RECEIVE",
+                            List.of(
+                                    new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
+                                    new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
+                                    new DocumentFieldSchema("companyName", "Company", "string"),
+                                    new DocumentFieldSchema("customerName", "Outlet", "string"),
+                                    new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
+                                    new DocumentFieldSchema("deliveryReceiptReferenceNumber", "Delivery Receipt #", "string"),
+                                    new DocumentFieldSchema("receiptDate", "Receipt Date", "date"),
+                                    new DocumentFieldSchema("remarks", "Remarks", "string"),
+                                    new DocumentFieldSchema("createdBy", "Posted By", "user")
+                            ),
+                            List.of(
+                                    new DocumentRepeatingGroupSchema("lines", "Line Items", List.of(
+                                            new DocumentFieldSchema("itemCode", "Item Code", "string"),
+                                            new DocumentFieldSchema("itemName", "Item Name", "string"),
+                                            new DocumentFieldSchema("quantity", "Quantity", "number")
+                                    ))
+                            )
+                    ),
+                    new DefaultDocumentLayout(
+                            "Outlet Receive", "receiptDate", "Outlet:", "customerName", "remarks",
+                            List.of(new DefaultDocumentLayout.Table("lines", "Line Items", 1, List.of(
+                                    new DefaultDocumentLayout.Column("itemCode", 130),
+                                    new DefaultDocumentLayout.Column("itemName", 410),
+                                    new DefaultDocumentLayout.Column("quantity", 100))))
+                    )
             )
     );
 

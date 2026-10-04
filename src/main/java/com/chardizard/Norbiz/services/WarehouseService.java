@@ -5,6 +5,7 @@ import com.chardizard.Norbiz.models.Company;
 import com.chardizard.Norbiz.models.User;
 import com.chardizard.Norbiz.models.Warehouse;
 import com.chardizard.Norbiz.repositories.CompanyRepository;
+import com.chardizard.Norbiz.repositories.CustomerRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.repositories.WarehouseRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
@@ -31,6 +32,7 @@ public class WarehouseService {
     private static final Logger log = LoggerFactory.getLogger(WarehouseService.class);
 
     private final WarehouseRepository warehouseRepository;
+    private final CustomerRepository customerRepository;
     private final CompanyRepository companyRepository;
     private final UserRepository userRepository;
 
@@ -87,6 +89,7 @@ public class WarehouseService {
         warehouse.setCode(request.getCode());
         warehouse.setName(request.getName());
         warehouse.setActive(request.isActive());
+        applyMain(warehouse, request.isMain(), username);
 
         Warehouse saved = warehouseRepository.save(warehouse);
         log.info("User '{}' created warehouse '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
@@ -96,6 +99,7 @@ public class WarehouseService {
     @Transactional
     public Warehouse update(Long id, WarehouseRequest request, String username) {
         Warehouse warehouse = findById(id, username);
+        assertNotOutlet(warehouse, "updated");
 
         if (StringUtils.hasText(request.getCode())
                 && !request.getCode().equals(warehouse.getCode())
@@ -106,6 +110,7 @@ public class WarehouseService {
         warehouse.setCode(request.getCode());
         warehouse.setName(request.getName());
         warehouse.setActive(request.isActive());
+        applyMain(warehouse, request.isMain(), username);
 
         Warehouse saved = warehouseRepository.save(warehouse);
         log.info("User '{}' updated warehouse '{}' (id={})", username, saved.getName(), saved.getId());
@@ -115,8 +120,41 @@ public class WarehouseService {
     @Transactional
     public void delete(Long id, String username) {
         Warehouse warehouse = findById(id, username);
+        assertNotOutlet(warehouse, "deleted");
         ForeignKeyViolations.deleteOrThrow(warehouseRepository, warehouse, "Warehouse", id);
         log.info("User '{}' deleted warehouse '{}' (id={})", username, warehouse.getName(), id);
+    }
+
+    // At most one main warehouse per company (the Delivery Receipt source). Making this one main
+    // demotes the current one through JPA — not a bulk UPDATE — so the cache invalidation listener fires.
+    private void applyMain(Warehouse warehouse, boolean main, String username) {
+        if (main) {
+            if (warehouse.isOutlet()) {
+                throw new IllegalArgumentException("An outlet warehouse cannot be the main warehouse");
+            }
+            if (!warehouse.isActive()) {
+                throw new IllegalArgumentException("An inactive warehouse cannot be the main warehouse");
+            }
+            warehouseRepository.findFirstByCompanyIdAndMainTrue(warehouse.getCompany().getId())
+                    .filter(current -> !current.getId().equals(warehouse.getId()))
+                    .ifPresent(current -> {
+                        current.setMain(false);
+                        warehouseRepository.saveAndFlush(current);
+                        log.info("User '{}' unset main warehouse '{}' (id={}) for company {}",
+                                username, current.getName(), current.getId(), current.getCompany().getId());
+                    });
+        }
+        warehouse.setMain(main);
+    }
+
+    // Outlet warehouses are created and kept in sync by CustomerService — editing them here would drift
+    // them from their customer, and deleting one would strand the customer's link.
+    private void assertNotOutlet(Warehouse warehouse, String action) {
+        if (!warehouse.isOutlet()) return;
+        String owner = customerRepository.findByWarehouseId(warehouse.getId())
+                .map(c -> " '" + c.getName() + "'").orElse("");
+        throw new IllegalArgumentException("Outlet warehouse '" + warehouse.getName() + "' is managed through its outlet customer"
+                + owner + " and cannot be " + action + " directly");
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

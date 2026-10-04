@@ -132,6 +132,10 @@ public class CustomerController {
         res.setEmail(customer.getEmail());
         res.setPhone(customer.getPhone());
         res.setActive(customer.isActive());
+        if (customer.getWarehouse() != null) {
+            res.setWarehouseId(customer.getWarehouse().getId());
+            res.setWarehouseName(customer.getWarehouse().getName());
+        }
         res.setCreatedAt(customer.getCreatedAt());
         res.setUpdatedAt(customer.getUpdatedAt());
         res.setCreatedBy(customer.getCreatedBy());

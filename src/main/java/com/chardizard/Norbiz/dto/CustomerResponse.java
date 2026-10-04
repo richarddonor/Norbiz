@@ -18,6 +18,9 @@ public class CustomerResponse {
     private String email;
     private String phone;
     private boolean active;
+    // OUTLET only: the auto-created outlet warehouse.
+    private Long warehouseId;
+    private String warehouseName;
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;

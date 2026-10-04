@@ -23,6 +23,7 @@ public enum CacheRegion {
     LOOKUP_ROLE(Kind.LOOKUP, Role.class),
     LOOKUP_PURCHASE_ORDER(Kind.LOOKUP, PurchaseOrder.class, PurchaseOrderLine.class, Item.class, Supplier.class, Warehouse.class),
     LOOKUP_PURCHASE_INVOICE(Kind.LOOKUP, PurchaseInvoice.class, PurchaseInvoiceLine.class, Item.class, Supplier.class, Warehouse.class),
+    LOOKUP_DELIVERY_RECEIPT(Kind.LOOKUP, DeliveryReceipt.class, DeliveryReceiptLine.class, Item.class, Customer.class, Warehouse.class),
 
     // ---- master-data list endpoints ----
     LIST_BRAND(Kind.LIST, Brand.class, Company.class),
@@ -32,7 +33,7 @@ public enum CacheRegion {
     LIST_ITEM_SKU(Kind.LIST, ItemSku.class, Item.class),
     LIST_WAREHOUSE(Kind.LIST, Warehouse.class, Company.class),
     LIST_SUPPLIER(Kind.LIST, Supplier.class, Company.class),
-    LIST_CUSTOMER(Kind.LIST, Customer.class, Company.class),
+    LIST_CUSTOMER(Kind.LIST, Customer.class, Company.class, Warehouse.class),
     LIST_EMPLOYEE(Kind.LIST, Employee.class, User.class, Company.class),
     LIST_DOCUMENT_TEMPLATE(Kind.LIST, DocumentTemplate.class, Company.class),
     LIST_TRANSACTION_ACTION_DEFINITION(Kind.LIST, TransactionActionDefinition.class, Role.class, Company.class),

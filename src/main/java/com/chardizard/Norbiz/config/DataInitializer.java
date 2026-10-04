@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.repositories.PermissionRepository;
 import com.chardizard.Norbiz.repositories.RoleRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.services.DefaultDocumentTemplateProvisioner;
+import com.chardizard.Norbiz.services.OutletWarehouseProvisioner;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,6 +27,7 @@ public class DataInitializer implements CommandLineRunner {
     private final CompanyRepository companyRepository;
     private final PasswordEncoder passwordEncoder;
     private final DefaultDocumentTemplateProvisioner defaultDocumentTemplateProvisioner;
+    private final OutletWarehouseProvisioner outletWarehouseProvisioner;
 
     @Override
     public void run(String... args) {
@@ -85,6 +87,12 @@ public class DataInitializer implements CommandLineRunner {
         Permission viewPurchaseReceivePermission       = findOrCreate("VIEW_PURCHASE_RECEIVE",       "Purchases - Purchase Receive View");
         Permission createPurchaseReceivePermission     = findOrCreate("CREATE_PURCHASE_RECEIVE",     "Purchases - Purchase Receive Create");
         Permission voidPurchaseReceivePermission       = findOrCreate("VOID_PURCHASE_RECEIVE",       "Purchases - Purchase Receive Void");
+        Permission viewDeliveryReceiptPermission       = findOrCreate("VIEW_DELIVERY_RECEIPT",       "Sales - Delivery Receipt View");
+        Permission createDeliveryReceiptPermission     = findOrCreate("CREATE_DELIVERY_RECEIPT",     "Sales - Delivery Receipt Create");
+        Permission voidDeliveryReceiptPermission       = findOrCreate("VOID_DELIVERY_RECEIPT",       "Sales - Delivery Receipt Void");
+        Permission viewOutletReceivePermission         = findOrCreate("VIEW_OUTLET_RECEIVE",         "Inventory - Outlet Receive View");
+        Permission createOutletReceivePermission       = findOrCreate("CREATE_OUTLET_RECEIVE",       "Inventory - Outlet Receive Create");
+        Permission voidOutletReceivePermission         = findOrCreate("VOID_OUTLET_RECEIVE",         "Inventory - Outlet Receive Void");
         Permission viewInventoryReportPermission       = findOrCreate("VIEW_INVENTORY_REPORT",       "Inventory - Report View");
         Permission manageDocumentTemplatesPermission   = findOrCreate("MANAGE_DOCUMENT_TEMPLATES",   "Document Templates - Manage (design + print)");
         Permission manageTransactionActionsPermission  = findOrCreate("MANAGE_TRANSACTION_ACTIONS",  "Configuration - Transaction Actions Manage");
@@ -120,6 +128,8 @@ public class DataInitializer implements CommandLineRunner {
                 viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
                 viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
                 viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
+                viewDeliveryReceiptPermission, createDeliveryReceiptPermission, voidDeliveryReceiptPermission,
+                viewOutletReceivePermission, createOutletReceivePermission, voidOutletReceivePermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(systemAdminRole);
 
@@ -145,6 +155,8 @@ public class DataInitializer implements CommandLineRunner {
                 viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
                 viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
                 viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
+                viewDeliveryReceiptPermission, createDeliveryReceiptPermission, voidDeliveryReceiptPermission,
+                viewOutletReceivePermission, createOutletReceivePermission, voidOutletReceivePermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(superAdminRole);
 
@@ -157,6 +169,9 @@ public class DataInitializer implements CommandLineRunner {
 
         // Every company gets a default print template per document type (only missing ones are created)
         defaultDocumentTemplateProvisioner.ensureDefaultsForAllCompanies();
+
+        // Every OUTLET customer gets its own warehouse (only outlets still missing one)
+        outletWarehouseProvisioner.ensureForAllOutlets();
 
         // Seed users (skip if already present)
         if (userRepository.findByUsername("admin").isEmpty()) {

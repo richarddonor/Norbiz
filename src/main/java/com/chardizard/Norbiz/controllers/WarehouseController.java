@@ -127,6 +127,8 @@ public class WarehouseController {
         res.setCode(warehouse.getCode());
         res.setName(warehouse.getName());
         res.setActive(warehouse.isActive());
+        res.setMain(warehouse.isMain());
+        res.setOutlet(warehouse.isOutlet());
         res.setCreatedAt(warehouse.getCreatedAt());
         res.setUpdatedAt(warehouse.getUpdatedAt());
         res.setCreatedBy(warehouse.getCreatedBy());

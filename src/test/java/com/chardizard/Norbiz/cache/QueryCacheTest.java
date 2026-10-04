@@ -137,15 +137,21 @@ class QueryCacheTest {
     // every request into a WARN + database read.
     @Test
     void cachedDtosRoundTrip() {
-        ItemLookupResponse item = new ItemLookupResponse(1L, 7L, "I-1", "Bolt", true, Set.of(ItemTag.INVENTORY), new BigDecimal("1.50"));
+        ItemLookupResponse item = new ItemLookupResponse(1L, 7L, "I-1", "Bolt", true, Set.of(ItemTag.INVENTORY), new BigDecimal("1.50"), new BigDecimal("2.75"));
         assertThat(roundTrip(CacheRegion.LOOKUP_ITEM, ItemLookupResponse.class, item))
                 .usingRecursiveComparison().isEqualTo(item);
 
         TransactionLookupResponse po = new TransactionLookupResponse(9L, 7L, "PO-1", Instant.parse("2026-01-02T03:04:05Z"),
-                3L, "Acme", 4L, "Main", null, false, false,
-                List.of(new TransactionLookupResponse.Line(1L, 1, 1L, "I-1", "Bolt", BigDecimal.TEN, BigDecimal.ONE, null)));
+                3L, "Acme", null, null, 4L, "Main", null, false, false,
+                List.of(new TransactionLookupResponse.Line(1L, 1, 1L, "I-1", "Bolt", BigDecimal.TEN, BigDecimal.ONE, null, null)));
         assertThat(roundTrip(CacheRegion.LOOKUP_PURCHASE_ORDER, TransactionLookupResponse.class, po))
                 .usingRecursiveComparison().isEqualTo(po);
+
+        TransactionLookupResponse dr = new TransactionLookupResponse(10L, 7L, "DR-1", Instant.parse("2026-01-02T03:04:05Z"),
+                null, null, 5L, "Outlet A", 6L, "Outlet A", null, false, false,
+                List.of(new TransactionLookupResponse.Line(2L, 1, 1L, "I-1", "Bolt", BigDecimal.TEN, BigDecimal.ZERO, null, new BigDecimal("25.00"))));
+        assertThat(roundTrip(CacheRegion.LOOKUP_DELIVERY_RECEIPT, TransactionLookupResponse.class, dr))
+                .usingRecursiveComparison().isEqualTo(dr);
 
         ItemResponse itemRow = new ItemResponse();
         itemRow.setId(1L);

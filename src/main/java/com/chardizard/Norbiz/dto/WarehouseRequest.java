@@ -21,4 +21,7 @@ public class WarehouseRequest {
     private String name;
 
     private boolean active = true;
+
+    // Marks this as the company's main warehouse (Delivery Receipt source); clears the previous one.
+    private boolean main;
 }

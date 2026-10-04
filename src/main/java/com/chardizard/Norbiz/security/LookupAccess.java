@@ -21,7 +21,7 @@ public class LookupAccess {
 
     public enum LookupType {
         SUPPLIER, CUSTOMER, WAREHOUSE, ITEM, ITEM_CATEGORY, ITEM_GROUP, EMPLOYEE, USER, ROLE,
-        PURCHASE_ORDER, PURCHASE_INVOICE, STOCK
+        PURCHASE_ORDER, PURCHASE_INVOICE, DELIVERY_RECEIPT, STOCK
     }
 
     private static final Map<LookupType, Set<String>> ALLOWED = new EnumMap<>(LookupType.class);
@@ -31,17 +31,20 @@ public class LookupAccess {
                 "VIEW_SUPPLIER",
                 "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE"));
         ALLOWED.put(LookupType.CUSTOMER, Set.of(
-                "VIEW_CUSTOMER"));
+                "VIEW_CUSTOMER",
+                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE"));
         ALLOWED.put(LookupType.WAREHOUSE, Set.of(
                 "VIEW_WAREHOUSE",
                 "CREATE_INVENTORY_ADJUSTMENT",
                 "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
+                "CREATE_DELIVERY_RECEIPT",
                 "VIEW_INVENTORY_REPORT"));
         ALLOWED.put(LookupType.ITEM, Set.of(
                 "VIEW_ITEM",
                 "CREATE_ITEM", "UPDATE_ITEM",
                 "CREATE_INVENTORY_ADJUSTMENT",
                 "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
+                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE",
                 "VIEW_INVENTORY_REPORT"));
         ALLOWED.put(LookupType.ITEM_CATEGORY, Set.of(
                 "VIEW_ITEM_CATEGORY",
@@ -64,11 +67,15 @@ public class LookupAccess {
         ALLOWED.put(LookupType.PURCHASE_INVOICE, Set.of(
                 "VIEW_PURCHASE_INVOICE",
                 "CREATE_PURCHASE_RECEIVE"));
+        ALLOWED.put(LookupType.DELIVERY_RECEIPT, Set.of(
+                "VIEW_DELIVERY_RECEIPT",
+                "CREATE_OUTLET_RECEIVE"));
         // Current on-hand / in-transit quantity shown beside lines while creating an inventory transaction.
         ALLOWED.put(LookupType.STOCK, Set.of(
                 "VIEW_INVENTORY_REPORT",
                 "CREATE_INVENTORY_ADJUSTMENT",
-                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE"));
+                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
+                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE"));
     }
 
     public boolean can(Authentication authentication, String lookupType) {

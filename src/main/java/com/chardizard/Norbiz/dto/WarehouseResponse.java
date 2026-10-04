@@ -14,6 +14,8 @@ public class WarehouseResponse {
     private String code;
     private String name;
     private boolean active;
+    private boolean main;
+    private boolean outlet;
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;

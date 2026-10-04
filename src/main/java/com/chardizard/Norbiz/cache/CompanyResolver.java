@@ -43,6 +43,7 @@ final class CompanyResolver {
             case Company c -> c.getId();
             case Brand b -> b.getCompany().getId();
             case Customer c -> c.getCompany().getId();
+            case DeliveryReceipt d -> d.getCompany().getId();
             case DocumentTemplate d -> d.getCompany().getId();
             case Employee e -> e.getCompany().getId();
             case InventoryAdjustment a -> a.getCompany().getId();
@@ -53,6 +54,7 @@ final class CompanyResolver {
             case PurchaseInvoice p -> p.getCompany().getId();
             case PurchaseOrder p -> p.getCompany().getId();
             case PurchaseReceive p -> p.getCompany().getId();
+            case OutletReceive o -> o.getCompany().getId();
             case Supplier s -> s.getCompany().getId();
             case TransactionActionDefinition t -> t.getCompany().getId();
             case TransactionEvent t -> t.getCompany().getId();
@@ -60,6 +62,8 @@ final class CompanyResolver {
             // children: resolve through the parent
             case InventoryBalance b -> b.getWarehouse().getCompany().getId();
             case InventoryAdjustmentLine l -> l.getAdjustment().getCompany().getId();
+            case DeliveryReceiptLine l -> l.getDeliveryReceipt().getCompany().getId();
+            case OutletReceiveLine l -> l.getOutletReceive().getCompany().getId();
             case ItemPrice p -> p.getItem().getCompany().getId();
             case ItemSku s -> s.getItem().getCompany().getId();
             case PurchaseInvoiceFee f -> f.getPurchaseInvoice().getCompany().getId();

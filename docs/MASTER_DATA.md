@@ -36,3 +36,14 @@ Data in Norbiz is divided into two main categories: Master and Transactional (se
 - Customers are entities we sell our goods or Outlets where we consign our products for selling
 - There are two Customers: Customers (Direct buyers of products) and Outlets (Branches where we deliver our goods for selling)
 - Outlets maintain their own inventory count. So it is important the inventory side-by-side with the warehouses our main warehouse monitor
+
+**Implementation notes** (outlet warehouse):
+- Every `OUTLET` customer has its own `Warehouse`, linked by `customers.warehouse_id` (unique FK). It is **auto-created** by `CustomerService` when an outlet is created (or a customer is changed to `OUTLET`) and gets its own warehouse identity id, not the customer id. Its `name`/`code`/`active` mirror the customer's and are kept in sync on update. Creation is rejected (400) if the customer's code is already used by another warehouse in the company.
+- The warehouse has `outlet = true`. `WarehouseService` refuses to update or delete it directly ("managed through its outlet customer"), and it can never be the main warehouse.
+- An outlet with a linked warehouse can't be changed back to `CUSTOMER` (it may hold stock or in-transit deliveries). Deleting the outlet deletes its warehouse too; if either is still referenced, the delete fails with `ENTITY_IN_USE` and nothing is removed.
+- `OutletWarehouseProvisioner` runs on startup (from `DataInitializer`) and creates the warehouse for any outlet that predates this link. It's idempotent. An outlet whose code clashes with an existing warehouse is logged as a warning and skipped.
+- `CustomerResponse` carries `warehouseId`/`warehouseName`. `/lookups/customers` accepts `type=CUSTOMER|OUTLET`.
+
+## Warehouses — main warehouse
+- Each company has at most one **main** warehouse (`Warehouse.main`). Delivery Receipts always deduct stock from it.
+- Set it with `main: true` on warehouse create/update. This clears the flag on the company's previous main warehouse (through JPA, so cache invalidation fires). An inactive or outlet warehouse can't be main. The partial unique index `WAREHOUSES_COMPANY_MAIN_UQ` (in `db/init.sql`) backstops "one per company".

@@ -6,6 +6,7 @@ import com.chardizard.Norbiz.dto.LookupResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.StockLookupResponse;
 import com.chardizard.Norbiz.dto.TransactionLookupResponse;
+import com.chardizard.Norbiz.models.CustomerType;
 import com.chardizard.Norbiz.models.ItemTag;
 import com.chardizard.Norbiz.services.LookupService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -84,9 +85,10 @@ public class LookupController {
             @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
             @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
             @Parameter(description = Q_DESC) @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Filter by customer type (CUSTOMER or OUTLET); omit for both") @RequestParam(required = false) CustomerType type,
             @Parameter(description = ACTIVE_DESC) @RequestParam(defaultValue = "true") boolean activeOnly,
             Pageable pageable) {
-        return ok(lookupService.customers(userDetails.getUsername(), company(companyId, headerCompanyId), q, activeOnly, pageable));
+        return ok(lookupService.customers(userDetails.getUsername(), company(companyId, headerCompanyId), q, type, activeOnly, pageable));
     }
 
     @Operation(summary = "Customer option by ID")
@@ -110,9 +112,10 @@ public class LookupController {
             @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
             @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
             @Parameter(description = Q_DESC) @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Only the company's main warehouse (the Delivery Receipt source)") @RequestParam(defaultValue = "false") boolean mainOnly,
             @Parameter(description = ACTIVE_DESC) @RequestParam(defaultValue = "true") boolean activeOnly,
             Pageable pageable) {
-        return ok(lookupService.warehouses(userDetails.getUsername(), company(companyId, headerCompanyId), q, activeOnly, pageable));
+        return ok(lookupService.warehouses(userDetails.getUsername(), company(companyId, headerCompanyId), q, mainOnly, activeOnly, pageable));
     }
 
     @Operation(summary = "Warehouse option by ID")
@@ -309,6 +312,35 @@ public class LookupController {
     public ResponseEntity<AppResponse<TransactionLookupResponse>> purchaseOrder(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails,
                                                                             Authentication authentication) {
         return ResponseEntity.ok(AppResponse.of(lookupService.purchaseOrder(id, userDetails.getUsername(), canViewCostPrice(authentication))));
+    }
+
+    // ---- delivery receipts ----
+
+    @Operation(summary = "Delivery receipt dropdown",
+            description = "Source delivery receipts for Outlet Receive. openOnly (default) returns only outlet receipts that are neither voided "
+                    + "nor fully received; warehouse fields are the outlet warehouse.")
+    @ApiResponse(responseCode = "200", description = "Delivery receipt options returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/delivery-receipts")
+    @PreAuthorize("@lookupAccess.can(authentication, 'DELIVERY_RECEIPT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionLookupResponse>>> deliveryReceipts(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Search text (contains, case-insensitive) over reference and sheet number") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Filter by customer (outlet) ID") @RequestParam(required = false) Long customerId,
+            @Parameter(description = "Only receivable receipts: outlet, not voided, not fully received (default true)") @RequestParam(defaultValue = "true") boolean openOnly,
+            Pageable pageable) {
+        return ok(lookupService.deliveryReceipts(userDetails.getUsername(), company(companyId, headerCompanyId), q, customerId, openOnly, pageable));
+    }
+
+    @Operation(summary = "Delivery receipt option by ID")
+    @ApiResponse(responseCode = "200", description = "Delivery receipt option returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/delivery-receipts/{id}")
+    @PreAuthorize("@lookupAccess.can(authentication, 'DELIVERY_RECEIPT')")
+    public ResponseEntity<AppResponse<TransactionLookupResponse>> deliveryReceipt(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.deliveryReceipt(id, userDetails.getUsername())));
     }
 
     // ---- purchase invoices ----

@@ -1,7 +1,9 @@
 package com.chardizard.Norbiz.services;
 
 import com.chardizard.Norbiz.models.TransactionType;
+import com.chardizard.Norbiz.repositories.DeliveryReceiptRepository;
 import com.chardizard.Norbiz.repositories.InventoryAdjustmentRepository;
+import com.chardizard.Norbiz.repositories.OutletReceiveRepository;
 import com.chardizard.Norbiz.repositories.PurchaseInvoiceRepository;
 import com.chardizard.Norbiz.repositories.PurchaseOrderRepository;
 import com.chardizard.Norbiz.repositories.PurchaseReceiveRepository;
@@ -20,6 +22,8 @@ public class TransactionLookupService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
     private final PurchaseReceiveRepository purchaseReceiveRepository;
+    private final DeliveryReceiptRepository deliveryReceiptRepository;
+    private final OutletReceiveRepository outletReceiveRepository;
 
     public TransactionHeader resolve(TransactionType type, Long id) {
         return switch (type) {
@@ -33,6 +37,12 @@ public class TransactionLookupService {
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case PURCHASE_RECEIVE -> purchaseReceiveRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case DELIVERY_RECEIPT -> deliveryReceiptRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case OUTLET_RECEIVE -> outletReceiveRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
         };

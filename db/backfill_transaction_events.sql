@@ -13,7 +13,9 @@ BEGIN
         ('inventory_adjustments', 'INVENTORY_ADJUSTMENT'),
         ('purchase_orders',       'PURCHASE_ORDER'),
         ('purchase_invoices',     'PURCHASE_INVOICE'),
-        ('purchase_receives',     'PURCHASE_RECEIVE')
+        ('purchase_receives',     'PURCHASE_RECEIVE'),
+        ('delivery_receipts',     'DELIVERY_RECEIPT'),
+        ('outlet_receives',       'OUTLET_RECEIVE')
     ) AS v(table_name, transaction_type)
     LOOP
         EXECUTE format($sql$

@@ -59,6 +59,7 @@ public class LookupService {
     private final EmployeeRepository employeeRepository;
     private final RoleRepository roleRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
+    private final DeliveryReceiptRepository deliveryReceiptRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
     private final InventoryBalanceRepository inventoryBalanceRepository;
     private final QueryCache queryCache;
@@ -81,11 +82,13 @@ public class LookupService {
         return toLookup(s);
     }
 
-    public Page<LookupResponse> customers(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
-        return search(CacheRegion.LOOKUP_CUSTOMER, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+    // type narrows to CUSTOMER or OUTLET (e.g. the Outlet Receive form lists outlets only); null = both.
+    public Page<LookupResponse> customers(String username, Long companyId, String q, CustomerType type, boolean activeOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_CUSTOMER, params("q", q, "type", type, "activeOnly", activeOnly), LookupResponse.class,
                 customerRepository, username, companyId, Customer.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "code", "name"),
+                        type != null ? (root, query, cb) -> cb.equal(root.get("type"), type) : null,
                         activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
                 withDefaultSort(pageable, "name"), this::toLookup);
     }
@@ -97,11 +100,13 @@ public class LookupService {
         return toLookup(c);
     }
 
-    public Page<LookupResponse> warehouses(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
-        return search(CacheRegion.LOOKUP_WAREHOUSE, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+    // mainOnly narrows to the company's main warehouse (the Delivery Receipt source, at most one row).
+    public Page<LookupResponse> warehouses(String username, Long companyId, String q, boolean mainOnly, boolean activeOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_WAREHOUSE, params("q", q, "mainOnly", mainOnly, "activeOnly", activeOnly), LookupResponse.class,
                 warehouseRepository, username, companyId, Warehouse.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "code", "name"),
+                        mainOnly ? SpecificationUtils.booleanEquals("main", true) : null,
                         activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
                 withDefaultSort(pageable, "name"), this::toLookup);
     }
@@ -283,6 +288,29 @@ public class LookupService {
         return toLookup(pi, canViewCostPrice);
     }
 
+    // openOnly = outlet DRs that are not voided and not fully received, i.e. still a valid Outlet Receive source.
+    public Page<TransactionLookupResponse> deliveryReceipts(String username, Long companyId, String q, Long customerId,
+                                                            boolean openOnly, Pageable pageable) {
+        Specification<DeliveryReceipt> outletOnly = openOnly ? (root, query, cb) -> cb.isNotNull(root.get("destinationWarehouse")) : null;
+        return search(CacheRegion.LOOKUP_DELIVERY_RECEIPT,
+                params("q", q, "customerId", customerId, "openOnly", openOnly), TransactionLookupResponse.class,
+                deliveryReceiptRepository, username, companyId, DeliveryReceipt.class,
+                SpecificationUtils.allOf(
+                        SpecificationUtils.anyContainsIgnoreCase(q, "referenceNumber", "sheetNumber"),
+                        idEquals("customer", customerId),
+                        outletOnly,
+                        openOnly ? SpecificationUtils.booleanEquals("voided", false) : null,
+                        openOnly ? SpecificationUtils.booleanEquals("loaded", false) : null),
+                withDefaultSort(pageable, Sort.by(Sort.Direction.DESC, "deliveryDate")), this::toLookup);
+    }
+
+    public TransactionLookupResponse deliveryReceipt(Long id, String username) {
+        DeliveryReceipt dr = deliveryReceiptRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Delivery receipt not found: " + id));
+        assertCompanyAccess(username, dr.getCompany().getId());
+        return toLookup(dr);
+    }
+
     // ---- stock ----
 
     // Live on-hand/in-transit quantities for the given items in one warehouse, read straight from the
@@ -332,8 +360,12 @@ public class LookupService {
                 .filter(p -> p.getPriceType() == PriceType.COST_PRICE)
                 .map(ItemPrice::getAmount)
                 .findFirst().orElse(null);
+        BigDecimal unitPrice = i.getPrices().stream()
+                .filter(p -> p.getPriceType() == PriceType.UNIT_PRICE)
+                .map(ItemPrice::getAmount)
+                .findFirst().orElse(null);
         return new ItemLookupResponse(i.getId(), i.getCompany().getId(), i.getItemCode(), i.getName(), i.isActive(),
-                Set.copyOf(i.getTags()), costPrice);
+                Set.copyOf(i.getTags()), costPrice, unitPrice);
     }
 
     private LookupResponse toLookup(ItemCategory c) {
@@ -361,10 +393,10 @@ public class LookupService {
         List<TransactionLookupResponse.Line> lines = po.getLines().stream()
                 .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
                         l.getItem().getItemCode(), l.getItem().getName(), l.getQuantity(), l.getQuantityLoaded(),
-                        canViewCostPrice ? l.getCostPrice() : null))
+                        canViewCostPrice ? l.getCostPrice() : null, null))
                 .toList();
         return new TransactionLookupResponse(po.getId(), po.getCompany().getId(), po.getReferenceNumber(), po.getOrderDate(),
-                po.getSupplier().getId(), po.getSupplier().getName(), po.getWarehouse().getId(), po.getWarehouse().getName(),
+                po.getSupplier().getId(), po.getSupplier().getName(), null, null, po.getWarehouse().getId(), po.getWarehouse().getName(),
                 null, po.isVoided(), po.isLoaded(), lines);
     }
 
@@ -372,12 +404,25 @@ public class LookupService {
         List<TransactionLookupResponse.Line> lines = pi.getLines().stream()
                 .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
                         l.getItem().getItemCode(), l.getItem().getName(), l.getQuantity(), l.getQuantityLoaded(),
-                        canViewCostPrice ? l.getCostPrice() : null))
+                        canViewCostPrice ? l.getCostPrice() : null, null))
                 .toList();
         return new TransactionLookupResponse(pi.getId(), pi.getCompany().getId(), pi.getReferenceNumber(), pi.getInvoiceDate(),
-                pi.getSupplier().getId(), pi.getSupplier().getName(), pi.getWarehouse().getId(), pi.getWarehouse().getName(),
+                pi.getSupplier().getId(), pi.getSupplier().getName(), null, null, pi.getWarehouse().getId(), pi.getWarehouse().getName(),
                 pi.getPurchaseOrder() != null ? pi.getPurchaseOrder().getId() : null,
                 pi.isVoided(), pi.isLoaded(), lines);
+    }
+
+    // warehouse = the outlet warehouse (where the Outlet Receive posts); outlet DRs are the only receivable ones.
+    private TransactionLookupResponse toLookup(DeliveryReceipt dr) {
+        List<TransactionLookupResponse.Line> lines = dr.getLines().stream()
+                .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
+                        l.getItem().getItemCode(), l.getItem().getName(), l.getQuantity(), l.getQuantityLoaded(),
+                        null, l.getUnitPrice()))
+                .toList();
+        Warehouse warehouse = dr.getDestinationWarehouse() != null ? dr.getDestinationWarehouse() : dr.getWarehouse();
+        return new TransactionLookupResponse(dr.getId(), dr.getCompany().getId(), dr.getReferenceNumber(), dr.getDeliveryDate(),
+                null, null, dr.getCustomer().getId(), dr.getCustomer().getName(), warehouse.getId(), warehouse.getName(),
+                null, dr.isVoided(), dr.isLoaded(), lines);
     }
 
     // ---- helpers ----

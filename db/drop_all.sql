@@ -8,6 +8,10 @@
 -- Drop tables in reverse dependency order.
 -- CASCADE is included as a safety net for any undeclared dependencies.
 
+DROP TABLE IF EXISTS outlet_receive_lines                        CASCADE;
+DROP TABLE IF EXISTS outlet_receives                             CASCADE;
+DROP TABLE IF EXISTS delivery_receipt_lines                      CASCADE;
+DROP TABLE IF EXISTS delivery_receipts                           CASCADE;
 DROP TABLE IF EXISTS transaction_events                          CASCADE;
 DROP TABLE IF EXISTS transaction_action_definition_roles         CASCADE;
 DROP TABLE IF EXISTS transaction_action_definition_prerequisites CASCADE;

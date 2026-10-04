@@ -9,7 +9,11 @@ import lombok.Setter;
 @Entity
 @Table(
     name = "customers",
-    uniqueConstraints = @UniqueConstraint(name = "CUSTOMERS_COMPANY_CODE_UQ", columnNames = {"company_id", "code"})
+    uniqueConstraints = {
+        @UniqueConstraint(name = "CUSTOMERS_COMPANY_CODE_UQ", columnNames = {"company_id", "code"}),
+        // One customer per outlet warehouse — named so ddl-auto and db/init.sql agree on the constraint.
+        @UniqueConstraint(name = "CUSTOMERS_WAREHOUSE_UQ", columnNames = {"warehouse_id"})
+    }
 )
 public class Customer extends Auditable {
 
@@ -40,4 +44,11 @@ public class Customer extends Auditable {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    // OUTLET only: the outlet's own warehouse, auto-created by CustomerService (own identity id, not the
+    // customer id). Delivery Receipts post in-transit stock here; Outlet Receives move it to on-hand.
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "warehouse_id",
+        foreignKey = @ForeignKey(name = "CUSTOMERS_WAREHOUSE_ID_FK"))
+    private Warehouse warehouse;
 }

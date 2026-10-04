@@ -3,6 +3,7 @@ package com.chardizard.Norbiz.models;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 
 @Getter
 @Setter
@@ -30,4 +31,17 @@ public class Warehouse extends Auditable {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    // The company's main warehouse: Delivery Receipts deduct stock from it. At most one per company
+    // (WarehouseService clears the previous one; partial unique index WAREHOUSES_COMPANY_MAIN_UQ backstops it).
+    // ColumnDefault: lets ddl-auto=update add the NOT NULL column to existing rows.
+    @ColumnDefault("false")
+    @Column(nullable = false)
+    private boolean main = false;
+
+    // True for the warehouse auto-created for an OUTLET customer (see CustomerService) — it's managed
+    // through that customer, so WarehouseService refuses direct edits/deletes and it can't be main.
+    @ColumnDefault("false")
+    @Column(nullable = false)
+    private boolean outlet = false;
 }
