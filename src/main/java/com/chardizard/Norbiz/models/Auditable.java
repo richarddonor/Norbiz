@@ -46,4 +46,11 @@ public abstract class Auditable {
      */
     @Transient
     private String originalSnapshot;
+
+    /**
+     * Transient references to the entity's @ElementCollection/@ManyToMany collections as loaded,
+     * so AuditableEntityListener can recover their pre-update contents (even when a setter replaced them).
+     */
+    @Transient
+    private java.util.Map<String, Object> originalCollections;
 }

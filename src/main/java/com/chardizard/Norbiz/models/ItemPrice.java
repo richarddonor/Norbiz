@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.models;
 
+import com.chardizard.Norbiz.audit.AuditParent;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -19,6 +20,7 @@ public class ItemPrice extends Auditable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @AuditParent
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "item_id", nullable = false,
         foreignKey = @ForeignKey(name = "ITEM_PRICES_ITEM_ID_FK"))

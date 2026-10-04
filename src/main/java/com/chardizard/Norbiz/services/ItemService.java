@@ -116,12 +116,16 @@ public class ItemService {
         return saved;
     }
 
-    @Transactional
-    public Item update(Long id, ItemRequest request, String username, boolean canViewCostPrice) {
+    public Item findById(Long id, String username) {
         Item item = itemRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Item not found: " + id));
-
         assertCompanyAccess(username, item.getCompany().getId());
+        return item;
+    }
+
+    @Transactional
+    public Item update(Long id, ItemRequest request, String username, boolean canViewCostPrice) {
+        Item item = findById(id, username);
 
         ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), item.getCompany().getId());
         ItemGroup group = loadGroupForCompany(request.getItemGroupId(), item.getCompany().getId(), item.getItemGroup());
@@ -153,10 +157,7 @@ public class ItemService {
 
     @Transactional
     public void delete(Long id, String username) {
-        Item item = itemRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Item not found: " + id));
-
-        assertCompanyAccess(username, item.getCompany().getId());
+        Item item = findById(id, username);
         ForeignKeyViolations.deleteOrThrow(itemRepository, item, "Item", id);
         log.info("User '{}' deleted item '{}' (id={})", username, item.getItemCode(), id);
     }

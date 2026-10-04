@@ -14,7 +14,10 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "audit_logs")
+@Table(name = "audit_logs", indexes = {
+        @Index(name = "idx_audit_logs_entity", columnList = "entity_type, entity_id"),
+        @Index(name = "idx_audit_logs_parent", columnList = "parent_type, parent_id")
+})
 public class AuditLog {
 
     @Id
@@ -29,6 +32,17 @@ public class AuditLog {
     @Column(name = "entity_id")
     private Long entityId;
 
+    /** For entities that are part of another record (@AuditParent, e.g. ItemSku → Item): that record's type and id. */
+    @Column(name = "parent_type", length = 100)
+    private String parentType;
+
+    @Column(name = "parent_id")
+    private Long parentId;
+
+    /** Shared by every log written in the same database transaction (null on logs that predate it). */
+    @Column(name = "change_set", length = 36)
+    private String changeSet;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private AuditAction action;
@@ -42,8 +56,9 @@ public class AuditLog {
 
     /**
      * JSON payload describing the change.
-     * CREATE / DELETE: full field snapshot — e.g. {"name":"Acme","active":"true"}
+     * CREATE / DELETE: full field snapshot — e.g. {"name":"Acme","active":"true","itemCategory":"3","tags":["A","B"]}
      * UPDATE: array of changed fields — e.g. [{"field":"name","oldValue":"X","newValue":"Y"}]
+     * Associations are stored as the related record's id; collections as a sorted array of ids / values.
      */
     @Column(columnDefinition = "text")
     private String changes;
