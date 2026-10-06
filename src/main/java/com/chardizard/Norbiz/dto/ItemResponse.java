@@ -24,8 +24,17 @@ public class ItemResponse {
     private String imagePath;
     private boolean active;
     private List<String> skus;
+    private List<SkuEntry> skuLines;
     private List<PriceEntry> prices;
     private Set<ItemTag> tags;
+
+    @Getter
+    @Setter
+    public static class SkuEntry {
+        private Long id;
+        private String skuCode;
+        private BigDecimal unitPrice;
+    }
 
     @Getter
     @Setter

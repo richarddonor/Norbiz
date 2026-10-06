@@ -1,11 +1,13 @@
 package com.chardizard.Norbiz.services;
 
 import com.chardizard.Norbiz.dto.ItemRequest;
+import com.chardizard.Norbiz.dto.ItemSkuLineRequest;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.ItemCategoryRepository;
 import com.chardizard.Norbiz.repositories.ItemGroupRepository;
 import com.chardizard.Norbiz.repositories.ItemRepository;
+import com.chardizard.Norbiz.repositories.ItemSkuRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
 import com.chardizard.Norbiz.util.ForeignKeyViolations;
@@ -23,9 +25,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,6 +40,7 @@ public class ItemService {
     private static final Logger log = LoggerFactory.getLogger(ItemService.class);
 
     private final ItemRepository itemRepository;
+    private final ItemSkuRepository itemSkuRepository;
     private final CompanyRepository companyRepository;
     private final ItemCategoryRepository itemCategoryRepository;
     private final ItemGroupRepository itemGroupRepository;
@@ -142,9 +148,8 @@ public class ItemService {
         item.setTags(request.getTags() != null ? request.getTags() : new HashSet<>());
         // imagePath is managed exclusively by ItemImageController — do not overwrite here
 
-        item.getSkus().clear();
         item.getPrices().clear();
-        // Flush DELETEs to the DB now so the unique constraints don't fire
+        // Flush the price DELETEs now so ITEM_PRICES_ITEM_PRICE_TYPE_UQ doesn't fire
         // when the new rows are inserted below in the same transaction.
         entityManager.flush();
         applySkus(item, request);
@@ -162,19 +167,50 @@ public class ItemService {
         log.info("User '{}' deleted item '{}' (id={})", username, item.getItemCode(), id);
     }
 
+    // Reconciles the item's SKUs with request.skuLines by code, rather than deleting and re-inserting
+    // them: a kept SKU keeps its row (and id), only its unit price is updated. Null leaves them as-is,
+    // so a client that doesn't edit SKUs can't wipe the ones managed on the Item SKUs page.
     private void applySkus(Item item, ItemRequest request) {
-        if (request.getSkus() == null) return;
-        for (String skuCode : request.getSkus()) {
-            ItemSku sku = new ItemSku();
-            sku.setItem(item);
-            sku.setSkuCode(skuCode);
-            item.getSkus().add(sku);
+        if (request.getSkuLines() == null) return;
+
+        Map<String, ItemSkuLineRequest> lines = new LinkedHashMap<>();
+        for (ItemSkuLineRequest line : request.getSkuLines()) {
+            String code = line.getSkuCode().trim();
+            if (lines.putIfAbsent(code, line) != null) {
+                throw new IllegalArgumentException("Duplicate SKU code: " + code);
+            }
         }
+
+        // orphanRemoval deletes the SKUs dropped from the list.
+        item.getSkus().removeIf(sku -> !lines.containsKey(sku.getSkuCode()));
+        Map<String, ItemSku> existing = item.getSkus().stream()
+                .collect(Collectors.toMap(ItemSku::getSkuCode, sku -> sku));
+
+        lines.forEach((code, line) -> {
+            ItemSku sku = existing.get(code);
+            if (sku == null) {
+                // SKU codes are unique across all companies.
+                if (itemSkuRepository.existsBySkuCode(code)) {
+                    throw new IllegalArgumentException("SKU code already exists: " + code);
+                }
+                sku = new ItemSku();
+                sku.setItem(item);
+                sku.setSkuCode(code);
+                item.getSkus().add(sku);
+            }
+            sku.setUnitPrice(line.getUnitPrice());
+        });
     }
 
     private void applyPrices(Item item, ItemRequest request, boolean canViewCostPrice, BigDecimal existingCostPrice) {
         boolean costPriceApplied = false;
         if (request.getPrices() != null) {
+            Set<PriceType> seen = EnumSet.noneOf(PriceType.class);
+            for (var priceReq : request.getPrices()) {
+                if (!seen.add(priceReq.getPriceType())) {
+                    throw new IllegalArgumentException("Duplicate price type: " + priceReq.getPriceType());
+                }
+            }
             for (var priceReq : request.getPrices()) {
                 ItemPrice price = new ItemPrice();
                 price.setItem(item);

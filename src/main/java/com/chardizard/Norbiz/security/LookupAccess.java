@@ -1,10 +1,12 @@
 package com.chardizard.Norbiz.security;
 
+import com.chardizard.Norbiz.models.DetailedReportType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Component;
 
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -76,6 +78,25 @@ public class LookupAccess {
                 "CREATE_INVENTORY_ADJUSTMENT",
                 "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
                 "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE"));
+    }
+
+    static {
+        // Every "<Transaction> - Detailed" report filters by warehouse and item, plus its counterparty.
+        for (DetailedReportType report : DetailedReportType.values()) {
+            widen(LookupType.WAREHOUSE, report.getPermission());
+            widen(LookupType.ITEM, report.getPermission());
+            switch (report) {
+                case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIVE -> widen(LookupType.SUPPLIER, report.getPermission());
+                case DELIVERY_RECEIPT, OUTLET_RECEIVE -> widen(LookupType.CUSTOMER, report.getPermission());
+                case INVENTORY_ADJUSTMENT -> { }
+            }
+        }
+    }
+
+    private static void widen(LookupType type, String permission) {
+        Set<String> allowed = new HashSet<>(ALLOWED.get(type));
+        allowed.add(permission);
+        ALLOWED.put(type, Set.copyOf(allowed));
     }
 
     public boolean can(Authentication authentication, String lookupType) {

@@ -8,6 +8,7 @@ import com.chardizard.Norbiz.dto.ItemRequest;
 import com.chardizard.Norbiz.dto.ItemResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.Item;
+import com.chardizard.Norbiz.models.ItemSku;
 import com.chardizard.Norbiz.models.PriceType;
 import com.chardizard.Norbiz.services.ItemService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,6 +26,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -131,9 +133,17 @@ public class ItemController {
         res.setName(item.getName());
         res.setImagePath(item.getImagePath());
         res.setActive(item.isActive());
-        res.setSkus(item.getSkus().stream()
-                .map(s -> s.getSkuCode())
-                .collect(Collectors.toList()));
+        List<ItemSku> skus = item.getSkus().stream()
+                .sorted(Comparator.comparing(ItemSku::getSkuCode))
+                .toList();
+        res.setSkus(skus.stream().map(ItemSku::getSkuCode).collect(Collectors.toList()));
+        res.setSkuLines(skus.stream().map(s -> {
+            ItemResponse.SkuEntry entry = new ItemResponse.SkuEntry();
+            entry.setId(s.getId());
+            entry.setSkuCode(s.getSkuCode());
+            entry.setUnitPrice(s.getUnitPrice());
+            return entry;
+        }).collect(Collectors.toList()));
         res.setPrices(item.getPrices().stream()
                 .filter(p -> canViewCostPrice || p.getPriceType() != PriceType.COST_PRICE)
                 .map(p -> {

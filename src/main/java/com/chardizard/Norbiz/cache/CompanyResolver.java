@@ -16,7 +16,7 @@ import java.util.Set;
 final class CompanyResolver {
 
     /** Entities whose writes never affect a cached response — skipped to avoid noise. */
-    private static final Set<Class<?>> IGNORED = Set.of(AuditLog.class, TransactionSequence.class);
+    private static final Set<Class<?>> IGNORED = Set.of(AuditLog.class, TransactionSequence.class, UserPreference.class);
 
     /** Entities with no single owning company: only their {@code :all} counter exists. */
     static final Set<String> GLOBAL_ONLY = Set.of(

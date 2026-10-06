@@ -12,3 +12,4 @@
 ## Reports
 - Reports special queries that users generate. 
 - The main categories are: Inventory, Purchases, Sales (for now)
+- Every transaction type also has a `<Transaction> - Detailed` line-item report with its own permission — see `docs/TRANSACTIONS.md` → `## Detailed reports`.

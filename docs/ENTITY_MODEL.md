@@ -47,5 +47,5 @@ For example, Foreign Key name = "ITEMS_COMPANY_ID_FK"
 
 ## Key service patterns
 
-- `PUT /items/{id}` deletes all existing SKUs and prices then re-inserts from the request. `entityManager.flush()` is called before re-insertion to release unique constraints within the same transaction.
+- `POST`/`PUT /items` take the item's SKUs as `skuLines: [{skuCode, unitPrice}]`, reconciled by code: existing codes keep their row and get the new unit price, codes missing from the list are deleted (orphan removal), new codes are inserted (rejected if the code exists on any item, in any company). Omitting `skuLines` (null) leaves the SKUs untouched. The response carries both `skus` (codes) and `skuLines`. Prices are still deleted and re-inserted; `entityManager.flush()` runs between the two so `ITEM_PRICES_ITEM_PRICE_TYPE_UQ` doesn't fire.
 - `ItemSku.skuCode` is globally unique across all companies; `Item.itemCode` is unique per company; `Brand.name` is unique per company; `ItemCategory.name` is unique per company; `ItemGroup.name` is unique per company.

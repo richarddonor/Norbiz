@@ -71,6 +71,8 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - **Company-membership must be verified on every single-record read, not just on list/create/update/delete.** A `GET /{id}` endpoint's `@PreAuthorize("hasAuthority('VIEW_X')")` only checks the permission, not which company the record belongs to — without an explicit check, any user holding that permission could fetch any other company's record by ID (a cross-tenant IDOR). Every company-scoped entity's `findById(id, username)` must resolve the entity, then call the existing `assertCompanyAccess(username, companyId)` helper before returning it — mirror `ItemSkuService.findById` or `BrandService.findById`. `update`/`delete` should call this same scoped `findById` rather than checking access a second time separately.
 - Entities that belong to one or more companies. Use an intermediary table like `user_companies` to enforce one to many or many to many relationships. Update this list everytime there is a new entity:
     User
+- Entities owned by a single `User` rather than a `Company` (personal settings that follow the user across companies). Always resolve the owner from the authenticated username, never from a request param:
+    UserPreference (`/me/preferences/{key}`, opaque frontend JSON — e.g. saved list column layouts)
 - Entities that are not scoped by `Company` as they are used system-wide:
     Role, Permission
 
@@ -90,7 +92,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 
 ### Audit system
 
-See `docs/AUDIT.md` for how `AuditableEntityListener` hooks into JPA lifecycle events. Key facts worth knowing without opening that doc: every entity extending `Auditable` is automatically logged (CREATE/UPDATE-diff/DELETE); `AuditLog` itself does **not** extend `Auditable` (avoids infinite recursion); `User.password` is `@AuditExclude`; inventory ledger entities (`InventoryMovement`, `InventoryBalance`, `InventoryAdjustment`, `InventoryAdjustmentLine`) deliberately do **not** extend `Auditable` since they're append-only/immutable — the ledger itself is already the audit trail. `TransactionEvent` (transaction history/actions) is likewise append-only and not `Auditable`.
+See `docs/AUDIT.md` for how `AuditableEntityListener` hooks into JPA lifecycle events. Key facts worth knowing without opening that doc: every entity extending `Auditable` is automatically logged (CREATE/UPDATE-diff/DELETE); `AuditLog` itself does **not** extend `Auditable` (avoids infinite recursion); `User.password` is `@AuditExclude`; inventory ledger entities (`InventoryMovement`, `InventoryBalance`, `InventoryAdjustment`, `InventoryAdjustmentLine`) deliberately do **not** extend `Auditable` since they're append-only/immutable — the ledger itself is already the audit trail. `TransactionEvent` (transaction history/actions) is likewise append-only and not `Auditable`. `UserPreference` (personal UI settings) is not `Auditable` either — it would only add noise.
 
 ## API Call
 All API response must implement `AppResponse` dto. In case of an exception, return `AppErrorResponse` instead that contains the error message handled by a `GlobalExceptionHandler`
