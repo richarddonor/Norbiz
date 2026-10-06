@@ -55,6 +55,8 @@ final class CompanyResolver {
             case PurchaseOrder p -> p.getCompany().getId();
             case PurchaseReceive p -> p.getCompany().getId();
             case OutletReceive o -> o.getCompany().getId();
+            case OutletDeliveryReceipt o -> o.getCompany().getId();
+            case OutletDeliveryReturn o -> o.getCompany().getId();
             case Supplier s -> s.getCompany().getId();
             case TransactionActionDefinition t -> t.getCompany().getId();
             case TransactionEvent t -> t.getCompany().getId();
@@ -64,6 +66,8 @@ final class CompanyResolver {
             case InventoryAdjustmentLine l -> l.getAdjustment().getCompany().getId();
             case DeliveryReceiptLine l -> l.getDeliveryReceipt().getCompany().getId();
             case OutletReceiveLine l -> l.getOutletReceive().getCompany().getId();
+            case OutletDeliveryReceiptLine l -> l.getOutletDeliveryReceipt().getCompany().getId();
+            case OutletDeliveryReturnLine l -> l.getOutletDeliveryReturn().getCompany().getId();
             case ItemPrice p -> p.getItem().getCompany().getId();
             case ItemSku s -> s.getItem().getCompany().getId();
             case PurchaseInvoiceFee f -> f.getPurchaseInvoice().getCompany().getId();

@@ -13,7 +13,7 @@ Data in Norbiz is divided into two main categories: Master and Transactional (se
 ## Employees
 - Employees are people who actually work for the company. 
 - Some employees are `Users`. Because some actions are made by people who does not access to Norbiz, their actions are delegated to the `Users`. For example, sales agents in retails outlets
-- Employees can be assigned to many tags. Tags are: Agent (Will expand tags more in the future). There is an intermediary table `employee_tags` to enforce zero to many tag relationships
+- Employees can be assigned to many tags. Tags are: Agent (Will expand tags more in the future). Only `AGENT`-tagged, active employees can be picked as the agent on an Outlet Delivery Receipt. There is an intermediary table `employee_tags` to enforce zero to many tag relationships
 
 ## Items
 - Items are goods and services that a company offers and manages

@@ -12,7 +12,9 @@ public enum DetailedReportType {
     PURCHASE_ORDER(TransactionType.PURCHASE_ORDER, "Purchase Order", "Purchases"),
     PURCHASE_INVOICE(TransactionType.PURCHASE_INVOICE, "Purchase Invoice", "Purchases"),
     PURCHASE_RECEIVE(TransactionType.PURCHASE_RECEIVE, "Purchase Receive", "Purchases"),
-    DELIVERY_RECEIPT(TransactionType.DELIVERY_RECEIPT, "Delivery Receipt", "Sales");
+    DELIVERY_RECEIPT(TransactionType.DELIVERY_RECEIPT, "Delivery Receipt", "Sales"),
+    OUTLET_DELIVERY_RECEIPT(TransactionType.OUTLET_DELIVERY_RECEIPT, "Outlet Delivery Receipt", "Sales"),
+    OUTLET_DELIVERY_RETURN(TransactionType.OUTLET_DELIVERY_RETURN, "Outlet Delivery Return", "Sales");
 
     private final TransactionType transactionType;
     private final String transactionLabel;

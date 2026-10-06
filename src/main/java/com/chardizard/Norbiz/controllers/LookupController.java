@@ -1,12 +1,14 @@
 package com.chardizard.Norbiz.controllers;
 
 import com.chardizard.Norbiz.dto.AppResponse;
+import com.chardizard.Norbiz.dto.CustomerLookupResponse;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.StockLookupResponse;
 import com.chardizard.Norbiz.dto.TransactionLookupResponse;
 import com.chardizard.Norbiz.models.CustomerType;
+import com.chardizard.Norbiz.models.EmployeeTag;
 import com.chardizard.Norbiz.models.ItemTag;
 import com.chardizard.Norbiz.services.LookupService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -75,12 +77,12 @@ public class LookupController {
 
     // ---- customers ----
 
-    @Operation(summary = "Customer dropdown")
+    @Operation(summary = "Customer dropdown", description = "type is CUSTOMER or OUTLET; warehouseId/warehouseName are the outlet's own warehouse (null for a plain customer).")
     @ApiResponse(responseCode = "200", description = "Customer options returned")
     @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
     @GetMapping("/customers")
     @PreAuthorize("@lookupAccess.can(authentication, 'CUSTOMER')")
-    public ResponseEntity<AppResponse<PageResponse<LookupResponse>>> customers(
+    public ResponseEntity<AppResponse<PageResponse<CustomerLookupResponse>>> customers(
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
             @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
@@ -96,7 +98,7 @@ public class LookupController {
     @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
     @GetMapping("/customers/{id}")
     @PreAuthorize("@lookupAccess.can(authentication, 'CUSTOMER')")
-    public ResponseEntity<AppResponse<LookupResponse>> customer(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<AppResponse<CustomerLookupResponse>> customer(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(AppResponse.of(lookupService.customer(id, userDetails.getUsername())));
     }
 
@@ -220,9 +222,10 @@ public class LookupController {
             @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
             @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
             @Parameter(description = "Search text (contains, case-insensitive) over code, first and last name") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Only employees carrying this tag (e.g. AGENT)") @RequestParam(required = false) EmployeeTag tag,
             @Parameter(description = ACTIVE_DESC) @RequestParam(defaultValue = "true") boolean activeOnly,
             Pageable pageable) {
-        return ok(lookupService.employees(userDetails.getUsername(), company(companyId, headerCompanyId), q, activeOnly, pageable));
+        return ok(lookupService.employees(userDetails.getUsername(), company(companyId, headerCompanyId), q, tag, activeOnly, pageable));
     }
 
     @Operation(summary = "Employee option by ID")
@@ -341,6 +344,37 @@ public class LookupController {
     @PreAuthorize("@lookupAccess.can(authentication, 'DELIVERY_RECEIPT')")
     public ResponseEntity<AppResponse<TransactionLookupResponse>> deliveryReceipt(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(AppResponse.of(lookupService.deliveryReceipt(id, userDetails.getUsername())));
+    }
+
+    // ---- outlet delivery receipts ----
+
+    @Operation(summary = "Outlet delivery receipt dropdown",
+            description = "Source outlet delivery receipts for Outlet Delivery Return. openOnly (default) returns only receipts that are neither "
+                    + "voided nor fully returned; warehouse fields are the outlet warehouse.")
+    @ApiResponse(responseCode = "200", description = "Outlet delivery receipt options returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/outlet-delivery-receipts")
+    @PreAuthorize("@lookupAccess.can(authentication, 'OUTLET_DELIVERY_RECEIPT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionLookupResponse>>> outletDeliveryReceipts(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Search text (contains, case-insensitive) over reference and sheet number") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Filter by outlet customer ID") @RequestParam(required = false) Long customerId,
+            @Parameter(description = "Filter by agent (employee) ID") @RequestParam(required = false) Long agentId,
+            @Parameter(description = "Only returnable receipts: not voided, not fully returned (default true)") @RequestParam(defaultValue = "true") boolean openOnly,
+            Pageable pageable) {
+        return ok(lookupService.outletDeliveryReceipts(userDetails.getUsername(), company(companyId, headerCompanyId), q, customerId, agentId,
+                openOnly, pageable));
+    }
+
+    @Operation(summary = "Outlet delivery receipt option by ID")
+    @ApiResponse(responseCode = "200", description = "Outlet delivery receipt option returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/outlet-delivery-receipts/{id}")
+    @PreAuthorize("@lookupAccess.can(authentication, 'OUTLET_DELIVERY_RECEIPT')")
+    public ResponseEntity<AppResponse<TransactionLookupResponse>> outletDeliveryReceipt(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.outletDeliveryReceipt(id, userDetails.getUsername())));
     }
 
     // ---- purchase invoices ----

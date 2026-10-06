@@ -3,6 +3,7 @@ package com.chardizard.Norbiz.services;
 import com.chardizard.Norbiz.cache.CacheRegion;
 import com.chardizard.Norbiz.cache.CacheScope;
 import com.chardizard.Norbiz.cache.QueryCache;
+import com.chardizard.Norbiz.dto.CustomerLookupResponse;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
 import com.chardizard.Norbiz.dto.StockLookupResponse;
@@ -60,6 +61,7 @@ public class LookupService {
     private final RoleRepository roleRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final DeliveryReceiptRepository deliveryReceiptRepository;
+    private final OutletDeliveryReceiptRepository outletDeliveryReceiptRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
     private final InventoryBalanceRepository inventoryBalanceRepository;
     private final QueryCache queryCache;
@@ -83,8 +85,8 @@ public class LookupService {
     }
 
     // type narrows to CUSTOMER or OUTLET (e.g. the Outlet Receive form lists outlets only); null = both.
-    public Page<LookupResponse> customers(String username, Long companyId, String q, CustomerType type, boolean activeOnly, Pageable pageable) {
-        return search(CacheRegion.LOOKUP_CUSTOMER, params("q", q, "type", type, "activeOnly", activeOnly), LookupResponse.class,
+    public Page<CustomerLookupResponse> customers(String username, Long companyId, String q, CustomerType type, boolean activeOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_CUSTOMER, params("q", q, "type", type, "activeOnly", activeOnly), CustomerLookupResponse.class,
                 customerRepository, username, companyId, Customer.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "code", "name"),
@@ -93,7 +95,7 @@ public class LookupService {
                 withDefaultSort(pageable, "name"), this::toLookup);
     }
 
-    public LookupResponse customer(Long id, String username) {
+    public CustomerLookupResponse customer(Long id, String username) {
         Customer c = customerRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + id));
         assertCompanyAccess(username, c.getCompany().getId());
@@ -171,11 +173,16 @@ public class LookupService {
         return toLookup(g);
     }
 
-    public Page<LookupResponse> employees(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
-        return search(CacheRegion.LOOKUP_EMPLOYEE, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+    public Page<LookupResponse> employees(String username, Long companyId, String q, EmployeeTag tag, boolean activeOnly, Pageable pageable) {
+        Specification<Employee> tagged = tag == null ? null : (root, query, cb) -> {
+            query.distinct(true);
+            return cb.equal(root.join("tags"), tag);
+        };
+        return search(CacheRegion.LOOKUP_EMPLOYEE, params("q", q, "tag", tag, "activeOnly", activeOnly), LookupResponse.class,
                 employeeRepository, username, companyId, Employee.class,
                 SpecificationUtils.allOf(
                         SpecificationUtils.anyContainsIgnoreCase(q, "employeeCode", "firstName", "lastName"),
+                        tagged,
                         activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
                 withDefaultSort(pageable, "lastName"), this::toLookup);
     }
@@ -311,6 +318,28 @@ public class LookupService {
         return toLookup(dr);
     }
 
+    // openOnly = ODRs that are neither voided nor fully returned, i.e. still a valid Outlet Delivery Return source.
+    public Page<TransactionLookupResponse> outletDeliveryReceipts(String username, Long companyId, String q, Long customerId,
+                                                                  Long agentId, boolean openOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_OUTLET_DELIVERY_RECEIPT,
+                params("q", q, "customerId", customerId, "agentId", agentId, "openOnly", openOnly), TransactionLookupResponse.class,
+                outletDeliveryReceiptRepository, username, companyId, OutletDeliveryReceipt.class,
+                SpecificationUtils.allOf(
+                        SpecificationUtils.anyContainsIgnoreCase(q, "referenceNumber", "sheetNumber"),
+                        idEquals("customer", customerId),
+                        idEquals("agent", agentId),
+                        openOnly ? SpecificationUtils.booleanEquals("voided", false) : null,
+                        openOnly ? SpecificationUtils.booleanEquals("loaded", false) : null),
+                withDefaultSort(pageable, Sort.by(Sort.Direction.DESC, "deliveryDate")), this::toLookup);
+    }
+
+    public TransactionLookupResponse outletDeliveryReceipt(Long id, String username) {
+        OutletDeliveryReceipt odr = outletDeliveryReceiptRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Outlet delivery receipt not found: " + id));
+        assertCompanyAccess(username, odr.getCompany().getId());
+        return toLookup(odr);
+    }
+
     // ---- stock ----
 
     // Live on-hand/in-transit quantities for the given items in one warehouse, read straight from the
@@ -347,8 +376,10 @@ public class LookupService {
         return new LookupResponse(s.getId(), s.getCompany().getId(), s.getCode(), s.getName(), s.isActive());
     }
 
-    private LookupResponse toLookup(Customer c) {
-        return new LookupResponse(c.getId(), c.getCompany().getId(), c.getCode(), c.getName(), c.isActive());
+    private CustomerLookupResponse toLookup(Customer c) {
+        Warehouse w = c.getWarehouse();
+        return new CustomerLookupResponse(c.getId(), c.getCompany().getId(), c.getCode(), c.getName(), c.isActive(), c.getType(),
+                w != null ? w.getId() : null, w != null ? w.getName() : null);
     }
 
     private LookupResponse toLookup(Warehouse w) {
@@ -397,7 +428,7 @@ public class LookupService {
                 .toList();
         return new TransactionLookupResponse(po.getId(), po.getCompany().getId(), po.getReferenceNumber(), po.getOrderDate(),
                 po.getSupplier().getId(), po.getSupplier().getName(), null, null, po.getWarehouse().getId(), po.getWarehouse().getName(),
-                null, po.isVoided(), po.isLoaded(), lines);
+                null, null, null, po.isVoided(), po.isLoaded(), lines);
     }
 
     private TransactionLookupResponse toLookup(PurchaseInvoice pi, boolean canViewCostPrice) {
@@ -407,7 +438,7 @@ public class LookupService {
                         canViewCostPrice ? l.getCostPrice() : null, null))
                 .toList();
         return new TransactionLookupResponse(pi.getId(), pi.getCompany().getId(), pi.getReferenceNumber(), pi.getInvoiceDate(),
-                pi.getSupplier().getId(), pi.getSupplier().getName(), null, null, pi.getWarehouse().getId(), pi.getWarehouse().getName(),
+                pi.getSupplier().getId(), pi.getSupplier().getName(), null, null, pi.getWarehouse().getId(), pi.getWarehouse().getName(), null, null,
                 pi.getPurchaseOrder() != null ? pi.getPurchaseOrder().getId() : null,
                 pi.isVoided(), pi.isLoaded(), lines);
     }
@@ -422,7 +453,19 @@ public class LookupService {
         Warehouse warehouse = dr.getDestinationWarehouse() != null ? dr.getDestinationWarehouse() : dr.getWarehouse();
         return new TransactionLookupResponse(dr.getId(), dr.getCompany().getId(), dr.getReferenceNumber(), dr.getDeliveryDate(),
                 null, null, dr.getCustomer().getId(), dr.getCustomer().getName(), warehouse.getId(), warehouse.getName(),
-                null, dr.isVoided(), dr.isLoaded(), lines);
+                null, null, null, dr.isVoided(), dr.isLoaded(), lines);
+    }
+
+    private TransactionLookupResponse toLookup(OutletDeliveryReceipt odr) {
+        List<TransactionLookupResponse.Line> lines = odr.getLines().stream()
+                .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
+                        l.getItem().getItemCode(), l.getItem().getName(), l.getQuantity(), l.getQuantityLoaded(),
+                        null, l.getUnitPrice()))
+                .toList();
+        Employee agent = odr.getAgent();
+        return new TransactionLookupResponse(odr.getId(), odr.getCompany().getId(), odr.getReferenceNumber(), odr.getDeliveryDate(),
+                null, null, odr.getCustomer().getId(), odr.getCustomer().getName(), odr.getWarehouse().getId(), odr.getWarehouse().getName(),
+                agent.getId(), agent.getFirstName() + " " + agent.getLastName(), null, odr.isVoided(), odr.isLoaded(), lines);
     }
 
     // ---- helpers ----

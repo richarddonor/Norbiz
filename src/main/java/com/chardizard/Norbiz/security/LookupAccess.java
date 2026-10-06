@@ -23,7 +23,7 @@ public class LookupAccess {
 
     public enum LookupType {
         SUPPLIER, CUSTOMER, WAREHOUSE, ITEM, ITEM_CATEGORY, ITEM_GROUP, EMPLOYEE, USER, ROLE,
-        PURCHASE_ORDER, PURCHASE_INVOICE, DELIVERY_RECEIPT, STOCK
+        PURCHASE_ORDER, PURCHASE_INVOICE, DELIVERY_RECEIPT, OUTLET_DELIVERY_RECEIPT, STOCK
     }
 
     private static final Map<LookupType, Set<String>> ALLOWED = new EnumMap<>(LookupType.class);
@@ -34,7 +34,10 @@ public class LookupAccess {
                 "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE"));
         ALLOWED.put(LookupType.CUSTOMER, Set.of(
                 "VIEW_CUSTOMER",
-                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE"));
+                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE",
+                "CREATE_OUTLET_DELIVERY_RECEIPT", "CREATE_OUTLET_DELIVERY_RETURN",
+                // outlet filter on the outlet-sales list pages
+                "VIEW_OUTLET_DELIVERY_RECEIPT", "VIEW_OUTLET_DELIVERY_RETURN"));
         ALLOWED.put(LookupType.WAREHOUSE, Set.of(
                 "VIEW_WAREHOUSE",
                 "CREATE_INVENTORY_ADJUSTMENT",
@@ -47,6 +50,7 @@ public class LookupAccess {
                 "CREATE_INVENTORY_ADJUSTMENT",
                 "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
                 "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE",
+                "CREATE_OUTLET_DELIVERY_RECEIPT", "CREATE_OUTLET_DELIVERY_RETURN",
                 "VIEW_INVENTORY_REPORT"));
         ALLOWED.put(LookupType.ITEM_CATEGORY, Set.of(
                 "VIEW_ITEM_CATEGORY",
@@ -55,7 +59,10 @@ public class LookupAccess {
                 "VIEW_ITEM_GROUP",
                 "CREATE_ITEM", "UPDATE_ITEM"));
         ALLOWED.put(LookupType.EMPLOYEE, Set.of(
-                "VIEW_EMPLOYEE"));
+                "VIEW_EMPLOYEE",
+                "CREATE_OUTLET_DELIVERY_RECEIPT",
+                // agent filter on the outlet-sales list pages
+                "VIEW_OUTLET_DELIVERY_RECEIPT", "VIEW_OUTLET_DELIVERY_RETURN"));
         ALLOWED.put(LookupType.USER, Set.of(
                 "VIEW_USER",
                 "CREATE_EMPLOYEE", "UPDATE_EMPLOYEE"));
@@ -72,12 +79,16 @@ public class LookupAccess {
         ALLOWED.put(LookupType.DELIVERY_RECEIPT, Set.of(
                 "VIEW_DELIVERY_RECEIPT",
                 "CREATE_OUTLET_RECEIVE"));
+        ALLOWED.put(LookupType.OUTLET_DELIVERY_RECEIPT, Set.of(
+                "VIEW_OUTLET_DELIVERY_RECEIPT",
+                "CREATE_OUTLET_DELIVERY_RETURN"));
         // Current on-hand / in-transit quantity shown beside lines while creating an inventory transaction.
         ALLOWED.put(LookupType.STOCK, Set.of(
                 "VIEW_INVENTORY_REPORT",
                 "CREATE_INVENTORY_ADJUSTMENT",
                 "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
-                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE"));
+                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE",
+                "CREATE_OUTLET_DELIVERY_RECEIPT", "CREATE_OUTLET_DELIVERY_RETURN"));
     }
 
     static {
@@ -88,6 +99,10 @@ public class LookupAccess {
             switch (report) {
                 case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIVE -> widen(LookupType.SUPPLIER, report.getPermission());
                 case DELIVERY_RECEIPT, OUTLET_RECEIVE -> widen(LookupType.CUSTOMER, report.getPermission());
+                case OUTLET_DELIVERY_RECEIPT, OUTLET_DELIVERY_RETURN -> {
+                    widen(LookupType.CUSTOMER, report.getPermission());
+                    widen(LookupType.EMPLOYEE, report.getPermission());
+                }
                 case INVENTORY_ADJUSTMENT -> { }
             }
         }

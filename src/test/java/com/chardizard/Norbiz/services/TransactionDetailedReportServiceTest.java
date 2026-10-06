@@ -37,6 +37,7 @@ class TransactionDetailedReportServiceTest {
     @Autowired ItemCategoryRepository itemCategoryRepository;
     @Autowired ItemRepository itemRepository;
     @Autowired UserRepository userRepository;
+    @Autowired InventoryAdjustmentService inventoryAdjustmentService;
     @MockitoBean TransactionReferenceService transactionReferenceService;
 
     private final String suffix = UUID.randomUUID().toString().substring(0, 8);
@@ -84,6 +85,21 @@ class TransactionDetailedReportServiceTest {
         category = itemCategoryRepository.save(category);
         item1 = item(category, "RPT1-" + suffix, "Report Item One");
         item2 = item(category, "RPT2-" + suffix, "Report Item Two");
+
+        // Opening stock — deliveries can't take the main warehouse's on-hand below zero.
+        InventoryAdjustmentRequest opening = new InventoryAdjustmentRequest();
+        opening.setCompanyId(company.getId());
+        opening.setWarehouseId(main.getId());
+        opening.setAdjustmentDate("2026-01-01");
+        opening.setLines(List.of(adjustmentLine(item1), adjustmentLine(item2)));
+        inventoryAdjustmentService.create(opening, user);
+    }
+
+    private static InventoryAdjustmentLineRequest adjustmentLine(Item item) {
+        InventoryAdjustmentLineRequest line = new InventoryAdjustmentLineRequest();
+        line.setItemId(item.getId());
+        line.setQuantity(new BigDecimal("100"));
+        return line;
     }
 
     @Test
@@ -143,10 +159,11 @@ class TransactionDetailedReportServiceTest {
             switch (type) {
                 case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIVE -> { filter.setSupplierId(1L); filter.setCounterparty("x"); }
                 case DELIVERY_RECEIPT, OUTLET_RECEIVE -> { filter.setCustomerId(1L); filter.setCounterparty("x"); }
+                case OUTLET_DELIVERY_RECEIPT, OUTLET_DELIVERY_RETURN -> { filter.setCustomerId(1L); filter.setCounterparty("x"); filter.setAgentId(1L); }
                 case INVENTORY_ADJUSTMENT -> { }
             }
             if (type == DetailedReportType.PURCHASE_INVOICE || type == DetailedReportType.PURCHASE_RECEIVE
-                    || type == DetailedReportType.OUTLET_RECEIVE) {
+                    || type == DetailedReportType.OUTLET_RECEIVE || type == DetailedReportType.OUTLET_DELIVERY_RETURN) {
                 filter.setSourceReferenceNumber("x");
             }
             assertThat(reportService.find(type, user, filter, true, PageRequest.of(0, 50)).getContent())
@@ -160,6 +177,14 @@ class TransactionDetailedReportServiceTest {
         filter.setSupplierId(1L);
         assertThatThrownBy(() -> reportService.find(DetailedReportType.INVENTORY_ADJUSTMENT, user, filter, true, PageRequest.of(0, 50)))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Inventory Adjustment - Detailed");
+    }
+
+    @Test
+    void agentFilterIsRejectedWhereThereIsNoAgent() {
+        DetailedReportFilter filter = new DetailedReportFilter();
+        filter.setAgentId(1L);
+        assertThatThrownBy(() -> reportService.find(DetailedReportType.DELIVERY_RECEIPT, user, filter, true, PageRequest.of(0, 50)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("agentId");
     }
 
     @Test

@@ -97,6 +97,12 @@ public class DataInitializer implements CommandLineRunner {
         Permission viewOutletReceivePermission         = findOrCreate("VIEW_OUTLET_RECEIVE",         "Inventory - Outlet Receive View");
         Permission createOutletReceivePermission       = findOrCreate("CREATE_OUTLET_RECEIVE",       "Inventory - Outlet Receive Create");
         Permission voidOutletReceivePermission         = findOrCreate("VOID_OUTLET_RECEIVE",         "Inventory - Outlet Receive Void");
+        Permission viewOutletDeliveryReceiptPermission   = findOrCreate("VIEW_OUTLET_DELIVERY_RECEIPT",   "Sales - Outlet Delivery Receipt View");
+        Permission createOutletDeliveryReceiptPermission = findOrCreate("CREATE_OUTLET_DELIVERY_RECEIPT", "Sales - Outlet Delivery Receipt Create");
+        Permission voidOutletDeliveryReceiptPermission   = findOrCreate("VOID_OUTLET_DELIVERY_RECEIPT",   "Sales - Outlet Delivery Receipt Void");
+        Permission viewOutletDeliveryReturnPermission    = findOrCreate("VIEW_OUTLET_DELIVERY_RETURN",    "Sales - Outlet Delivery Return View");
+        Permission createOutletDeliveryReturnPermission  = findOrCreate("CREATE_OUTLET_DELIVERY_RETURN",  "Sales - Outlet Delivery Return Create");
+        Permission voidOutletDeliveryReturnPermission    = findOrCreate("VOID_OUTLET_DELIVERY_RETURN",    "Sales - Outlet Delivery Return Void");
         Permission viewInventoryReportPermission       = findOrCreate("VIEW_INVENTORY_REPORT",       "Inventory - Report View");
         Permission manageDocumentTemplatesPermission   = findOrCreate("MANAGE_DOCUMENT_TEMPLATES",   "Document Templates - Manage (design + print)");
         Permission manageTransactionActionsPermission  = findOrCreate("MANAGE_TRANSACTION_ACTIONS",  "Configuration - Transaction Actions Manage");
@@ -138,6 +144,8 @@ public class DataInitializer implements CommandLineRunner {
                 viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
                 viewDeliveryReceiptPermission, createDeliveryReceiptPermission, voidDeliveryReceiptPermission,
                 viewOutletReceivePermission, createOutletReceivePermission, voidOutletReceivePermission,
+                viewOutletDeliveryReceiptPermission, createOutletDeliveryReceiptPermission, voidOutletDeliveryReceiptPermission,
+                viewOutletDeliveryReturnPermission, createOutletDeliveryReturnPermission, voidOutletDeliveryReturnPermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(systemAdminRole);
 
@@ -165,6 +173,8 @@ public class DataInitializer implements CommandLineRunner {
                 viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
                 viewDeliveryReceiptPermission, createDeliveryReceiptPermission, voidDeliveryReceiptPermission,
                 viewOutletReceivePermission, createOutletReceivePermission, voidOutletReceivePermission,
+                viewOutletDeliveryReceiptPermission, createOutletDeliveryReceiptPermission, voidOutletDeliveryReceiptPermission,
+                viewOutletDeliveryReturnPermission, createOutletDeliveryReturnPermission, voidOutletDeliveryReturnPermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(superAdminRole);
 

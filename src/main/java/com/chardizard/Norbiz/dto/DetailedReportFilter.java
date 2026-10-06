@@ -26,9 +26,13 @@ public class DetailedReportFilter {
     @Positive
     private Long supplierId;
 
-    @Schema(description = "Filter by customer ID (Delivery Receipt, Outlet Receive)")
+    @Schema(description = "Filter by customer ID (Delivery Receipt, Outlet Receive, Outlet Delivery Receipt, Outlet Delivery Return)")
     @Positive
     private Long customerId;
+
+    @Schema(description = "Filter by agent (employee) ID (Outlet Delivery Receipt, Outlet Delivery Return)")
+    @Positive
+    private Long agentId;
 
     @Schema(description = "Filter by item ID")
     @Positive

@@ -32,7 +32,7 @@ public class PurchaseOrderService {
 
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
-    private final InventoryBalanceRepository inventoryBalanceRepository;
+    private final InventoryStockService inventoryStockService;
     private final CompanyRepository companyRepository;
     private final WarehouseRepository warehouseRepository;
     private final SupplierRepository supplierRepository;
@@ -239,18 +239,7 @@ public class PurchaseOrderService {
         movement.setCreatedBy(username);
         inventoryMovementRepository.save(movement);
 
-        InventoryBalance balance = inventoryBalanceRepository.findByItemIdAndWarehouseId(item.getId(), warehouse.getId())
-                .orElseGet(() -> {
-                    InventoryBalance b = new InventoryBalance();
-                    b.setItem(item);
-                    b.setWarehouse(warehouse);
-                    b.setQuantity(BigDecimal.ZERO);
-                    b.setTransitQuantity(BigDecimal.ZERO);
-                    return b;
-                });
-        balance.setTransitQuantity(balance.getTransitQuantity().add(transitQuantityDelta));
-        balance.setUpdatedAt(now);
-        inventoryBalanceRepository.save(balance);
+        inventoryStockService.apply(item, warehouse, BigDecimal.ZERO, transitQuantityDelta, now);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

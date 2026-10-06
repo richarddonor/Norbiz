@@ -1,6 +1,7 @@
 package com.chardizard.Norbiz.services;
 
 import com.chardizard.Norbiz.dto.*;
+import com.chardizard.Norbiz.exceptions.InsufficientStockException;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +19,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 // Delivery Receipt + Outlet Receive ledger effects. Runs against the configured Postgres; every test rolls back.
@@ -37,6 +41,7 @@ class DeliveryReceiptFlowTest {
     @Autowired ItemPriceRepository itemPriceRepository;
     @Autowired InventoryBalanceRepository inventoryBalanceRepository;
     @Autowired UserRepository userRepository;
+    @Autowired InventoryAdjustmentService inventoryAdjustmentService;
     @MockitoBean TransactionReferenceService transactionReferenceService;
 
     private final String suffix = UUID.randomUUID().toString().substring(0, 8);
@@ -93,6 +98,8 @@ class DeliveryReceiptFlowTest {
         price.setPriceType(PriceType.UNIT_PRICE);
         price.setAmount(new BigDecimal("25.00"));
         itemPriceRepository.save(price);
+
+        stock(mainWarehouse, "100");
     }
 
     @Test
@@ -101,7 +108,7 @@ class DeliveryReceiptFlowTest {
 
         assertThat(dr.getWarehouse().getId()).isEqualTo(mainWarehouse.getId());
         assertThat(dr.getDestinationWarehouse()).isNull();
-        assertBalance(mainWarehouse, "-10", "0");
+        assertBalance(mainWarehouse, "90", "0");
     }
 
     @Test
@@ -120,11 +127,11 @@ class DeliveryReceiptFlowTest {
         DeliveryReceipt dr = deliveryReceiptService.create(drRequest(outlet, "10"), user);
 
         assertThat(dr.getDestinationWarehouse().getId()).isEqualTo(outlet.getWarehouse().getId());
-        assertBalance(mainWarehouse, "-10", "0");
+        assertBalance(mainWarehouse, "90", "0");
         assertBalance(outlet.getWarehouse(), "0", "10");
 
         deliveryReceiptService.voidDeliveryReceipt(dr.getId(), user);
-        assertBalance(mainWarehouse, "0", "0");
+        assertBalance(mainWarehouse, "100", "0");
         assertBalance(outlet.getWarehouse(), "0", "0");
     }
 
@@ -188,8 +195,69 @@ class DeliveryReceiptFlowTest {
         assertBalance(outlet.getWarehouse(), "0", "10");
 
         deliveryReceiptService.voidDeliveryReceipt(dr.getId(), user);
-        assertBalance(mainWarehouse, "0", "0");
+        assertBalance(mainWarehouse, "100", "0");
         assertBalance(outlet.getWarehouse(), "0", "0");
+    }
+
+    // --- Negative stock rule (docs/INVENTORY.md "Negative stock"); setUp stocks 100 in the main warehouse.
+
+    @Test
+    void deliveryBeyondOnHandIsRejectedBeforeAReferenceNumberIsTaken() {
+        DeliveryReceiptRequest req = drRequest(customer, "60");
+        req.getLines().add(drRequest(customer, "50").getLines().getFirst());
+
+        // Lines for the same item are summed: 60 + 50 > 100, even though each alone would fit.
+        assertThatThrownBy(() -> deliveryReceiptService.create(req, user))
+                .isInstanceOfSatisfying(InsufficientStockException.class, ex -> {
+                    assertThat(ex.getShortfalls()).singleElement().satisfies(s -> {
+                        assertThat(s.itemId()).isEqualTo(item.getId());
+                        assertThat(s.warehouseId()).isEqualTo(mainWarehouse.getId());
+                        assertThat(s.available()).isEqualByComparingTo("100");
+                        assertThat(s.required()).isEqualByComparingTo("110");
+                    });
+                });
+        verify(transactionReferenceService, never()).next(any(), eq(TransactionType.DELIVERY_RECEIPT.name()), any());
+        assertBalance(mainWarehouse, "100", "0");
+    }
+
+    @Test
+    void deliveryCanDrainStockToExactlyZero() {
+        deliveryReceiptService.create(drRequest(customer, "100"), user);
+        assertBalance(mainWarehouse, "0", "0");
+
+        assertThatThrownBy(() -> deliveryReceiptService.create(drRequest(customer, "0.0001"), user))
+                .isInstanceOf(InsufficientStockException.class);
+    }
+
+    @Test
+    void negativeAdjustmentBeyondOnHandIsRejected() {
+        assertThatThrownBy(() -> stock(mainWarehouse, "-101")).isInstanceOf(InsufficientStockException.class);
+        stock(mainWarehouse, "-100");
+        assertBalance(mainWarehouse, "0", "0");
+    }
+
+    @Test
+    void voidingAStockAddingTransactionIsRejectedOnceItsStockHasBeenConsumed() {
+        InventoryAdjustment addition = stock(mainWarehouse, "20");
+        deliveryReceiptService.create(drRequest(customer, "110"), user);
+
+        assertThatThrownBy(() -> inventoryAdjustmentService.voidAdjustment(addition.getId(), user))
+                .isInstanceOfSatisfying(InsufficientStockException.class, ex ->
+                        assertThat(ex.getShortfalls().getFirst().available()).isEqualByComparingTo("10"));
+        assertBalance(mainWarehouse, "10", "0");
+    }
+
+    // Opening stock via a posted Inventory Adjustment — deliveries can't take on-hand below zero.
+    private InventoryAdjustment stock(Warehouse warehouse, String quantity) {
+        InventoryAdjustmentLineRequest line = new InventoryAdjustmentLineRequest();
+        line.setItemId(item.getId());
+        line.setQuantity(new BigDecimal(quantity));
+        InventoryAdjustmentRequest req = new InventoryAdjustmentRequest();
+        req.setCompanyId(company.getId());
+        req.setWarehouseId(warehouse.getId());
+        req.setAdjustmentDate("2026-01-01");
+        req.setLines(List.of(line));
+        return inventoryAdjustmentService.create(req, user);
     }
 
     private void assertBalance(Warehouse warehouse, String quantity, String transitQuantity) {

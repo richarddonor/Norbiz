@@ -50,12 +50,14 @@ public class TransactionDetailedReportService {
     private final PurchaseReceiveLineRepository purchaseReceiveLineRepository;
     private final DeliveryReceiptLineRepository deliveryReceiptLineRepository;
     private final OutletReceiveLineRepository outletReceiveLineRepository;
+    private final OutletDeliveryReceiptLineRepository outletDeliveryReceiptLineRepository;
+    private final OutletDeliveryReturnLineRepository outletDeliveryReturnLineRepository;
 
     /**
      * How a line entity reaches its header's fields: the line's header association, and the header's
-     * date, notes, counterparty (null when it has none) and source-transaction association names.
+     * date, notes, counterparty and agent (null when it has none) and source-transaction association names.
      */
-    private record Shape(String header, String date, String remarks, String counterparty, String... sources) {
+    private record Shape(String header, String date, String remarks, String counterparty, String agent, String... sources) {
     }
 
     public Page<TransactionDetailedReportRow> find(DetailedReportType type, String username, DetailedReportFilter filter,
@@ -63,23 +65,29 @@ public class TransactionDetailedReportService {
         log.debug("User '{}' requested {} report", username, type.getDisplayName());
         return switch (type) {
             case INVENTORY_ADJUSTMENT -> query(inventoryAdjustmentLineRepository,
-                    new Shape("adjustment", "adjustmentDate", "reason", null),
+                    new Shape("adjustment", "adjustmentDate", "reason", null, null),
                     type, username, filter, pageable, this::fromInventoryAdjustment);
             case PURCHASE_ORDER -> query(purchaseOrderLineRepository,
-                    new Shape("purchaseOrder", "orderDate", "remarks", "supplier"),
+                    new Shape("purchaseOrder", "orderDate", "remarks", "supplier", null),
                     type, username, filter, pageable, l -> fromPurchaseOrder(l, canViewCostPrice));
             case PURCHASE_INVOICE -> query(purchaseInvoiceLineRepository,
-                    new Shape("purchaseInvoice", "invoiceDate", "remarks", "supplier", "purchaseOrder"),
+                    new Shape("purchaseInvoice", "invoiceDate", "remarks", "supplier", null, "purchaseOrder"),
                     type, username, filter, pageable, l -> fromPurchaseInvoice(l, canViewCostPrice));
             case PURCHASE_RECEIVE -> query(purchaseReceiveLineRepository,
-                    new Shape("purchaseReceive", "receiptDate", "remarks", "supplier", "purchaseOrder", "purchaseInvoice"),
+                    new Shape("purchaseReceive", "receiptDate", "remarks", "supplier", null, "purchaseOrder", "purchaseInvoice"),
                     type, username, filter, pageable, l -> fromPurchaseReceive(l, canViewCostPrice));
             case DELIVERY_RECEIPT -> query(deliveryReceiptLineRepository,
-                    new Shape("deliveryReceipt", "deliveryDate", "remarks", "customer"),
+                    new Shape("deliveryReceipt", "deliveryDate", "remarks", "customer", null),
                     type, username, filter, pageable, this::fromDeliveryReceipt);
             case OUTLET_RECEIVE -> query(outletReceiveLineRepository,
-                    new Shape("outletReceive", "receiptDate", "remarks", "customer", "deliveryReceipt"),
+                    new Shape("outletReceive", "receiptDate", "remarks", "customer", null, "deliveryReceipt"),
                     type, username, filter, pageable, this::fromOutletReceive);
+            case OUTLET_DELIVERY_RECEIPT -> query(outletDeliveryReceiptLineRepository,
+                    new Shape("outletDeliveryReceipt", "deliveryDate", "remarks", "customer", "agent"),
+                    type, username, filter, pageable, this::fromOutletDeliveryReceipt);
+            case OUTLET_DELIVERY_RETURN -> query(outletDeliveryReturnLineRepository,
+                    new Shape("outletDeliveryReturn", "returnDate", "remarks", "customer", "agent", "outletDeliveryReceipt"),
+                    type, username, filter, pageable, this::fromOutletDeliveryReturn);
         };
     }
 
@@ -105,6 +113,7 @@ public class TransactionDetailedReportService {
             if (companyIds != null) predicates.add(header.get("company").get("id").in(companyIds));
             if (f.getWarehouseId() != null) predicates.add(cb.equal(header.get("warehouse").get("id"), f.getWarehouseId()));
             if (counterpartyId != null) predicates.add(cb.equal(header.get(shape.counterparty()).get("id"), counterpartyId));
+            if (f.getAgentId() != null) predicates.add(cb.equal(header.get(shape.agent()).get("id"), f.getAgentId()));
             if (f.getItemId() != null) predicates.add(cb.equal(item.get("id"), f.getItemId()));
             if (f.getVoided() != null) predicates.add(cb.equal(header.get("voided"), f.getVoided()));
             if (dateFrom != null) predicates.add(cb.greaterThanOrEqualTo(header.<Instant>get(shape.date()), dateFrom));
@@ -145,6 +154,9 @@ public class TransactionDetailedReportService {
         }
         if (f.getCustomerId() != null && !"customer".equals(shape.counterparty())) {
             throw new IllegalArgumentException("customerId filter does not apply to " + type.getDisplayName());
+        }
+        if (f.getAgentId() != null && shape.agent() == null) {
+            throw new IllegalArgumentException("agentId filter does not apply to " + type.getDisplayName());
         }
         if (StringUtils.hasText(f.getCounterparty()) && shape.counterparty() == null) {
             throw new IllegalArgumentException("counterparty filter does not apply to " + type.getDisplayName());
@@ -232,6 +244,36 @@ public class TransactionDetailedReportService {
         // Valued at the selling price of the delivered line it received.
         price(row, line.getDeliveryReceiptLine().getUnitPrice(), null);
         return row;
+    }
+
+    private TransactionDetailedReportRow fromOutletDeliveryReceipt(OutletDeliveryReceiptLine line) {
+        OutletDeliveryReceipt h = line.getOutletDeliveryReceipt();
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
+        header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getDeliveryDate(), h.getWarehouse(), h.getRemarks());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        row.setCounterpartyId(h.getCustomer().getId());
+        row.setCounterpartyName(h.getCustomer().getName());
+        agent(row, h.getAgent());
+        price(row, line.getUnitPrice(), null);
+        return row;
+    }
+
+    private TransactionDetailedReportRow fromOutletDeliveryReturn(OutletDeliveryReturnLine line) {
+        OutletDeliveryReturn h = line.getOutletDeliveryReturn();
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
+        header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReturnDate(), h.getWarehouse(), h.getRemarks());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        row.setCounterpartyId(h.getCustomer().getId());
+        row.setCounterpartyName(h.getCustomer().getName());
+        row.setSourceReferenceNumber(h.getOutletDeliveryReceipt().getReferenceNumber());
+        agent(row, h.getAgent());
+        price(row, line.getUnitPrice(), null);
+        return row;
+    }
+
+    private static void agent(TransactionDetailedReportRow row, Employee agent) {
+        row.setAgentId(agent.getId());
+        row.setAgentName(agent.getFirstName() + " " + agent.getLastName());
     }
 
     private static TransactionDetailedReportRow line(Long id, Integer lineNumber, Item item, BigDecimal quantity, BigDecimal quantityLoaded) {

@@ -13,7 +13,7 @@ public enum CacheRegion {
 
     // ---- /lookups/* dropdowns ----
     LOOKUP_SUPPLIER(Kind.LOOKUP, Supplier.class),
-    LOOKUP_CUSTOMER(Kind.LOOKUP, Customer.class),
+    LOOKUP_CUSTOMER(Kind.LOOKUP, Customer.class, Warehouse.class),
     LOOKUP_WAREHOUSE(Kind.LOOKUP, Warehouse.class),
     LOOKUP_ITEM(Kind.LOOKUP, Item.class, ItemPrice.class),
     LOOKUP_ITEM_CATEGORY(Kind.LOOKUP, ItemCategory.class),
@@ -24,6 +24,8 @@ public enum CacheRegion {
     LOOKUP_PURCHASE_ORDER(Kind.LOOKUP, PurchaseOrder.class, PurchaseOrderLine.class, Item.class, Supplier.class, Warehouse.class),
     LOOKUP_PURCHASE_INVOICE(Kind.LOOKUP, PurchaseInvoice.class, PurchaseInvoiceLine.class, Item.class, Supplier.class, Warehouse.class),
     LOOKUP_DELIVERY_RECEIPT(Kind.LOOKUP, DeliveryReceipt.class, DeliveryReceiptLine.class, Item.class, Customer.class, Warehouse.class),
+    LOOKUP_OUTLET_DELIVERY_RECEIPT(Kind.LOOKUP, OutletDeliveryReceipt.class, OutletDeliveryReceiptLine.class, Item.class, Customer.class,
+            Warehouse.class, Employee.class),
 
     // ---- master-data list endpoints ----
     LIST_BRAND(Kind.LIST, Brand.class, Company.class),

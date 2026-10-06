@@ -34,7 +34,7 @@ public class PurchaseReceiveService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
-    private final InventoryBalanceRepository inventoryBalanceRepository;
+    private final InventoryStockService inventoryStockService;
     private final CompanyRepository companyRepository;
     private final WarehouseRepository warehouseRepository;
     private final SupplierRepository supplierRepository;
@@ -314,6 +314,10 @@ public class PurchaseReceiveService {
             throw new IllegalArgumentException("Purchase receive already voided: " + id);
         }
 
+        // Voiding takes the received stock back out of on-hand, which may since have been consumed.
+        inventoryStockService.assertAvailable(receive.getWarehouse(), receive.getLines(), PurchaseReceiveLine::getItem,
+                PurchaseReceiveLine::getQuantity);
+
         Instant now = Instant.now();
 
         for (PurchaseReceiveLine line : receive.getLines()) {
@@ -372,19 +376,7 @@ public class PurchaseReceiveService {
         movement.setCreatedBy(username);
         inventoryMovementRepository.save(movement);
 
-        InventoryBalance balance = inventoryBalanceRepository.findByItemIdAndWarehouseId(item.getId(), warehouse.getId())
-                .orElseGet(() -> {
-                    InventoryBalance b = new InventoryBalance();
-                    b.setItem(item);
-                    b.setWarehouse(warehouse);
-                    b.setQuantity(BigDecimal.ZERO);
-                    b.setTransitQuantity(BigDecimal.ZERO);
-                    return b;
-                });
-        balance.setQuantity(balance.getQuantity().add(quantity));
-        balance.setTransitQuantity(balance.getTransitQuantity().add(quantity.negate()));
-        balance.setUpdatedAt(now);
-        inventoryBalanceRepository.save(balance);
+        inventoryStockService.apply(item, warehouse, quantity, quantity.negate(), now);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

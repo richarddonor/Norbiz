@@ -1,7 +1,7 @@
 package com.chardizard.Norbiz.services;
 
-import com.chardizard.Norbiz.dto.DeliveryReceiptLineRequest;
-import com.chardizard.Norbiz.dto.DeliveryReceiptRequest;
+import com.chardizard.Norbiz.dto.OutletDeliveryReceiptLineRequest;
+import com.chardizard.Norbiz.dto.OutletDeliveryReceiptRequest;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.*;
 import com.chardizard.Norbiz.util.DateRangeUtils;
@@ -23,34 +23,34 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class DeliveryReceiptService {
+public class OutletDeliveryReceiptService {
 
-    private static final Logger log = LoggerFactory.getLogger(DeliveryReceiptService.class);
-    private static final String TRANSACTION_TYPE = TransactionType.DELIVERY_RECEIPT.name();
-    private static final String VOID_SOURCE_TYPE = "DELIVERY_RECEIPT_VOID";
-    private static final String REFERENCE_PREFIX = "DR";
+    private static final Logger log = LoggerFactory.getLogger(OutletDeliveryReceiptService.class);
+    private static final String TRANSACTION_TYPE = TransactionType.OUTLET_DELIVERY_RECEIPT.name();
+    private static final String VOID_SOURCE_TYPE = "OUTLET_DELIVERY_RECEIPT_VOID";
+    private static final String REFERENCE_PREFIX = "ODR";
 
-    private final DeliveryReceiptRepository deliveryReceiptRepository;
+    private final OutletDeliveryReceiptRepository outletDeliveryReceiptRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryStockService inventoryStockService;
     private final CompanyRepository companyRepository;
     private final CustomerRepository customerRepository;
-    private final WarehouseRepository warehouseRepository;
+    private final EmployeeRepository employeeRepository;
     private final ItemRepository itemRepository;
     private final ItemPriceRepository itemPriceRepository;
     private final UserRepository userRepository;
     private final TransactionReferenceService transactionReferenceService;
     private final TransactionEventService transactionEventService;
 
-    public Page<DeliveryReceipt> findAllForUser(String username, Long customerId, Long warehouseId, Map<String, String> filters,
-                                                 Instant dateFrom, Instant dateTo, Pageable pageable) {
+    public Page<OutletDeliveryReceipt> findAllForUser(String username, Long customerId, Long agentId, Map<String, String> filters,
+                                                       Instant dateFrom, Instant dateTo, Pageable pageable) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
 
         boolean isSuperAdmin = user.getRoles().stream()
                 .anyMatch(r -> r.getName().equals("SUPER_ADMIN"));
 
-        Specification<DeliveryReceipt> companyScope = null;
+        Specification<OutletDeliveryReceipt> companyScope = null;
         if (!isSuperAdmin) {
             List<Long> companyIds = user.getCompanies().stream()
                     .map(Company::getId)
@@ -59,58 +59,63 @@ public class DeliveryReceiptService {
             companyScope = (root, query, cb) -> root.get("company").get("id").in(companyIds);
         }
 
-        Specification<DeliveryReceipt> customerScope = customerId == null ? null
+        Specification<OutletDeliveryReceipt> customerScope = customerId == null ? null
                 : (root, query, cb) -> cb.equal(root.get("customer").get("id"), customerId);
-        Specification<DeliveryReceipt> warehouseScope = warehouseId == null ? null
-                : (root, query, cb) -> cb.equal(root.get("warehouse").get("id"), warehouseId);
+        Specification<OutletDeliveryReceipt> agentScope = agentId == null ? null
+                : (root, query, cb) -> cb.equal(root.get("agent").get("id"), agentId);
 
-        Specification<DeliveryReceipt> spec = SpecificationUtils.allOf(
+        Specification<OutletDeliveryReceipt> spec = SpecificationUtils.allOf(
                 companyScope,
                 customerScope,
-                warehouseScope,
+                agentScope,
                 SpecificationUtils.containsIgnoreCase("referenceNumber", filters.get("referenceNumber")),
                 SpecificationUtils.containsIgnoreCase("sheetNumber", filters.get("sheetNumber")),
                 SpecificationUtils.dateRange("deliveryDate", dateFrom, dateTo)
         );
 
-        return deliveryReceiptRepository.findAll(spec, pageable);
+        return outletDeliveryReceiptRepository.findAll(spec, pageable);
     }
 
-    public DeliveryReceipt findById(Long id, String username) {
-        DeliveryReceipt receipt = deliveryReceiptRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Delivery receipt not found: " + id));
+    public OutletDeliveryReceipt findById(Long id, String username) {
+        OutletDeliveryReceipt receipt = outletDeliveryReceiptRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Outlet delivery receipt not found: " + id));
         assertCompanyAccess(username, receipt.getCompany().getId());
         return receipt;
     }
 
     @Transactional
-    public DeliveryReceipt create(DeliveryReceiptRequest request, String username) {
+    public OutletDeliveryReceipt create(OutletDeliveryReceiptRequest request, String username) {
         Company company = companyRepository.findById(request.getCompanyId())
                 .orElseThrow(() -> new IllegalArgumentException("Company not found: " + request.getCompanyId()));
 
         assertCompanyAccess(username, company.getId());
 
-        Customer customer = customerRepository.findById(request.getCustomerId())
+        Customer outlet = customerRepository.findById(request.getCustomerId())
                 .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + request.getCustomerId()));
-        if (!customer.getCompany().getId().equals(company.getId())) {
+        if (!outlet.getCompany().getId().equals(company.getId())) {
             throw new IllegalArgumentException("Customer does not belong to company: " + company.getId());
         }
-        if (!customer.isActive()) {
-            throw new IllegalArgumentException("Customer is inactive: " + customer.getName());
+        if (outlet.getType() != CustomerType.OUTLET) {
+            throw new IllegalArgumentException("Customer is not an outlet: " + outlet.getName());
+        }
+        if (!outlet.isActive()) {
+            throw new IllegalArgumentException("Outlet is inactive: " + outlet.getName());
+        }
+        Warehouse outletWarehouse = outlet.getWarehouse();
+        if (outletWarehouse == null) {
+            throw new IllegalArgumentException("Outlet has no warehouse to sell from: " + outlet.getName());
         }
 
-        Warehouse mainWarehouse = warehouseRepository.findFirstByCompanyIdAndMainTrue(company.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No main warehouse configured for company: " + company.getId()));
-        if (!mainWarehouse.isActive()) {
-            throw new IllegalArgumentException("Main warehouse is inactive: " + mainWarehouse.getName());
+        Employee agent = employeeRepository.findById(request.getAgentId())
+                .orElseThrow(() -> new IllegalArgumentException("Employee not found: " + request.getAgentId()));
+        if (!agent.getCompany().getId().equals(company.getId())) {
+            throw new IllegalArgumentException("Agent does not belong to company: " + company.getId());
         }
-
-        Warehouse outletWarehouse = null;
-        if (customer.getType() == CustomerType.OUTLET) {
-            outletWarehouse = customer.getWarehouse();
-            if (outletWarehouse == null) {
-                throw new IllegalArgumentException("Outlet has no warehouse to deliver into: " + customer.getName());
-            }
+        if (!agent.isActive()) {
+            throw new IllegalArgumentException("Agent is inactive: " + agent.getEmployeeCode());
+        }
+        if (!agent.getTags().contains(EmployeeTag.AGENT)) {
+            throw new IllegalArgumentException("Employee is not tagged as an agent: " + agent.getEmployeeCode());
         }
 
         Instant deliveryDate = DateRangeUtils.startOfDayUtc(request.getDeliveryDate());
@@ -120,11 +125,11 @@ public class DeliveryReceiptService {
 
         Instant now = Instant.now();
 
-        DeliveryReceipt receipt = new DeliveryReceipt();
+        OutletDeliveryReceipt receipt = new OutletDeliveryReceipt();
         receipt.setCompany(company);
-        receipt.setCustomer(customer);
-        receipt.setWarehouse(mainWarehouse);
-        receipt.setDestinationWarehouse(outletWarehouse);
+        receipt.setCustomer(outlet);
+        receipt.setWarehouse(outletWarehouse);
+        receipt.setAgent(agent);
         receipt.setDeliveryDate(deliveryDate);
         receipt.setRemarks(request.getRemarks());
         receipt.setSheetNumber(request.getSheetNumber());
@@ -132,7 +137,7 @@ public class DeliveryReceiptService {
         receipt.setCreatedBy(username);
 
         int lineNumber = 1;
-        for (DeliveryReceiptLineRequest lineRequest : request.getLines()) {
+        for (OutletDeliveryReceiptLineRequest lineRequest : request.getLines()) {
             Item item = itemRepository.findById(lineRequest.getItemId())
                     .orElseThrow(() -> new IllegalArgumentException("Item not found: " + lineRequest.getItemId()));
             if (!item.getCompany().getId().equals(company.getId())) {
@@ -145,8 +150,8 @@ public class DeliveryReceiptService {
                 throw new IllegalArgumentException("Item is inactive: " + item.getItemCode());
             }
 
-            DeliveryReceiptLine line = new DeliveryReceiptLine();
-            line.setDeliveryReceipt(receipt);
+            OutletDeliveryReceiptLine line = new OutletDeliveryReceiptLine();
+            line.setOutletDeliveryReceipt(receipt);
             line.setItem(item);
             line.setQuantity(lineRequest.getQuantity());
             line.setUnitPrice(lineRequest.getUnitPrice() != null ? lineRequest.getUnitPrice() : currentUnitPrice(item));
@@ -154,56 +159,55 @@ public class DeliveryReceiptService {
             receipt.getLines().add(line);
         }
 
-        // On-hand in the main warehouse can't go below zero (docs/INVENTORY.md "Negative stock").
-        inventoryStockService.assertAvailable(mainWarehouse, receipt.getLines(), DeliveryReceiptLine::getItem,
-                DeliveryReceiptLine::getQuantity);
+        // On-hand in the outlet's warehouse can't go below zero (docs/INVENTORY.md "Negative stock").
+        inventoryStockService.assertAvailable(outletWarehouse, receipt.getLines(), OutletDeliveryReceiptLine::getItem,
+                OutletDeliveryReceiptLine::getQuantity);
 
         // Generated last, only once validation has fully passed, to avoid burning
         // reference numbers on requests that were always going to be rejected.
         receipt.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
 
-        DeliveryReceipt saved = deliveryReceiptRepository.save(receipt);
-        transactionEventService.recordSystemEvent(company, TransactionType.DELIVERY_RECEIPT, saved.getId(), saved.getReferenceNumber(),
+        OutletDeliveryReceipt saved = outletDeliveryReceiptRepository.save(receipt);
+        transactionEventService.recordSystemEvent(company, TransactionType.OUTLET_DELIVERY_RECEIPT, saved.getId(), saved.getReferenceNumber(),
                 TransactionEventType.CREATED, username, saved.getCreatedAt());
 
-        for (DeliveryReceiptLine line : saved.getLines()) {
-            postMovements(TRANSACTION_TYPE, saved, line, BigDecimal.ONE, now, username);
+        for (OutletDeliveryReceiptLine line : saved.getLines()) {
+            postMovement(TRANSACTION_TYPE, saved, line.getItem(), line.getQuantity().negate(), now, username);
         }
 
-        log.info("User '{}' posted delivery receipt (id={}) with {} line(s) to customer {} from main warehouse {}{}",
-                username, saved.getId(), saved.getLines().size(), customer.getId(), mainWarehouse.getId(),
-                outletWarehouse != null ? " (in transit to outlet warehouse " + outletWarehouse.getId() + ")" : "");
+        log.info("User '{}' posted outlet delivery receipt (id={}) with {} line(s) from outlet {} warehouse {}, agent {}",
+                username, saved.getId(), saved.getLines().size(), outlet.getId(), outletWarehouse.getId(), agent.getId());
         return saved;
     }
 
     // Voiding is the only sanctioned way to cancel an immutable transaction (docs/TRANSACTIONS.md "Voiding").
-    // Blocked once any Outlet Receive has loaded it — void those first.
+    // Blocked once any Outlet Delivery Return has loaded it — void those first.
     @Transactional
-    public DeliveryReceipt voidDeliveryReceipt(Long id, String username) {
-        DeliveryReceipt receipt = findById(id, username);
+    public OutletDeliveryReceipt voidOutletDeliveryReceipt(Long id, String username) {
+        OutletDeliveryReceipt receipt = findById(id, username);
 
         if (receipt.isVoided()) {
-            throw new IllegalArgumentException("Delivery receipt already voided: " + id);
+            throw new IllegalArgumentException("Outlet delivery receipt already voided: " + id);
         }
         boolean hasLoadedQuantity = receipt.getLines().stream()
                 .anyMatch(l -> l.getQuantityLoaded().compareTo(BigDecimal.ZERO) > 0);
         if (receipt.isLoaded() || hasLoadedQuantity) {
-            throw new IllegalArgumentException("Cannot void a delivery receipt that has been received by an outlet: " + id);
+            throw new IllegalArgumentException("Cannot void an outlet delivery receipt that has returns: " + id);
         }
 
         Instant now = Instant.now();
-        for (DeliveryReceiptLine line : receipt.getLines()) {
-            postMovements(VOID_SOURCE_TYPE, receipt, line, BigDecimal.ONE.negate(), now, username);
+        for (OutletDeliveryReceiptLine line : receipt.getLines()) {
+            postMovement(VOID_SOURCE_TYPE, receipt, line.getItem(), line.getQuantity(), now, username);
         }
 
         receipt.setVoided(true);
         receipt.setVoidedAt(now);
         receipt.setVoidedBy(username);
 
-        DeliveryReceipt saved = deliveryReceiptRepository.save(receipt);
-        transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.DELIVERY_RECEIPT, saved.getId(), saved.getReferenceNumber(),
+        OutletDeliveryReceipt saved = outletDeliveryReceiptRepository.save(receipt);
+        transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.OUTLET_DELIVERY_RECEIPT, saved.getId(), saved.getReferenceNumber(),
                 TransactionEventType.VOIDED, username, saved.getVoidedAt());
-        log.info("User '{}' voided delivery receipt (id={})", username, id);
+        log.info("User '{}' voided outlet delivery receipt (id={})", username, id);
         return saved;
     }
 
@@ -213,25 +217,17 @@ public class DeliveryReceiptService {
                 .orElse(BigDecimal.ZERO);
     }
 
-    // sign = +1 posts the delivery, -1 reverses it (void). The main warehouse loses on-hand stock; an
-    // outlet's warehouse gains the same amount in transit, to be moved to on-hand by Outlet Receive.
-    private void postMovements(String sourceType, DeliveryReceipt receipt, DeliveryReceiptLine line, BigDecimal sign,
-                               Instant now, String username) {
-        BigDecimal quantity = line.getQuantity().multiply(sign);
-        postMovement(sourceType, receipt, line.getItem(), receipt.getWarehouse(), quantity.negate(), BigDecimal.ZERO, now, username);
-        if (receipt.getDestinationWarehouse() != null) {
-            postMovement(sourceType, receipt, line.getItem(), receipt.getDestinationWarehouse(), BigDecimal.ZERO, quantity, now, username);
-        }
-    }
+    // On-hand only, in the outlet's warehouse: negative on sale, positive on void.
+    private void postMovement(String sourceType, OutletDeliveryReceipt receipt, Item item, BigDecimal quantityDelta,
+                              Instant now, String username) {
+        Warehouse warehouse = receipt.getWarehouse();
 
-    private void postMovement(String sourceType, DeliveryReceipt receipt, Item item, Warehouse warehouse,
-                              BigDecimal quantityDelta, BigDecimal transitQuantityDelta, Instant now, String username) {
         InventoryMovement movement = new InventoryMovement();
         movement.setCompany(receipt.getCompany());
         movement.setItem(item);
         movement.setWarehouse(warehouse);
         movement.setQuantityDelta(quantityDelta);
-        movement.setTransitQuantityDelta(transitQuantityDelta);
+        movement.setTransitQuantityDelta(BigDecimal.ZERO);
         movement.setMovementDate(receipt.getDeliveryDate());
         movement.setSourceType(sourceType);
         movement.setSourceId(receipt.getId());
@@ -241,7 +237,7 @@ public class DeliveryReceiptService {
         movement.setCreatedBy(username);
         inventoryMovementRepository.save(movement);
 
-        inventoryStockService.apply(item, warehouse, quantityDelta, transitQuantityDelta, now);
+        inventoryStockService.apply(item, warehouse, quantityDelta, BigDecimal.ZERO, now);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {

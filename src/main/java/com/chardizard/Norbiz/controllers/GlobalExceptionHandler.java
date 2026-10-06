@@ -2,6 +2,7 @@ package com.chardizard.Norbiz.controllers;
 
 import com.chardizard.Norbiz.dto.AppErrorResponse;
 import com.chardizard.Norbiz.exceptions.EntityInUseException;
+import com.chardizard.Norbiz.exceptions.InsufficientStockException;
 import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
@@ -127,6 +128,18 @@ public class GlobalExceptionHandler {
         Span span = tracer.currentSpan();
         return ResponseEntity.status(HttpStatus.CONFLICT).body(AppErrorResponse.of(
                 ex.getMessage(), span != null ? span.context().traceId() : null, EntityInUseException.CODE, details));
+    }
+
+    // Posting/voiding an inventory transaction would take on-hand stock below zero. details.shortfalls
+    // lists every short item ({itemId, itemCode, itemName, warehouseId, warehouseName, available, required})
+    // so the frontend can flag the offending lines.
+    @ExceptionHandler(InsufficientStockException.class)
+    public ResponseEntity<AppErrorResponse> handleInsufficientStock(InsufficientStockException ex) {
+        log.warn("Posting blocked: {}", ex.getMessage());
+        Span span = tracer.currentSpan();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(AppErrorResponse.of(
+                ex.getMessage(), span != null ? span.context().traceId() : null, InsufficientStockException.CODE,
+                Map.of("shortfalls", ex.getShortfalls())));
     }
 
     // Fallback for FK violations that weren't translated in the service (e.g. a delete path that

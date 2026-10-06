@@ -21,11 +21,14 @@ public class TransactionLookupResponse {
     private Instant transactionDate;
     private Long supplierId;
     private String supplierName;
-    // Delivery Receipt only (supplier fields are null for it).
+    // Delivery Receipt / Outlet Delivery Receipt only (supplier fields are null for them).
     private Long customerId;
     private String customerName;
     private Long warehouseId;
     private String warehouseName;
+    // Outlet Delivery Receipt only: the agent credited with the sale.
+    private Long agentId;
+    private String agentName;
     // Purchase Invoice only: the originating PO for a PO-based invoice, null for a Direct one.
     private Long purchaseOrderId;
     private boolean voided;
@@ -44,7 +47,7 @@ public class TransactionLookupResponse {
         private BigDecimal quantity;
         private BigDecimal quantityLoaded;
         private BigDecimal costPrice;
-        // Delivery Receipt only: the line's selling price.
+        // Delivery Receipt / Outlet Delivery Receipt only: the line's selling price.
         private BigDecimal unitPrice;
     }
 }

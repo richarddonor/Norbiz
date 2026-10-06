@@ -97,6 +97,26 @@ public class TransactionDetailedReportController {
         return report(DetailedReportType.DELIVERY_RECEIPT, userDetails, filter, pageable);
     }
 
+    @Operation(summary = "Outlet Delivery Receipt - Detailed", description = DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_OUTLET_DELIVERY_RECEIPT_DETAILED_REPORT permission")
+    @GetMapping("/outlet-delivery-receipts")
+    @PreAuthorize("hasAuthority('VIEW_OUTLET_DELIVERY_RECEIPT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletDeliveryReceipts(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
+        return report(DetailedReportType.OUTLET_DELIVERY_RECEIPT, userDetails, filter, pageable);
+    }
+
+    @Operation(summary = "Outlet Delivery Return - Detailed", description = DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_OUTLET_DELIVERY_RETURN_DETAILED_REPORT permission")
+    @GetMapping("/outlet-delivery-returns")
+    @PreAuthorize("hasAuthority('VIEW_OUTLET_DELIVERY_RETURN_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletDeliveryReturns(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
+        return report(DetailedReportType.OUTLET_DELIVERY_RETURN, userDetails, filter, pageable);
+    }
+
     private ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> report(
             DetailedReportType type, UserDetails userDetails, DetailedReportFilter filter, Pageable pageable) {
         boolean canViewCostPrice = userDetails.getAuthorities().stream()

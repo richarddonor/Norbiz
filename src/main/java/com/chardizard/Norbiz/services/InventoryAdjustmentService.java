@@ -32,7 +32,7 @@ public class InventoryAdjustmentService {
 
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
-    private final InventoryBalanceRepository inventoryBalanceRepository;
+    private final InventoryStockService inventoryStockService;
     private final CompanyRepository companyRepository;
     private final WarehouseRepository warehouseRepository;
     private final ItemRepository itemRepository;
@@ -135,6 +135,10 @@ public class InventoryAdjustmentService {
             adjustment.getLines().add(line);
         }
 
+        // Negative lines take stock out; on-hand can't go below zero (docs/INVENTORY.md "Negative stock").
+        inventoryStockService.assertAvailable(warehouse, adjustment.getLines(), InventoryAdjustmentLine::getItem,
+                l -> l.getQuantity().negate());
+
         // Generated last, only once validation has fully passed, to avoid burning
         // reference numbers on requests that were always going to be rejected.
         adjustment.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
@@ -167,6 +171,10 @@ public class InventoryAdjustmentService {
         if (adjustment.isLoaded() || hasLoadedQuantity) {
             throw new IllegalArgumentException("Cannot void an adjustment that has been loaded: " + id);
         }
+
+        // Reversing a positive line takes that stock back out, which may since have been consumed.
+        inventoryStockService.assertAvailable(adjustment.getWarehouse(), adjustment.getLines(), InventoryAdjustmentLine::getItem,
+                InventoryAdjustmentLine::getQuantity);
 
         Instant now = Instant.now();
         for (InventoryAdjustmentLine line : adjustment.getLines()) {
@@ -204,18 +212,7 @@ public class InventoryAdjustmentService {
         movement.setCreatedBy(username);
         inventoryMovementRepository.save(movement);
 
-        InventoryBalance balance = inventoryBalanceRepository.findByItemIdAndWarehouseId(item.getId(), warehouse.getId())
-                .orElseGet(() -> {
-                    InventoryBalance b = new InventoryBalance();
-                    b.setItem(item);
-                    b.setWarehouse(warehouse);
-                    b.setQuantity(BigDecimal.ZERO);
-                    b.setTransitQuantity(BigDecimal.ZERO);
-                    return b;
-                });
-        balance.setQuantity(balance.getQuantity().add(quantityDelta));
-        balance.setUpdatedAt(now);
-        inventoryBalanceRepository.save(balance);
+        inventoryStockService.apply(item, warehouse, quantityDelta, BigDecimal.ZERO, now);
     }
 
     private void assertCompanyAccess(String username, Long companyId) {
