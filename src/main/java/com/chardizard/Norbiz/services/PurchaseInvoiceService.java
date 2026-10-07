@@ -76,7 +76,8 @@ public class PurchaseInvoiceService {
                 paymentStatusScope,
                 SpecificationUtils.containsIgnoreCase("referenceNumber", filters.get("referenceNumber")),
                 SpecificationUtils.containsIgnoreCase("sheetNumber", filters.get("sheetNumber")),
-                SpecificationUtils.dateRange("invoiceDate", dateFrom, dateTo)
+                SpecificationUtils.dateRange("invoiceDate", dateFrom, dateTo),
+                SpecificationUtils.enumEquals("origin", TransactionOrigin.class, filters.get("origin"))
         );
 
         return purchaseInvoiceRepository.findAll(spec, pageable);

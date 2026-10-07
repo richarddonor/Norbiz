@@ -70,6 +70,13 @@ public final class SpecificationUtils {
         return booleanEquals(dotPath, Boolean.valueOf(value));
     }
 
+    /** Equality filter on an enum-typed dotted path, given the constant's name. Returns null (a no-op) when value is blank. */
+    public static <T, E extends Enum<E>> Specification<T> enumEquals(String dotPath, Class<E> type, String value) {
+        if (!StringUtils.hasText(value)) return null;
+        E constant = Enum.valueOf(type, value);
+        return (root, query, cb) -> cb.equal(resolvePath(root, dotPath), constant);
+    }
+
     /** Folds a list of possibly-null Specifications into one, skipping nulls. */
     @SafeVarargs
     public static <T> Specification<T> allOf(Specification<T>... specs) {

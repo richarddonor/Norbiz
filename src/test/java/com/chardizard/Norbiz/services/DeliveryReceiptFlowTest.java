@@ -112,6 +112,15 @@ class DeliveryReceiptFlowTest {
     }
 
     @Test
+    void transactionsPostedThroughTheApiAreNative() {
+        DeliveryReceipt dr = deliveryReceiptService.create(drRequest(outlet, "10"), user);
+        OutletReceive or = outletReceiveService.create(orRequest(dr, "10"), user);
+
+        assertThat(dr.getOrigin()).isEqualTo(TransactionOrigin.NATIVE);
+        assertThat(or.getOrigin()).isEqualTo(TransactionOrigin.NATIVE);
+    }
+
+    @Test
     void unitPriceDefaultsToItemUnitPriceButCanBeOverridden() {
         DeliveryReceipt preloaded = deliveryReceiptService.create(drRequest(customer, "1"), user);
         assertThat(preloaded.getLines().getFirst().getUnitPrice()).isEqualByComparingTo("25.00");

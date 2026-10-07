@@ -120,6 +120,22 @@ class TransactionDetailedReportServiceTest {
         // Selling price isn't cost-gated.
         assertThat(first.getPrice()).isEqualByComparingTo("12.50");
         assertThat(first.getAmount()).isEqualByComparingTo("50.00");
+        assertThat(first.getOrigin()).isEqualTo(TransactionOrigin.NATIVE);
+    }
+
+    @Test
+    void originFilterSeparatesNativeFromMigratedTransactions() {
+        deliveryReceiptService.create(drRequest(), user);
+
+        DetailedReportFilter migrated = new DetailedReportFilter();
+        migrated.setOrigin(TransactionOrigin.MIGRATED);
+        assertThat(reportService.find(DetailedReportType.DELIVERY_RECEIPT, user, migrated, false, PageRequest.of(0, 50))
+                .getContent()).isEmpty();
+
+        DetailedReportFilter nativeOnly = new DetailedReportFilter();
+        nativeOnly.setOrigin(TransactionOrigin.NATIVE);
+        assertThat(reportService.find(DetailedReportType.DELIVERY_RECEIPT, user, nativeOnly, false, PageRequest.of(0, 50))
+                .getContent()).hasSize(2);
     }
 
     @Test
@@ -148,6 +164,7 @@ class TransactionDetailedReportServiceTest {
             filter.setWarehouseId(1L);
             filter.setItemId(1L);
             filter.setVoided(false);
+            filter.setOrigin(TransactionOrigin.NATIVE);
             filter.setReferenceNumber("x");
             filter.setSheetNumber("x");
             filter.setWarehouse("x");
@@ -158,12 +175,13 @@ class TransactionDetailedReportServiceTest {
             filter.setDateTo("2026-12-31");
             switch (type) {
                 case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIVE -> { filter.setSupplierId(1L); filter.setCounterparty("x"); }
-                case DELIVERY_RECEIPT, OUTLET_RECEIVE -> { filter.setCustomerId(1L); filter.setCounterparty("x"); }
+                case DELIVERY_RECEIPT, OUTLET_RECEIVE, STOCK_TRANSFER, OUTLET_PULL_OUT, PULL_OUT_RECEIVE -> { filter.setCustomerId(1L); filter.setCounterparty("x"); }
                 case OUTLET_DELIVERY_RECEIPT, OUTLET_DELIVERY_RETURN -> { filter.setCustomerId(1L); filter.setCounterparty("x"); filter.setAgentId(1L); }
-                case INVENTORY_ADJUSTMENT -> { }
+                case INVENTORY_ADJUSTMENT, ASSEMBLY -> { }
             }
             if (type == DetailedReportType.PURCHASE_INVOICE || type == DetailedReportType.PURCHASE_RECEIVE
-                    || type == DetailedReportType.OUTLET_RECEIVE || type == DetailedReportType.OUTLET_DELIVERY_RETURN) {
+                    || type == DetailedReportType.OUTLET_RECEIVE || type == DetailedReportType.OUTLET_DELIVERY_RETURN
+                    || type == DetailedReportType.DELIVERY_RECEIPT || type == DetailedReportType.PULL_OUT_RECEIVE) {
                 filter.setSourceReferenceNumber("x");
             }
             assertThat(reportService.find(type, user, filter, true, PageRequest.of(0, 50)).getContent())

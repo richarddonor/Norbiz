@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.models.TransactionOrigin;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.PurchaseOrderLineResponse;
@@ -51,10 +52,12 @@ public class PurchaseOrderController {
             @Parameter(description = "Filter by sheet number (contains)") @RequestParam(required = false) String sheetNumber,
             @Parameter(description = "Filter by order date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
             @Parameter(description = "Filter by order date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
+            @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
+        if (origin != null) filters.put("origin", origin.name());
 
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
@@ -130,6 +133,7 @@ public class PurchaseOrderController {
         res.setVoidedAt(order.getVoidedAt());
         res.setVoidedBy(order.getVoidedBy());
         res.setLoaded(order.isLoaded());
+        res.setOrigin(order.getOrigin());
         res.setLines(order.getLines().stream().map(l -> toLineResponse(l, canViewCostPrice)).collect(Collectors.toList()));
         return res;
     }

@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.dto;
 
+import com.chardizard.Norbiz.models.TransactionOrigin;
 import com.chardizard.Norbiz.models.CustomerType;
 import lombok.Getter;
 import lombok.Setter;
@@ -23,6 +24,9 @@ public class DeliveryReceiptResponse {
     // OUTLET only: the outlet warehouse holding the delivery in transit.
     private Long destinationWarehouseId;
     private String destinationWarehouseName;
+    // Set when the receipt delivered a Stock Transfer (its lines were copied from it).
+    private Long stockTransferId;
+    private String stockTransferReferenceNumber;
     private String referenceNumber;
     private String sheetNumber;
     private Instant deliveryDate;
@@ -35,5 +39,6 @@ public class DeliveryReceiptResponse {
     private Instant voidedAt;
     private String voidedBy;
     private boolean loaded;
+    private TransactionOrigin origin;
     private List<DeliveryReceiptLineResponse> lines;
 }

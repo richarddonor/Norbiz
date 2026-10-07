@@ -47,3 +47,14 @@ Data in Norbiz is divided into two main categories: Master and Transactional (se
 ## Warehouses — main warehouse
 - Each company has at most one **main** warehouse (`Warehouse.main`). Delivery Receipts always deduct stock from it.
 - Set it with `main: true` on warehouse create/update. This clears the flag on the company's previous main warehouse (through JPA, so cache invalidation fires). An inactive or outlet warehouse can't be main. The partial unique index `WAREHOUSES_COMPANY_MAIN_UQ` (in `db/init.sql`) backstops "one per company".
+
+## Pull Out Reasons
+- Why stock was pulled out of an outlet (e.g. damaged, slow-moving). Company-scoped, `Auditable`, name unique per company, `active` flag.
+- Every Outlet Pull Out must pick an active reason. A reason used by any pull out can't be deleted (`ENTITY_IN_USE`); deactivate it instead.
+- Endpoints `/pull-out-reasons` (VIEW_/CREATE_/UPDATE_/DELETE_PULL_OUT_REASON), dropdown `/lookups/pull-out-reasons`.
+
+## Bills of Materials
+- The recipe for assembling one unit of an output item: `code` (unique per company), output `item`, `active`, and `components` (`BillOfMaterialLine`: item + quantity per unit, `@AuditParent` so they show in the BOM's change history). The output and every component must be INVENTORY items of the company; a component can't be the output itself or appear twice.
+- Components are replaced wholesale on update (cleared and re-added); the change history diffs them by line position.
+- An Assembly output may name the BOM it was built from (the BOM must produce that item). A BOM referenced by any assembly can't be deleted (`ENTITY_IN_USE`); deactivate it instead.
+- Endpoints `/bills-of-materials` (VIEW_/CREATE_/UPDATE_/DELETE_BILL_OF_MATERIAL), dropdown `/lookups/bills-of-materials` (carries the components).

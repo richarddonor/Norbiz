@@ -1,0 +1,8 @@
+package com.chardizard.Norbiz.repositories;
+
+import com.chardizard.Norbiz.models.OutletPullOut;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+
+public interface OutletPullOutRepository extends JpaRepository<OutletPullOut, Long>, JpaSpecificationExecutor<OutletPullOut> {
+}

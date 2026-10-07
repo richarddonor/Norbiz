@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.models.TransactionOrigin;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.InventoryAdjustmentLineResponse;
 import com.chardizard.Norbiz.dto.InventoryAdjustmentRequest;
@@ -50,10 +51,12 @@ public class InventoryAdjustmentController {
             @Parameter(description = "Filter by sheet number (contains)") @RequestParam(required = false) String sheetNumber,
             @Parameter(description = "Filter by adjustment date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
             @Parameter(description = "Filter by adjustment date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
+            @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
+        if (origin != null) filters.put("origin", origin.name());
 
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
@@ -116,6 +119,7 @@ public class InventoryAdjustmentController {
         res.setVoidedAt(adjustment.getVoidedAt());
         res.setVoidedBy(adjustment.getVoidedBy());
         res.setLoaded(adjustment.isLoaded());
+        res.setOrigin(adjustment.getOrigin());
         res.setLines(adjustment.getLines().stream().map(this::toLineResponse).collect(Collectors.toList()));
         return res;
     }

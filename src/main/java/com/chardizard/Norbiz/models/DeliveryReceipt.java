@@ -1,6 +1,7 @@
 package com.chardizard.Norbiz.models;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -46,6 +47,13 @@ public class DeliveryReceipt {
         foreignKey = @ForeignKey(name = "DELIVERY_RECEIPTS_DESTINATION_WAREHOUSE_ID_FK"))
     private Warehouse destinationWarehouse;
 
+    // Set when the receipt was created from a Stock Transfer (loaded in full, 1:1): its lines were copied from
+    // the transfer, and posting releases the transfer's hold on the main warehouse's transit quantity.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "stock_transfer_id",
+        foreignKey = @ForeignKey(name = "DELIVERY_RECEIPTS_STOCK_TRANSFER_ID_FK"))
+    private StockTransfer stockTransfer;
+
     // Auto-generated per docs/TRANSACTIONS.md — see TransactionReferenceService.
     @Column(name = "reference_number", nullable = false, length = 50)
     private String referenceNumber;
@@ -78,6 +86,13 @@ public class DeliveryReceipt {
     // True once Outlet Receive(s) have received every line in full. Always false for a plain-customer DR.
     @Column(nullable = false)
     private boolean loaded = false;
+
+    // NATIVE for everything posted through the API; MIGRATED/RECONSTRUCTED only from the legacy migration loader.
+    // ColumnDefault: lets ddl-auto=update add the NOT NULL column to existing rows.
+    @ColumnDefault("'NATIVE'")
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private TransactionOrigin origin = TransactionOrigin.NATIVE;
 
     @OneToMany(mappedBy = "deliveryReceipt", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")

@@ -1,6 +1,7 @@
 package com.chardizard.Norbiz.controllers;
 
 import com.chardizard.Norbiz.dto.AppResponse;
+import com.chardizard.Norbiz.dto.BillOfMaterialLookupResponse;
 import com.chardizard.Norbiz.dto.CustomerLookupResponse;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
@@ -375,6 +376,117 @@ public class LookupController {
     @PreAuthorize("@lookupAccess.can(authentication, 'OUTLET_DELIVERY_RECEIPT')")
     public ResponseEntity<AppResponse<TransactionLookupResponse>> outletDeliveryReceipt(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(AppResponse.of(lookupService.outletDeliveryReceipt(id, userDetails.getUsername())));
+    }
+
+    // ---- stock transfers ----
+
+    @Operation(summary = "Stock transfer dropdown",
+            description = "Source stock transfers for Delivery Receipt. openOnly (default) returns only transfers that are neither "
+                    + "voided nor delivered; warehouse fields are the main warehouse holding the stock.")
+    @ApiResponse(responseCode = "200", description = "Stock transfer options returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/stock-transfers")
+    @PreAuthorize("@lookupAccess.can(authentication, 'STOCK_TRANSFER')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionLookupResponse>>> stockTransfers(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Search text (contains, case-insensitive) over reference and sheet number") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Filter by customer ID") @RequestParam(required = false) Long customerId,
+            @Parameter(description = "Only deliverable transfers: not voided, not delivered (default true)") @RequestParam(defaultValue = "true") boolean openOnly,
+            Pageable pageable) {
+        return ok(lookupService.stockTransfers(userDetails.getUsername(), company(companyId, headerCompanyId), q, customerId, openOnly, pageable));
+    }
+
+    @Operation(summary = "Stock transfer option by ID")
+    @ApiResponse(responseCode = "200", description = "Stock transfer option returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/stock-transfers/{id}")
+    @PreAuthorize("@lookupAccess.can(authentication, 'STOCK_TRANSFER')")
+    public ResponseEntity<AppResponse<TransactionLookupResponse>> stockTransfer(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.stockTransfer(id, userDetails.getUsername())));
+    }
+
+    // ---- outlet pull outs ----
+
+    @Operation(summary = "Outlet pull out dropdown",
+            description = "Source outlet pull outs for Pull Out Receive. openOnly (default) returns only pull outs that are neither "
+                    + "voided nor fully received; warehouse fields are the main warehouse they are in transit to.")
+    @ApiResponse(responseCode = "200", description = "Outlet pull out options returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/outlet-pull-outs")
+    @PreAuthorize("@lookupAccess.can(authentication, 'OUTLET_PULL_OUT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionLookupResponse>>> outletPullOuts(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Search text (contains, case-insensitive) over reference and sheet number") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Filter by outlet customer ID") @RequestParam(required = false) Long customerId,
+            @Parameter(description = "Only receivable pull outs: not voided, not fully received (default true)") @RequestParam(defaultValue = "true") boolean openOnly,
+            Pageable pageable) {
+        return ok(lookupService.outletPullOuts(userDetails.getUsername(), company(companyId, headerCompanyId), q, customerId, openOnly, pageable));
+    }
+
+    @Operation(summary = "Outlet pull out option by ID")
+    @ApiResponse(responseCode = "200", description = "Outlet pull out option returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/outlet-pull-outs/{id}")
+    @PreAuthorize("@lookupAccess.can(authentication, 'OUTLET_PULL_OUT')")
+    public ResponseEntity<AppResponse<TransactionLookupResponse>> outletPullOut(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.outletPullOut(id, userDetails.getUsername())));
+    }
+
+    // ---- pull out reasons ----
+
+    @Operation(summary = "Pull out reason dropdown")
+    @ApiResponse(responseCode = "200", description = "Pull out reason options returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/pull-out-reasons")
+    @PreAuthorize("@lookupAccess.can(authentication, 'PULL_OUT_REASON')")
+    public ResponseEntity<AppResponse<PageResponse<LookupResponse>>> pullOutReasons(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Search text (contains, case-insensitive) over name") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = ACTIVE_DESC) @RequestParam(defaultValue = "true") boolean activeOnly,
+            Pageable pageable) {
+        return ok(lookupService.pullOutReasons(userDetails.getUsername(), company(companyId, headerCompanyId), q, activeOnly, pageable));
+    }
+
+    @Operation(summary = "Pull out reason option by ID")
+    @ApiResponse(responseCode = "200", description = "Pull out reason option returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/pull-out-reasons/{id}")
+    @PreAuthorize("@lookupAccess.can(authentication, 'PULL_OUT_REASON')")
+    public ResponseEntity<AppResponse<LookupResponse>> pullOutReason(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.pullOutReason(id, userDetails.getUsername())));
+    }
+
+    // ---- bills of materials ----
+
+    @Operation(summary = "Bill of materials dropdown", description = "Each option carries its components (quantity per unit of the output item).")
+    @ApiResponse(responseCode = "200", description = "Bill of materials options returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/bills-of-materials")
+    @PreAuthorize("@lookupAccess.can(authentication, 'BILL_OF_MATERIAL')")
+    public ResponseEntity<AppResponse<PageResponse<BillOfMaterialLookupResponse>>> billsOfMaterials(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Search text (contains, case-insensitive) over code and output item code/name") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Only BOMs that produce this item") @RequestParam(required = false) Long itemId,
+            @Parameter(description = ACTIVE_DESC) @RequestParam(defaultValue = "true") boolean activeOnly,
+            Pageable pageable) {
+        return ok(lookupService.billsOfMaterials(userDetails.getUsername(), company(companyId, headerCompanyId), q, itemId, activeOnly, pageable));
+    }
+
+    @Operation(summary = "Bill of materials option by ID")
+    @ApiResponse(responseCode = "200", description = "Bill of materials option returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/bills-of-materials/{id}")
+    @PreAuthorize("@lookupAccess.can(authentication, 'BILL_OF_MATERIAL')")
+    public ResponseEntity<AppResponse<BillOfMaterialLookupResponse>> billOfMaterial(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.billOfMaterial(id, userDetails.getUsername())));
     }
 
     // ---- purchase invoices ----

@@ -65,7 +65,8 @@ public class InventoryAdjustmentService {
                 warehouseScope,
                 SpecificationUtils.containsIgnoreCase("referenceNumber", filters.get("referenceNumber")),
                 SpecificationUtils.containsIgnoreCase("sheetNumber", filters.get("sheetNumber")),
-                SpecificationUtils.dateRange("adjustmentDate", dateFrom, dateTo)
+                SpecificationUtils.dateRange("adjustmentDate", dateFrom, dateTo),
+                SpecificationUtils.enumEquals("origin", TransactionOrigin.class, filters.get("origin"))
         );
 
         return inventoryAdjustmentRepository.findAll(spec, pageable);

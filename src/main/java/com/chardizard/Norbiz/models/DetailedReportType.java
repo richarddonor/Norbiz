@@ -14,7 +14,11 @@ public enum DetailedReportType {
     PURCHASE_RECEIVE(TransactionType.PURCHASE_RECEIVE, "Purchase Receive", "Purchases"),
     DELIVERY_RECEIPT(TransactionType.DELIVERY_RECEIPT, "Delivery Receipt", "Sales"),
     OUTLET_DELIVERY_RECEIPT(TransactionType.OUTLET_DELIVERY_RECEIPT, "Outlet Delivery Receipt", "Sales"),
-    OUTLET_DELIVERY_RETURN(TransactionType.OUTLET_DELIVERY_RETURN, "Outlet Delivery Return", "Sales");
+    OUTLET_DELIVERY_RETURN(TransactionType.OUTLET_DELIVERY_RETURN, "Outlet Delivery Return", "Sales"),
+    STOCK_TRANSFER(TransactionType.STOCK_TRANSFER, "Stock Transfer", "Sales"),
+    OUTLET_PULL_OUT(TransactionType.OUTLET_PULL_OUT, "Outlet Pull Out", "Sales"),
+    PULL_OUT_RECEIVE(TransactionType.PULL_OUT_RECEIVE, "Pull Out Receive", "Sales"),
+    ASSEMBLY(TransactionType.ASSEMBLY, "Assembly", "Inventory");
 
     private final TransactionType transactionType;
     private final String transactionLabel;

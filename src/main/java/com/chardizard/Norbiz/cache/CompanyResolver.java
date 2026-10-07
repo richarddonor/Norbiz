@@ -57,6 +57,12 @@ final class CompanyResolver {
             case OutletReceive o -> o.getCompany().getId();
             case OutletDeliveryReceipt o -> o.getCompany().getId();
             case OutletDeliveryReturn o -> o.getCompany().getId();
+            case StockTransfer t -> t.getCompany().getId();
+            case OutletPullOut o -> o.getCompany().getId();
+            case PullOutReceive r -> r.getCompany().getId();
+            case Assembly a -> a.getCompany().getId();
+            case PullOutReason r -> r.getCompany().getId();
+            case BillOfMaterial b -> b.getCompany().getId();
             case Supplier s -> s.getCompany().getId();
             case TransactionActionDefinition t -> t.getCompany().getId();
             case TransactionEvent t -> t.getCompany().getId();
@@ -68,6 +74,11 @@ final class CompanyResolver {
             case OutletReceiveLine l -> l.getOutletReceive().getCompany().getId();
             case OutletDeliveryReceiptLine l -> l.getOutletDeliveryReceipt().getCompany().getId();
             case OutletDeliveryReturnLine l -> l.getOutletDeliveryReturn().getCompany().getId();
+            case StockTransferLine l -> l.getStockTransfer().getCompany().getId();
+            case OutletPullOutLine l -> l.getOutletPullOut().getCompany().getId();
+            case PullOutReceiveLine l -> l.getPullOutReceive().getCompany().getId();
+            case AssemblyLine l -> l.getAssembly().getCompany().getId();
+            case BillOfMaterialLine l -> l.getBillOfMaterial().getCompany().getId();
             case ItemPrice p -> p.getItem().getCompany().getId();
             case ItemSku s -> s.getItem().getCompany().getId();
             case PurchaseInvoiceFee f -> f.getPurchaseInvoice().getCompany().getId();

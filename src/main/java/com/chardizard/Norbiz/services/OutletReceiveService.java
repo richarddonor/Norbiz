@@ -68,7 +68,8 @@ public class OutletReceiveService {
                 deliveryReceiptScope,
                 SpecificationUtils.containsIgnoreCase("referenceNumber", filters.get("referenceNumber")),
                 SpecificationUtils.containsIgnoreCase("sheetNumber", filters.get("sheetNumber")),
-                SpecificationUtils.dateRange("receiptDate", dateFrom, dateTo)
+                SpecificationUtils.dateRange("receiptDate", dateFrom, dateTo),
+                SpecificationUtils.enumEquals("origin", TransactionOrigin.class, filters.get("origin"))
         );
 
         return outletReceiveRepository.findAll(spec, pageable);

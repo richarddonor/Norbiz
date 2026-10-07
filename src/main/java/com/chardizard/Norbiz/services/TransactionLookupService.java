@@ -1,14 +1,18 @@
 package com.chardizard.Norbiz.services;
 
 import com.chardizard.Norbiz.models.TransactionType;
+import com.chardizard.Norbiz.repositories.AssemblyRepository;
 import com.chardizard.Norbiz.repositories.DeliveryReceiptRepository;
 import com.chardizard.Norbiz.repositories.InventoryAdjustmentRepository;
 import com.chardizard.Norbiz.repositories.OutletDeliveryReceiptRepository;
 import com.chardizard.Norbiz.repositories.OutletDeliveryReturnRepository;
+import com.chardizard.Norbiz.repositories.OutletPullOutRepository;
 import com.chardizard.Norbiz.repositories.OutletReceiveRepository;
+import com.chardizard.Norbiz.repositories.PullOutReceiveRepository;
 import com.chardizard.Norbiz.repositories.PurchaseInvoiceRepository;
 import com.chardizard.Norbiz.repositories.PurchaseOrderRepository;
 import com.chardizard.Norbiz.repositories.PurchaseReceiveRepository;
+import com.chardizard.Norbiz.repositories.StockTransferRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,6 +32,10 @@ public class TransactionLookupService {
     private final OutletReceiveRepository outletReceiveRepository;
     private final OutletDeliveryReceiptRepository outletDeliveryReceiptRepository;
     private final OutletDeliveryReturnRepository outletDeliveryReturnRepository;
+    private final StockTransferRepository stockTransferRepository;
+    private final OutletPullOutRepository outletPullOutRepository;
+    private final PullOutReceiveRepository pullOutReceiveRepository;
+    private final AssemblyRepository assemblyRepository;
 
     public TransactionHeader resolve(TransactionType type, Long id) {
         return switch (type) {
@@ -53,6 +61,18 @@ public class TransactionLookupService {
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case OUTLET_DELIVERY_RETURN -> outletDeliveryReturnRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case STOCK_TRANSFER -> stockTransferRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case OUTLET_PULL_OUT -> outletPullOutRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case PULL_OUT_RECEIVE -> pullOutReceiveRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case ASSEMBLY -> assemblyRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
         };

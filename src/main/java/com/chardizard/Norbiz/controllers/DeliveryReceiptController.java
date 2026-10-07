@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.models.TransactionOrigin;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.DeliveryReceiptLineResponse;
 import com.chardizard.Norbiz.dto.DeliveryReceiptRequest;
@@ -53,10 +54,12 @@ public class DeliveryReceiptController {
             @Parameter(description = "Filter by sheet number (contains)") @RequestParam(required = false) String sheetNumber,
             @Parameter(description = "Filter by delivery date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
             @Parameter(description = "Filter by delivery date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
+            @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
+        if (origin != null) filters.put("origin", origin.name());
 
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
@@ -117,6 +120,10 @@ public class DeliveryReceiptController {
             res.setDestinationWarehouseId(receipt.getDestinationWarehouse().getId());
             res.setDestinationWarehouseName(receipt.getDestinationWarehouse().getName());
         }
+        if (receipt.getStockTransfer() != null) {
+            res.setStockTransferId(receipt.getStockTransfer().getId());
+            res.setStockTransferReferenceNumber(receipt.getStockTransfer().getReferenceNumber());
+        }
         res.setReferenceNumber(receipt.getReferenceNumber());
         res.setSheetNumber(receipt.getSheetNumber());
         res.setDeliveryDate(receipt.getDeliveryDate());
@@ -127,6 +134,7 @@ public class DeliveryReceiptController {
         res.setVoidedAt(receipt.getVoidedAt());
         res.setVoidedBy(receipt.getVoidedBy());
         res.setLoaded(receipt.isLoaded());
+        res.setOrigin(receipt.getOrigin());
         List<DeliveryReceiptLineResponse> lines = receipt.getLines().stream().map(this::toLineResponse).toList();
         res.setLines(lines);
         res.setTotalAmount(lines.stream().map(DeliveryReceiptLineResponse::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add));

@@ -3,6 +3,7 @@ package com.chardizard.Norbiz.services;
 import com.chardizard.Norbiz.cache.CacheRegion;
 import com.chardizard.Norbiz.cache.CacheScope;
 import com.chardizard.Norbiz.cache.QueryCache;
+import com.chardizard.Norbiz.dto.BillOfMaterialLookupResponse;
 import com.chardizard.Norbiz.dto.CustomerLookupResponse;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
@@ -62,6 +63,10 @@ public class LookupService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final DeliveryReceiptRepository deliveryReceiptRepository;
     private final OutletDeliveryReceiptRepository outletDeliveryReceiptRepository;
+    private final StockTransferRepository stockTransferRepository;
+    private final OutletPullOutRepository outletPullOutRepository;
+    private final PullOutReasonRepository pullOutReasonRepository;
+    private final BillOfMaterialRepository billOfMaterialRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
     private final InventoryBalanceRepository inventoryBalanceRepository;
     private final QueryCache queryCache;
@@ -340,6 +345,83 @@ public class LookupService {
         return toLookup(odr);
     }
 
+    // openOnly = transfers that are neither voided nor delivered, i.e. still a valid Delivery Receipt source.
+    public Page<TransactionLookupResponse> stockTransfers(String username, Long companyId, String q, Long customerId,
+                                                          boolean openOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_STOCK_TRANSFER,
+                params("q", q, "customerId", customerId, "openOnly", openOnly), TransactionLookupResponse.class,
+                stockTransferRepository, username, companyId, StockTransfer.class,
+                SpecificationUtils.allOf(
+                        SpecificationUtils.anyContainsIgnoreCase(q, "referenceNumber", "sheetNumber"),
+                        idEquals("customer", customerId),
+                        openOnly ? SpecificationUtils.booleanEquals("voided", false) : null,
+                        openOnly ? SpecificationUtils.booleanEquals("loaded", false) : null),
+                withDefaultSort(pageable, Sort.by(Sort.Direction.DESC, "transferDate")), this::toLookup);
+    }
+
+    public TransactionLookupResponse stockTransfer(Long id, String username) {
+        StockTransfer st = stockTransferRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Stock transfer not found: " + id));
+        assertCompanyAccess(username, st.getCompany().getId());
+        return toLookup(st);
+    }
+
+    // openOnly = pull outs that are neither voided nor fully received, i.e. still a valid Pull Out Receive source.
+    public Page<TransactionLookupResponse> outletPullOuts(String username, Long companyId, String q, Long customerId,
+                                                          boolean openOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_OUTLET_PULL_OUT,
+                params("q", q, "customerId", customerId, "openOnly", openOnly), TransactionLookupResponse.class,
+                outletPullOutRepository, username, companyId, OutletPullOut.class,
+                SpecificationUtils.allOf(
+                        SpecificationUtils.anyContainsIgnoreCase(q, "referenceNumber", "sheetNumber"),
+                        idEquals("customer", customerId),
+                        openOnly ? SpecificationUtils.booleanEquals("voided", false) : null,
+                        openOnly ? SpecificationUtils.booleanEquals("loaded", false) : null),
+                withDefaultSort(pageable, Sort.by(Sort.Direction.DESC, "pullOutDate")), this::toLookup);
+    }
+
+    public TransactionLookupResponse outletPullOut(Long id, String username) {
+        OutletPullOut opo = outletPullOutRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Outlet pull out not found: " + id));
+        assertCompanyAccess(username, opo.getCompany().getId());
+        return toLookup(opo);
+    }
+
+    public Page<LookupResponse> pullOutReasons(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_PULL_OUT_REASON, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
+                pullOutReasonRepository, username, companyId, PullOutReason.class,
+                SpecificationUtils.allOf(
+                        SpecificationUtils.containsIgnoreCase("name", q),
+                        activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
+                withDefaultSort(pageable, "name"), this::toLookup);
+    }
+
+    public LookupResponse pullOutReason(Long id, String username) {
+        PullOutReason r = pullOutReasonRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Pull out reason not found: " + id));
+        assertCompanyAccess(username, r.getCompany().getId());
+        return toLookup(r);
+    }
+
+    // itemId narrows to the BOMs that produce that item (the Assembly output being entered).
+    public Page<BillOfMaterialLookupResponse> billsOfMaterials(String username, Long companyId, String q, Long itemId,
+                                                              boolean activeOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_BILL_OF_MATERIAL, params("q", q, "itemId", itemId, "activeOnly", activeOnly),
+                BillOfMaterialLookupResponse.class, billOfMaterialRepository, username, companyId, BillOfMaterial.class,
+                SpecificationUtils.allOf(
+                        SpecificationUtils.anyContainsIgnoreCase(q, "code", "item.itemCode", "item.name"),
+                        idEquals("item", itemId),
+                        activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
+                withDefaultSort(pageable, "code"), this::toLookup);
+    }
+
+    public BillOfMaterialLookupResponse billOfMaterial(Long id, String username) {
+        BillOfMaterial bom = billOfMaterialRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Bill of materials not found: " + id));
+        assertCompanyAccess(username, bom.getCompany().getId());
+        return toLookup(bom);
+    }
+
     // ---- stock ----
 
     // Live on-hand/in-transit quantities for the given items in one warehouse, read straight from the
@@ -466,6 +548,44 @@ public class LookupService {
         return new TransactionLookupResponse(odr.getId(), odr.getCompany().getId(), odr.getReferenceNumber(), odr.getDeliveryDate(),
                 null, null, odr.getCustomer().getId(), odr.getCustomer().getName(), odr.getWarehouse().getId(), odr.getWarehouse().getName(),
                 agent.getId(), agent.getFirstName() + " " + agent.getLastName(), null, odr.isVoided(), odr.isLoaded(), lines);
+    }
+
+    // warehouse = the main warehouse holding the transfer; lines carry the selling price the DR will copy.
+    private TransactionLookupResponse toLookup(StockTransfer st) {
+        List<TransactionLookupResponse.Line> lines = st.getLines().stream()
+                .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
+                        l.getItem().getItemCode(), l.getItem().getName(), l.getQuantity(), l.getQuantityLoaded(),
+                        null, l.getUnitPrice()))
+                .toList();
+        return new TransactionLookupResponse(st.getId(), st.getCompany().getId(), st.getReferenceNumber(), st.getTransferDate(),
+                null, null, st.getCustomer().getId(), st.getCustomer().getName(), st.getWarehouse().getId(), st.getWarehouse().getName(),
+                null, null, null, st.isVoided(), st.isLoaded(), lines);
+    }
+
+    // warehouse = the main warehouse the pull out is in transit to (where the Pull Out Receive posts).
+    private TransactionLookupResponse toLookup(OutletPullOut opo) {
+        List<TransactionLookupResponse.Line> lines = opo.getLines().stream()
+                .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
+                        l.getItem().getItemCode(), l.getItem().getName(), l.getQuantity(), l.getQuantityLoaded(),
+                        null, l.getUnitPrice()))
+                .toList();
+        Warehouse warehouse = opo.getDestinationWarehouse();
+        return new TransactionLookupResponse(opo.getId(), opo.getCompany().getId(), opo.getReferenceNumber(), opo.getPullOutDate(),
+                null, null, opo.getCustomer().getId(), opo.getCustomer().getName(), warehouse.getId(), warehouse.getName(),
+                null, null, null, opo.isVoided(), opo.isLoaded(), lines);
+    }
+
+    private LookupResponse toLookup(PullOutReason r) {
+        return new LookupResponse(r.getId(), r.getCompany().getId(), null, r.getName(), r.isActive());
+    }
+
+    private BillOfMaterialLookupResponse toLookup(BillOfMaterial bom) {
+        List<BillOfMaterialLookupResponse.Component> components = bom.getComponents().stream()
+                .map(l -> new BillOfMaterialLookupResponse.Component(l.getItem().getId(), l.getItem().getItemCode(),
+                        l.getItem().getName(), l.getQuantity()))
+                .toList();
+        return new BillOfMaterialLookupResponse(bom.getId(), bom.getCompany().getId(), bom.getCode(), bom.getItem().getId(),
+                bom.getItem().getItemCode(), bom.getItem().getName(), bom.isActive(), components);
     }
 
     // ---- helpers ----

@@ -103,6 +103,26 @@ public class DataInitializer implements CommandLineRunner {
         Permission viewOutletDeliveryReturnPermission    = findOrCreate("VIEW_OUTLET_DELIVERY_RETURN",    "Sales - Outlet Delivery Return View");
         Permission createOutletDeliveryReturnPermission  = findOrCreate("CREATE_OUTLET_DELIVERY_RETURN",  "Sales - Outlet Delivery Return Create");
         Permission voidOutletDeliveryReturnPermission    = findOrCreate("VOID_OUTLET_DELIVERY_RETURN",    "Sales - Outlet Delivery Return Void");
+        Permission viewStockTransferPermission           = findOrCreate("VIEW_STOCK_TRANSFER",            "Sales - Stock Transfer View");
+        Permission createStockTransferPermission         = findOrCreate("CREATE_STOCK_TRANSFER",          "Sales - Stock Transfer Create");
+        Permission voidStockTransferPermission           = findOrCreate("VOID_STOCK_TRANSFER",            "Sales - Stock Transfer Void");
+        Permission viewOutletPullOutPermission           = findOrCreate("VIEW_OUTLET_PULL_OUT",           "Sales - Outlet Pull Out View");
+        Permission createOutletPullOutPermission         = findOrCreate("CREATE_OUTLET_PULL_OUT",         "Sales - Outlet Pull Out Create");
+        Permission voidOutletPullOutPermission           = findOrCreate("VOID_OUTLET_PULL_OUT",           "Sales - Outlet Pull Out Void");
+        Permission viewPullOutReceivePermission          = findOrCreate("VIEW_PULL_OUT_RECEIVE",          "Sales - Pull Out Receive View");
+        Permission createPullOutReceivePermission        = findOrCreate("CREATE_PULL_OUT_RECEIVE",        "Sales - Pull Out Receive Create");
+        Permission voidPullOutReceivePermission          = findOrCreate("VOID_PULL_OUT_RECEIVE",          "Sales - Pull Out Receive Void");
+        Permission viewAssemblyPermission                = findOrCreate("VIEW_ASSEMBLY",                  "Inventory - Assembly View");
+        Permission createAssemblyPermission              = findOrCreate("CREATE_ASSEMBLY",                "Inventory - Assembly Create");
+        Permission voidAssemblyPermission                = findOrCreate("VOID_ASSEMBLY",                  "Inventory - Assembly Void");
+        Permission viewPullOutReasonPermission           = findOrCreate("VIEW_PULL_OUT_REASON",           "Maintenance - Pull Out Reason View");
+        Permission createPullOutReasonPermission         = findOrCreate("CREATE_PULL_OUT_REASON",         "Maintenance - Pull Out Reason Create");
+        Permission updatePullOutReasonPermission         = findOrCreate("UPDATE_PULL_OUT_REASON",         "Maintenance - Pull Out Reason Update");
+        Permission deletePullOutReasonPermission         = findOrCreate("DELETE_PULL_OUT_REASON",         "Maintenance - Pull Out Reason Delete");
+        Permission viewBillOfMaterialPermission          = findOrCreate("VIEW_BILL_OF_MATERIAL",          "Maintenance - Bill of Materials View");
+        Permission createBillOfMaterialPermission        = findOrCreate("CREATE_BILL_OF_MATERIAL",        "Maintenance - Bill of Materials Create");
+        Permission updateBillOfMaterialPermission        = findOrCreate("UPDATE_BILL_OF_MATERIAL",        "Maintenance - Bill of Materials Update");
+        Permission deleteBillOfMaterialPermission        = findOrCreate("DELETE_BILL_OF_MATERIAL",        "Maintenance - Bill of Materials Delete");
         Permission viewInventoryReportPermission       = findOrCreate("VIEW_INVENTORY_REPORT",       "Inventory - Report View");
         Permission manageDocumentTemplatesPermission   = findOrCreate("MANAGE_DOCUMENT_TEMPLATES",   "Document Templates - Manage (design + print)");
         Permission manageTransactionActionsPermission  = findOrCreate("MANAGE_TRANSACTION_ACTIONS",  "Configuration - Transaction Actions Manage");
@@ -146,6 +166,12 @@ public class DataInitializer implements CommandLineRunner {
                 viewOutletReceivePermission, createOutletReceivePermission, voidOutletReceivePermission,
                 viewOutletDeliveryReceiptPermission, createOutletDeliveryReceiptPermission, voidOutletDeliveryReceiptPermission,
                 viewOutletDeliveryReturnPermission, createOutletDeliveryReturnPermission, voidOutletDeliveryReturnPermission,
+                viewStockTransferPermission, createStockTransferPermission, voidStockTransferPermission,
+                viewOutletPullOutPermission, createOutletPullOutPermission, voidOutletPullOutPermission,
+                viewPullOutReceivePermission, createPullOutReceivePermission, voidPullOutReceivePermission,
+                viewAssemblyPermission, createAssemblyPermission, voidAssemblyPermission,
+                viewPullOutReasonPermission, createPullOutReasonPermission, updatePullOutReasonPermission,
+                viewBillOfMaterialPermission, createBillOfMaterialPermission, updateBillOfMaterialPermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(systemAdminRole);
 
@@ -175,6 +201,12 @@ public class DataInitializer implements CommandLineRunner {
                 viewOutletReceivePermission, createOutletReceivePermission, voidOutletReceivePermission,
                 viewOutletDeliveryReceiptPermission, createOutletDeliveryReceiptPermission, voidOutletDeliveryReceiptPermission,
                 viewOutletDeliveryReturnPermission, createOutletDeliveryReturnPermission, voidOutletDeliveryReturnPermission,
+                viewStockTransferPermission, createStockTransferPermission, voidStockTransferPermission,
+                viewOutletPullOutPermission, createOutletPullOutPermission, voidOutletPullOutPermission,
+                viewPullOutReceivePermission, createPullOutReceivePermission, voidPullOutReceivePermission,
+                viewAssemblyPermission, createAssemblyPermission, voidAssemblyPermission,
+                viewPullOutReasonPermission, createPullOutReasonPermission, updatePullOutReasonPermission, deletePullOutReasonPermission,
+                viewBillOfMaterialPermission, createBillOfMaterialPermission, updateBillOfMaterialPermission, deleteBillOfMaterialPermission,
                 viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(superAdminRole);
 

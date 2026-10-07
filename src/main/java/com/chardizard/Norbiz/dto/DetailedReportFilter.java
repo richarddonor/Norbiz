@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.dto;
 
+import com.chardizard.Norbiz.models.TransactionOrigin;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
@@ -40,6 +41,9 @@ public class DetailedReportFilter {
 
     @Schema(description = "Filter by voided status; omit for both")
     private Boolean voided;
+
+    @Schema(description = "Filter by origin (NATIVE, MIGRATED, RECONSTRUCTED); omit for all")
+    private TransactionOrigin origin;
 
     @Schema(description = "Reference number (contains)")
     @Size(max = 255)

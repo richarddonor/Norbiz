@@ -31,6 +31,7 @@ public class DeliveryReceiptService {
     private static final String REFERENCE_PREFIX = "DR";
 
     private final DeliveryReceiptRepository deliveryReceiptRepository;
+    private final StockTransferRepository stockTransferRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
     private final InventoryStockService inventoryStockService;
     private final CompanyRepository companyRepository;
@@ -70,7 +71,8 @@ public class DeliveryReceiptService {
                 warehouseScope,
                 SpecificationUtils.containsIgnoreCase("referenceNumber", filters.get("referenceNumber")),
                 SpecificationUtils.containsIgnoreCase("sheetNumber", filters.get("sheetNumber")),
-                SpecificationUtils.dateRange("deliveryDate", dateFrom, dateTo)
+                SpecificationUtils.dateRange("deliveryDate", dateFrom, dateTo),
+                SpecificationUtils.enumEquals("origin", TransactionOrigin.class, filters.get("origin"))
         );
 
         return deliveryReceiptRepository.findAll(spec, pageable);
@@ -105,6 +107,16 @@ public class DeliveryReceiptService {
             throw new IllegalArgumentException("Main warehouse is inactive: " + mainWarehouse.getName());
         }
 
+        StockTransfer stockTransfer = request.getStockTransferId() == null ? null
+                : loadAndValidateStockTransfer(request.getStockTransferId(), company, customer);
+        boolean hasLines = request.getLines() != null && !request.getLines().isEmpty();
+        if (stockTransfer != null && hasLines) {
+            throw new IllegalArgumentException("lines must be omitted when delivering a stock transfer — they are copied from it");
+        }
+        if (stockTransfer == null && !hasLines) {
+            throw new IllegalArgumentException("lines are required");
+        }
+
         Warehouse outletWarehouse = null;
         if (customer.getType() == CustomerType.OUTLET) {
             outletWarehouse = customer.getWarehouse();
@@ -125,14 +137,31 @@ public class DeliveryReceiptService {
         receipt.setCustomer(customer);
         receipt.setWarehouse(mainWarehouse);
         receipt.setDestinationWarehouse(outletWarehouse);
+        receipt.setStockTransfer(stockTransfer);
         receipt.setDeliveryDate(deliveryDate);
         receipt.setRemarks(request.getRemarks());
         receipt.setSheetNumber(request.getSheetNumber());
         receipt.setCreatedAt(now);
         receipt.setCreatedBy(username);
 
+        if (stockTransfer != null) {
+            // Loaded in full, 1:1 (like a PO-based Purchase Invoice): the transfer's lines are copied verbatim,
+            // keeping their entry order. Exempt from the inactive-reference rule, since they were valid when held.
+            for (StockTransferLine transferLine : stockTransfer.getLines()) {
+                DeliveryReceiptLine line = new DeliveryReceiptLine();
+                line.setDeliveryReceipt(receipt);
+                line.setItem(transferLine.getItem());
+                line.setQuantity(transferLine.getQuantity());
+                line.setUnitPrice(transferLine.getUnitPrice());
+                line.setLineNumber(transferLine.getLineNumber());
+                receipt.getLines().add(line);
+                transferLine.setQuantityLoaded(transferLine.getQuantity());
+            }
+            stockTransfer.setLoaded(true);
+        }
+
         int lineNumber = 1;
-        for (DeliveryReceiptLineRequest lineRequest : request.getLines()) {
+        for (DeliveryReceiptLineRequest lineRequest : hasLines ? request.getLines() : List.<DeliveryReceiptLineRequest>of()) {
             Item item = itemRepository.findById(lineRequest.getItemId())
                     .orElseThrow(() -> new IllegalArgumentException("Item not found: " + lineRequest.getItemId()));
             if (!item.getCompany().getId().equals(company.getId())) {
@@ -170,9 +199,12 @@ public class DeliveryReceiptService {
             postMovements(TRANSACTION_TYPE, saved, line, BigDecimal.ONE, now, username);
         }
 
-        log.info("User '{}' posted delivery receipt (id={}) with {} line(s) to customer {} from main warehouse {}{}",
+        if (stockTransfer != null) stockTransferRepository.save(stockTransfer);
+
+        log.info("User '{}' posted delivery receipt (id={}) with {} line(s) to customer {} from main warehouse {}{}{}",
                 username, saved.getId(), saved.getLines().size(), customer.getId(), mainWarehouse.getId(),
-                outletWarehouse != null ? " (in transit to outlet warehouse " + outletWarehouse.getId() + ")" : "");
+                outletWarehouse != null ? " (in transit to outlet warehouse " + outletWarehouse.getId() + ")" : "",
+                stockTransfer != null ? ", delivering stock transfer " + stockTransfer.getReferenceNumber() : "");
         return saved;
     }
 
@@ -196,6 +228,14 @@ public class DeliveryReceiptService {
             postMovements(VOID_SOURCE_TYPE, receipt, line, BigDecimal.ONE.negate(), now, username);
         }
 
+        // Reopen the stock transfer it delivered: its hold on main-warehouse transit is back (reversed above).
+        StockTransfer stockTransfer = receipt.getStockTransfer();
+        if (stockTransfer != null) {
+            stockTransfer.getLines().forEach(l -> l.setQuantityLoaded(BigDecimal.ZERO));
+            stockTransfer.setLoaded(false);
+            stockTransferRepository.save(stockTransfer);
+        }
+
         receipt.setVoided(true);
         receipt.setVoidedAt(now);
         receipt.setVoidedBy(username);
@@ -207,6 +247,24 @@ public class DeliveryReceiptService {
         return saved;
     }
 
+    private StockTransfer loadAndValidateStockTransfer(Long stockTransferId, Company company, Customer customer) {
+        StockTransfer transfer = stockTransferRepository.findById(stockTransferId)
+                .orElseThrow(() -> new IllegalArgumentException("Stock transfer not found: " + stockTransferId));
+        if (!transfer.getCompany().getId().equals(company.getId())) {
+            throw new IllegalArgumentException("Stock transfer does not belong to company: " + company.getId());
+        }
+        if (!transfer.getCustomer().getId().equals(customer.getId())) {
+            throw new IllegalArgumentException("Stock transfer " + transfer.getReferenceNumber() + " is for a different customer");
+        }
+        if (transfer.isVoided()) {
+            throw new IllegalArgumentException("Cannot deliver a voided stock transfer: " + stockTransferId);
+        }
+        if (transfer.isLoaded()) {
+            throw new IllegalArgumentException("Stock transfer already delivered: " + stockTransferId);
+        }
+        return transfer;
+    }
+
     private BigDecimal currentUnitPrice(Item item) {
         return itemPriceRepository.findByItemIdAndPriceType(item.getId(), PriceType.UNIT_PRICE)
                 .map(ItemPrice::getAmount)
@@ -215,10 +273,12 @@ public class DeliveryReceiptService {
 
     // sign = +1 posts the delivery, -1 reverses it (void). The main warehouse loses on-hand stock; an
     // outlet's warehouse gains the same amount in transit, to be moved to on-hand by Outlet Receive.
+    // A delivery of a Stock Transfer also gives back the transfer's negative transit hold in the main warehouse.
     private void postMovements(String sourceType, DeliveryReceipt receipt, DeliveryReceiptLine line, BigDecimal sign,
                                Instant now, String username) {
         BigDecimal quantity = line.getQuantity().multiply(sign);
-        postMovement(sourceType, receipt, line.getItem(), receipt.getWarehouse(), quantity.negate(), BigDecimal.ZERO, now, username);
+        BigDecimal releasedHold = receipt.getStockTransfer() != null ? quantity : BigDecimal.ZERO;
+        postMovement(sourceType, receipt, line.getItem(), receipt.getWarehouse(), quantity.negate(), releasedHold, now, username);
         if (receipt.getDestinationWarehouse() != null) {
             postMovement(sourceType, receipt, line.getItem(), receipt.getDestinationWarehouse(), BigDecimal.ZERO, quantity, now, username);
         }

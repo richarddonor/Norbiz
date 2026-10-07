@@ -1,7 +1,6 @@
 package com.chardizard.Norbiz.dto;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -31,7 +30,10 @@ public class DeliveryReceiptRequest {
     @Size(max = 100)
     private String sheetNumber;
 
-    @NotEmpty
+    // Optional: deliver a Stock Transfer in full. Its customer must match customerId, and its lines are copied
+    // verbatim — lines must then be omitted. Without it, lines are required (checked in DeliveryReceiptService).
+    private Long stockTransferId;
+
     @Valid
     private List<DeliveryReceiptLineRequest> lines;
 }

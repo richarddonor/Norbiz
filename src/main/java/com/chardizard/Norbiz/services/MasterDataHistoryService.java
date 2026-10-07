@@ -60,6 +60,8 @@ public class MasterDataHistoryService {
     static {
         PARTS.put("ItemSku", new PartSpec("skus", "skuCode", code -> "SKU " + code, Set.of("unitPrice")));
         PARTS.put("ItemPrice", new PartSpec("prices", "priceType", MasterDataHistoryService::humanizeEnum, Set.of("amount")));
+        // Bill of materials components are rewritten on every save (clear + re-add), so match them by line position.
+        PARTS.put("BillOfMaterialLine", new PartSpec("components", "lineNumber", n -> "Component " + n, Set.of()));
     }
 
     private final AuditLogRepository auditLogRepository;
@@ -74,6 +76,8 @@ public class MasterDataHistoryService {
     private final WarehouseService warehouseService;
     private final SupplierService supplierService;
     private final CustomerService customerService;
+    private final PullOutReasonService pullOutReasonService;
+    private final BillOfMaterialService billOfMaterialService;
 
     @Transactional(readOnly = true)
     public Page<ChangeHistoryEntryResponse> findHistory(MasterDataType type, Long id, String username, Pageable pageable) {
@@ -143,6 +147,8 @@ public class MasterDataHistoryService {
             case WAREHOUSE -> warehouseService.findById(id, username);
             case SUPPLIER -> supplierService.findById(id, username);
             case CUSTOMER -> customerService.findById(id, username);
+            case PULL_OUT_REASON -> pullOutReasonService.findById(id, username);
+            case BILL_OF_MATERIAL -> billOfMaterialService.findById(id, username);
             case USER -> {
                 if (!userRepository.existsById(id)) throw new IllegalArgumentException("User not found: " + id);
             }

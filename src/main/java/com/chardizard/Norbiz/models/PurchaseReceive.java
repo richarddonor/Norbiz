@@ -1,6 +1,7 @@
 package com.chardizard.Norbiz.models;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -90,6 +91,13 @@ public class PurchaseReceive {
     // Inert: nothing currently loads from a Purchase Receive, same as InventoryAdjustment.
     @Column(nullable = false)
     private boolean loaded = false;
+
+    // NATIVE for everything posted through the API; MIGRATED/RECONSTRUCTED only from the legacy migration loader.
+    // ColumnDefault: lets ddl-auto=update add the NOT NULL column to existing rows.
+    @ColumnDefault("'NATIVE'")
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private TransactionOrigin origin = TransactionOrigin.NATIVE;
 
     @OneToMany(mappedBy = "purchaseReceive", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")

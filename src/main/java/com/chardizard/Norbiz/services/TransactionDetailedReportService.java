@@ -52,6 +52,10 @@ public class TransactionDetailedReportService {
     private final OutletReceiveLineRepository outletReceiveLineRepository;
     private final OutletDeliveryReceiptLineRepository outletDeliveryReceiptLineRepository;
     private final OutletDeliveryReturnLineRepository outletDeliveryReturnLineRepository;
+    private final StockTransferLineRepository stockTransferLineRepository;
+    private final OutletPullOutLineRepository outletPullOutLineRepository;
+    private final PullOutReceiveLineRepository pullOutReceiveLineRepository;
+    private final AssemblyLineRepository assemblyLineRepository;
 
     /**
      * How a line entity reaches its header's fields: the line's header association, and the header's
@@ -77,7 +81,7 @@ public class TransactionDetailedReportService {
                     new Shape("purchaseReceive", "receiptDate", "remarks", "supplier", null, "purchaseOrder", "purchaseInvoice"),
                     type, username, filter, pageable, l -> fromPurchaseReceive(l, canViewCostPrice));
             case DELIVERY_RECEIPT -> query(deliveryReceiptLineRepository,
-                    new Shape("deliveryReceipt", "deliveryDate", "remarks", "customer", null),
+                    new Shape("deliveryReceipt", "deliveryDate", "remarks", "customer", null, "stockTransfer"),
                     type, username, filter, pageable, this::fromDeliveryReceipt);
             case OUTLET_RECEIVE -> query(outletReceiveLineRepository,
                     new Shape("outletReceive", "receiptDate", "remarks", "customer", null, "deliveryReceipt"),
@@ -88,6 +92,18 @@ public class TransactionDetailedReportService {
             case OUTLET_DELIVERY_RETURN -> query(outletDeliveryReturnLineRepository,
                     new Shape("outletDeliveryReturn", "returnDate", "remarks", "customer", "agent", "outletDeliveryReceipt"),
                     type, username, filter, pageable, this::fromOutletDeliveryReturn);
+            case STOCK_TRANSFER -> query(stockTransferLineRepository,
+                    new Shape("stockTransfer", "transferDate", "remarks", "customer", null),
+                    type, username, filter, pageable, this::fromStockTransfer);
+            case OUTLET_PULL_OUT -> query(outletPullOutLineRepository,
+                    new Shape("outletPullOut", "pullOutDate", "remarks", "customer", null),
+                    type, username, filter, pageable, this::fromOutletPullOut);
+            case PULL_OUT_RECEIVE -> query(pullOutReceiveLineRepository,
+                    new Shape("pullOutReceive", "receiptDate", "remarks", "customer", null, "outletPullOut"),
+                    type, username, filter, pageable, this::fromPullOutReceive);
+            case ASSEMBLY -> query(assemblyLineRepository,
+                    new Shape("assembly", "assemblyDate", "remarks", null, null),
+                    type, username, filter, pageable, this::fromAssembly);
         };
     }
 
@@ -116,6 +132,7 @@ public class TransactionDetailedReportService {
             if (f.getAgentId() != null) predicates.add(cb.equal(header.get(shape.agent()).get("id"), f.getAgentId()));
             if (f.getItemId() != null) predicates.add(cb.equal(item.get("id"), f.getItemId()));
             if (f.getVoided() != null) predicates.add(cb.equal(header.get("voided"), f.getVoided()));
+            if (f.getOrigin() != null) predicates.add(cb.equal(header.get("origin"), f.getOrigin()));
             if (dateFrom != null) predicates.add(cb.greaterThanOrEqualTo(header.<Instant>get(shape.date()), dateFrom));
             if (dateTo != null) predicates.add(cb.lessThanOrEqualTo(header.<Instant>get(shape.date()), dateTo));
             addContains(cb, predicates, f.getReferenceNumber(), header.get("referenceNumber"));
@@ -177,7 +194,7 @@ public class TransactionDetailedReportService {
         InventoryAdjustment h = line.getAdjustment();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getAdjustmentDate(), h.getWarehouse(), h.getReason());
-        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         return row;
     }
 
@@ -185,7 +202,7 @@ public class TransactionDetailedReportService {
         PurchaseOrder h = line.getPurchaseOrder();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getOrderDate(), h.getWarehouse(), h.getRemarks());
-        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         row.setCounterpartyId(h.getSupplier().getId());
         row.setCounterpartyName(h.getSupplier().getName());
         if (canViewCostPrice) price(row, line.getCostPrice(), null);
@@ -196,7 +213,7 @@ public class TransactionDetailedReportService {
         PurchaseInvoice h = line.getPurchaseInvoice();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getInvoiceDate(), h.getWarehouse(), h.getRemarks());
-        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         row.setCounterpartyId(h.getSupplier().getId());
         row.setCounterpartyName(h.getSupplier().getName());
         if (h.getPurchaseOrder() != null) row.setSourceReferenceNumber(h.getPurchaseOrder().getReferenceNumber());
@@ -209,7 +226,7 @@ public class TransactionDetailedReportService {
         PurchaseReceive h = line.getPurchaseReceive();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReceiptDate(), h.getWarehouse(), h.getRemarks());
-        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         row.setCounterpartyId(h.getSupplier().getId());
         row.setCounterpartyName(h.getSupplier().getName());
         if (h.getPurchaseOrder() != null) row.setSourceReferenceNumber(h.getPurchaseOrder().getReferenceNumber());
@@ -226,9 +243,10 @@ public class TransactionDetailedReportService {
         DeliveryReceipt h = line.getDeliveryReceipt();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getDeliveryDate(), h.getWarehouse(), h.getRemarks());
-        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         row.setCounterpartyId(h.getCustomer().getId());
         row.setCounterpartyName(h.getCustomer().getName());
+        if (h.getStockTransfer() != null) row.setSourceReferenceNumber(h.getStockTransfer().getReferenceNumber());
         price(row, line.getUnitPrice(), null);
         return row;
     }
@@ -237,7 +255,7 @@ public class TransactionDetailedReportService {
         OutletReceive h = line.getOutletReceive();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReceiptDate(), h.getWarehouse(), h.getRemarks());
-        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         row.setCounterpartyId(h.getCustomer().getId());
         row.setCounterpartyName(h.getCustomer().getName());
         row.setSourceReferenceNumber(h.getDeliveryReceipt().getReferenceNumber());
@@ -250,7 +268,7 @@ public class TransactionDetailedReportService {
         OutletDeliveryReceipt h = line.getOutletDeliveryReceipt();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getDeliveryDate(), h.getWarehouse(), h.getRemarks());
-        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         row.setCounterpartyId(h.getCustomer().getId());
         row.setCounterpartyName(h.getCustomer().getName());
         agent(row, h.getAgent());
@@ -262,12 +280,58 @@ public class TransactionDetailedReportService {
         OutletDeliveryReturn h = line.getOutletDeliveryReturn();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReturnDate(), h.getWarehouse(), h.getRemarks());
-        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         row.setCounterpartyId(h.getCustomer().getId());
         row.setCounterpartyName(h.getCustomer().getName());
         row.setSourceReferenceNumber(h.getOutletDeliveryReceipt().getReferenceNumber());
         agent(row, h.getAgent());
         price(row, line.getUnitPrice(), null);
+        return row;
+    }
+
+    private TransactionDetailedReportRow fromStockTransfer(StockTransferLine line) {
+        StockTransfer h = line.getStockTransfer();
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
+        header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getTransferDate(), h.getWarehouse(), h.getRemarks());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
+        row.setCounterpartyId(h.getCustomer().getId());
+        row.setCounterpartyName(h.getCustomer().getName());
+        price(row, line.getUnitPrice(), null);
+        return row;
+    }
+
+    // Warehouse is the outlet's own warehouse — where the stock left from.
+    private TransactionDetailedReportRow fromOutletPullOut(OutletPullOutLine line) {
+        OutletPullOut h = line.getOutletPullOut();
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
+        header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getPullOutDate(), h.getWarehouse(), h.getRemarks());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
+        row.setCounterpartyId(h.getCustomer().getId());
+        row.setCounterpartyName(h.getCustomer().getName());
+        price(row, line.getUnitPrice(), null);
+        return row;
+    }
+
+    private TransactionDetailedReportRow fromPullOutReceive(PullOutReceiveLine line) {
+        PullOutReceive h = line.getPullOutReceive();
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
+        header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReceiptDate(), h.getWarehouse(), h.getRemarks());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
+        row.setCounterpartyId(h.getCustomer().getId());
+        row.setCounterpartyName(h.getCustomer().getName());
+        row.setSourceReferenceNumber(h.getOutletPullOut().getReferenceNumber());
+        // Valued at the price of the pulled-out line it received.
+        price(row, line.getOutletPullOutLine().getUnitPrice(), null);
+        return row;
+    }
+
+    // Raw materials consumed show as negative quantities, outputs as positive — the line's effect on stock.
+    private TransactionDetailedReportRow fromAssembly(AssemblyLine line) {
+        Assembly h = line.getAssembly();
+        BigDecimal quantity = line.getKind() == AssemblyLineKind.MATERIAL ? line.getQuantity().negate() : line.getQuantity();
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), quantity, line.getQuantityLoaded());
+        header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getAssemblyDate(), h.getWarehouse(), h.getRemarks());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         return row;
     }
 
@@ -302,8 +366,9 @@ public class TransactionDetailedReportService {
     }
 
     private static void status(TransactionDetailedReportRow row, boolean voided, Instant voidedAt, String voidedBy,
-                               Instant createdAt, String createdBy) {
+                               Instant createdAt, String createdBy, TransactionOrigin origin) {
         row.setVoided(voided);
+        row.setOrigin(origin);
         row.setVoidedAt(voidedAt);
         row.setVoidedBy(voidedBy);
         row.setCreatedAt(createdAt);

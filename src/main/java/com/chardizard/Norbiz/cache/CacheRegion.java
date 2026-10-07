@@ -26,11 +26,17 @@ public enum CacheRegion {
     LOOKUP_DELIVERY_RECEIPT(Kind.LOOKUP, DeliveryReceipt.class, DeliveryReceiptLine.class, Item.class, Customer.class, Warehouse.class),
     LOOKUP_OUTLET_DELIVERY_RECEIPT(Kind.LOOKUP, OutletDeliveryReceipt.class, OutletDeliveryReceiptLine.class, Item.class, Customer.class,
             Warehouse.class, Employee.class),
+    LOOKUP_STOCK_TRANSFER(Kind.LOOKUP, StockTransfer.class, StockTransferLine.class, Item.class, Customer.class, Warehouse.class),
+    LOOKUP_OUTLET_PULL_OUT(Kind.LOOKUP, OutletPullOut.class, OutletPullOutLine.class, Item.class, Customer.class, Warehouse.class),
+    LOOKUP_PULL_OUT_REASON(Kind.LOOKUP, PullOutReason.class),
+    LOOKUP_BILL_OF_MATERIAL(Kind.LOOKUP, BillOfMaterial.class, BillOfMaterialLine.class, Item.class),
 
     // ---- master-data list endpoints ----
     LIST_BRAND(Kind.LIST, Brand.class, Company.class),
     LIST_ITEM_CATEGORY(Kind.LIST, ItemCategory.class, Company.class),
     LIST_ITEM_GROUP(Kind.LIST, ItemGroup.class, Company.class),
+    LIST_PULL_OUT_REASON(Kind.LIST, PullOutReason.class, Company.class),
+    LIST_BILL_OF_MATERIAL(Kind.LIST, BillOfMaterial.class, BillOfMaterialLine.class, Item.class, Company.class),
     LIST_ITEM(Kind.LIST, Item.class, ItemPrice.class, ItemSku.class, ItemCategory.class, ItemGroup.class, Company.class),
     LIST_ITEM_SKU(Kind.LIST, ItemSku.class, Item.class),
     LIST_WAREHOUSE(Kind.LIST, Warehouse.class, Company.class),

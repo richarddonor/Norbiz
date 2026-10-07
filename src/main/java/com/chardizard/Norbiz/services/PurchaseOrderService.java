@@ -69,7 +69,8 @@ public class PurchaseOrderService {
                 supplierScope,
                 SpecificationUtils.containsIgnoreCase("referenceNumber", filters.get("referenceNumber")),
                 SpecificationUtils.containsIgnoreCase("sheetNumber", filters.get("sheetNumber")),
-                SpecificationUtils.dateRange("orderDate", dateFrom, dateTo)
+                SpecificationUtils.dateRange("orderDate", dateFrom, dateTo),
+                SpecificationUtils.enumEquals("origin", TransactionOrigin.class, filters.get("origin"))
         );
 
         return purchaseOrderRepository.findAll(spec, pageable);

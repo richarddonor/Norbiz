@@ -70,7 +70,8 @@ public class OutletDeliveryReceiptService {
                 agentScope,
                 SpecificationUtils.containsIgnoreCase("referenceNumber", filters.get("referenceNumber")),
                 SpecificationUtils.containsIgnoreCase("sheetNumber", filters.get("sheetNumber")),
-                SpecificationUtils.dateRange("deliveryDate", dateFrom, dateTo)
+                SpecificationUtils.dateRange("deliveryDate", dateFrom, dateTo),
+                SpecificationUtils.enumEquals("origin", TransactionOrigin.class, filters.get("origin"))
         );
 
         return outletDeliveryReceiptRepository.findAll(spec, pageable);

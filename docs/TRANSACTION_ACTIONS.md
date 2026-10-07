@@ -29,7 +29,7 @@ Transaction **history** and company-configured **actions** (sign-offs) on every 
 | GET | `/transactions/{transactionType}/{id}/actions` | `VIEW_<TYPE>` + company access: each active action with `takenBy`, `takenByMe`, `allowedForMe`, `prerequisitesMet`, `missingPrerequisites`, `canTake` |
 | POST | `/transactions/{transactionType}/{id}/actions` | rules above; body `{ actionDefinitionId, remarks? }` |
 
-`transactionType` is one of `INVENTORY_ADJUSTMENT`, `PURCHASE_ORDER`, `PURCHASE_INVOICE`, `PURCHASE_RECEIVE`, `DELIVERY_RECEIPT`, `OUTLET_RECEIVE`, `OUTLET_DELIVERY_RECEIPT`, `OUTLET_DELIVERY_RETURN`.
+`transactionType` is one of `INVENTORY_ADJUSTMENT`, `PURCHASE_ORDER`, `PURCHASE_INVOICE`, `PURCHASE_RECEIVE`, `DELIVERY_RECEIPT`, `OUTLET_RECEIVE`, `OUTLET_DELIVERY_RECEIPT`, `OUTLET_DELIVERY_RETURN`, `STOCK_TRANSFER`, `OUTLET_PULL_OUT`, `PULL_OUT_RECEIVE`, `ASSEMBLY`.
 
 ## Adding a new transaction type
 1. Add a `TransactionType` value (with its `VIEW_` permission) and use `TransactionType.X.name()` as the service's `TRANSACTION_TYPE`.

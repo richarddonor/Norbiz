@@ -117,6 +117,46 @@ public class TransactionDetailedReportController {
         return report(DetailedReportType.OUTLET_DELIVERY_RETURN, userDetails, filter, pageable);
     }
 
+    @Operation(summary = "Stock Transfer - Detailed", description = DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_STOCK_TRANSFER_DETAILED_REPORT permission")
+    @GetMapping("/stock-transfers")
+    @PreAuthorize("hasAuthority('VIEW_STOCK_TRANSFER_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> stockTransfers(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
+        return report(DetailedReportType.STOCK_TRANSFER, userDetails, filter, pageable);
+    }
+
+    @Operation(summary = "Outlet Pull Out - Detailed", description = DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_OUTLET_PULL_OUT_DETAILED_REPORT permission")
+    @GetMapping("/outlet-pull-outs")
+    @PreAuthorize("hasAuthority('VIEW_OUTLET_PULL_OUT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletPullOuts(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
+        return report(DetailedReportType.OUTLET_PULL_OUT, userDetails, filter, pageable);
+    }
+
+    @Operation(summary = "Pull Out Receive - Detailed", description = DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_PULL_OUT_RECEIVE_DETAILED_REPORT permission")
+    @GetMapping("/pull-out-receives")
+    @PreAuthorize("hasAuthority('VIEW_PULL_OUT_RECEIVE_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> pullOutReceives(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
+        return report(DetailedReportType.PULL_OUT_RECEIVE, userDetails, filter, pageable);
+    }
+
+    @Operation(summary = "Assembly - Detailed", description = DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_ASSEMBLY_DETAILED_REPORT permission")
+    @GetMapping("/assemblies")
+    @PreAuthorize("hasAuthority('VIEW_ASSEMBLY_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> assemblies(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
+        return report(DetailedReportType.ASSEMBLY, userDetails, filter, pageable);
+    }
+
     private ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> report(
             DetailedReportType type, UserDetails userDetails, DetailedReportFilter filter, Pageable pageable) {
         boolean canViewCostPrice = userDetails.getAuthorities().stream()

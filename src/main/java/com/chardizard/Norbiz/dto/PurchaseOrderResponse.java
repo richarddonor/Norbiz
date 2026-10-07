@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.dto;
 
+import com.chardizard.Norbiz.models.TransactionOrigin;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -26,5 +27,6 @@ public class PurchaseOrderResponse {
     private Instant voidedAt;
     private String voidedBy;
     private boolean loaded;
+    private TransactionOrigin origin;
     private List<PurchaseOrderLineResponse> lines;
 }

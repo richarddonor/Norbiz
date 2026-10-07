@@ -17,7 +17,11 @@ BEGIN
         ('delivery_receipts',     'DELIVERY_RECEIPT'),
         ('outlet_receives',       'OUTLET_RECEIVE'),
         ('outlet_delivery_receipts', 'OUTLET_DELIVERY_RECEIPT'),
-        ('outlet_delivery_returns',  'OUTLET_DELIVERY_RETURN')
+        ('outlet_delivery_returns',  'OUTLET_DELIVERY_RETURN'),
+        ('stock_transfers',          'STOCK_TRANSFER'),
+        ('outlet_pull_outs',         'OUTLET_PULL_OUT'),
+        ('pull_out_receives',        'PULL_OUT_RECEIVE'),
+        ('assemblies',               'ASSEMBLY')
     ) AS v(table_name, transaction_type)
     LOOP
         EXECUTE format($sql$

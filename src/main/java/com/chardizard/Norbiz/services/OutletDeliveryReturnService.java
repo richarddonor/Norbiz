@@ -71,7 +71,8 @@ public class OutletDeliveryReturnService {
                 sourceScope,
                 SpecificationUtils.containsIgnoreCase("referenceNumber", filters.get("referenceNumber")),
                 SpecificationUtils.containsIgnoreCase("sheetNumber", filters.get("sheetNumber")),
-                SpecificationUtils.dateRange("returnDate", dateFrom, dateTo)
+                SpecificationUtils.dateRange("returnDate", dateFrom, dateTo),
+                SpecificationUtils.enumEquals("origin", TransactionOrigin.class, filters.get("origin"))
         );
 
         return outletDeliveryReturnRepository.findAll(spec, pageable);

@@ -1,6 +1,7 @@
 
 package com.chardizard.Norbiz.controllers;
 
+import com.chardizard.Norbiz.models.TransactionOrigin;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.PurchaseReceiveLineResponse;
@@ -54,10 +55,12 @@ public class PurchaseReceiveController {
             @Parameter(description = "Filter by sheet number (contains)") @RequestParam(required = false) String sheetNumber,
             @Parameter(description = "Filter by receipt date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
             @Parameter(description = "Filter by receipt date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
+            @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
+        if (origin != null) filters.put("origin", origin.name());
 
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
@@ -136,6 +139,7 @@ public class PurchaseReceiveController {
         res.setVoidedAt(receive.getVoidedAt());
         res.setVoidedBy(receive.getVoidedBy());
         res.setLoaded(receive.isLoaded());
+        res.setOrigin(receive.getOrigin());
         res.setLines(receive.getLines().stream().map(this::toLineResponse).collect(Collectors.toList()));
         return res;
     }

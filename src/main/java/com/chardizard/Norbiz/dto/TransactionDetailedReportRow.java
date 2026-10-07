@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.dto;
 
+import com.chardizard.Norbiz.models.TransactionOrigin;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -35,6 +36,8 @@ public class TransactionDetailedReportRow {
     private boolean voided;
     private Instant voidedAt;
     private String voidedBy;
+    // NATIVE, or MIGRATED / RECONSTRUCTED for transactions written by the legacy migration.
+    private TransactionOrigin origin;
     private Instant createdAt;
     private String createdBy;
 
