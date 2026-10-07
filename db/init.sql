@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS item_skus (
     updated_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     created_by VARCHAR(100),
     updated_by VARCHAR(100),
-    CONSTRAINT ITEM_SKUS_SKU_CODE_UQ UNIQUE (sku_code),
+    CONSTRAINT ITEM_SKUS_ITEM_SKU_CODE_UQ UNIQUE (item_id, sku_code),
     CONSTRAINT ITEM_SKUS_ITEM_ID_FK  FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
 );
 
@@ -1182,3 +1182,15 @@ CREATE TABLE IF NOT EXISTS assembly_lines (
     CONSTRAINT ASSEMBLY_LINES_ITEM_ID_FK             FOREIGN KEY (item_id)             REFERENCES items(id),
     CONSTRAINT ASSEMBLY_LINES_BILL_OF_MATERIAL_ID_FK FOREIGN KEY (bill_of_material_id) REFERENCES bills_of_materials(id)
 );
+
+-- SKU codes may be shared by several items (unique per item only). Databases created before this
+-- change still carry the old global constraint, which ddl-auto=update never drops.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'item_skus_sku_code_uq') THEN
+        ALTER TABLE item_skus DROP CONSTRAINT item_skus_sku_code_uq;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'item_skus_item_sku_code_uq') THEN
+        ALTER TABLE item_skus ADD CONSTRAINT ITEM_SKUS_ITEM_SKU_CODE_UQ UNIQUE (item_id, sku_code);
+    END IF;
+END $$;

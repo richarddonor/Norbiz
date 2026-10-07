@@ -41,3 +41,8 @@ build/
 ### Python ###
 .venv/
 __pycache__/
+
+# Legacy migration run artifacts (reports, backups, local credentials)
+tools/legacy-migration/reports/
+tools/legacy-migration/backups/
+tools/legacy-migration/config.env

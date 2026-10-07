@@ -9,13 +9,33 @@ The run is **repeatable**. It always starts by wiping Norbiz down to its seeded 
 ```bash
 cd tools/legacy-migration
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp config.env.example config.env    # fill in, then: set -a; . ./config.env; set +a
+cp config.env.example config.env        # fill in (git-ignored)
 
-.venv/bin/python migrate.py --confirm-reset <target db name>   # extract + load + report (~10 min)
-.venv/bin/python images.py                                      # item pictures (~146k files, ~20 GB)
+./run_migration.sh --confirm-reset <target db name>
 ```
 
-`migrate.py` refuses to run unless `--confirm-reset` names the target database, because step 01 truncates it. `--skip-extract` reuses the last extract. The report lands in `reports/` and the process exits non-zero if a check fails. Start the Norbiz app afterwards: `DataInitializer` re-adds roles, permissions and seeded users, and generates print templates for the migrated company.
+`run_migration.sh` is the one command for rehearsals and the real cutover. It runs five stages and stops at the first failure:
+
+1. **Preflight.** Checks that:
+   - the target database is reachable and its name matches `--confirm-reset`;
+   - **the Norbiz app is not connected** (no JDBC sessions);
+   - the schema and seed data exist;
+   - the legacy SQL Server database is reachable.
+2. **Backup.** Always takes a `pg_dump` of the target to `backups/<db>-<timestamp>.dump`. It uses `pg_dump` if it's on PATH, else `docker exec $PG_DOCKER_CONTAINER pg_dump`. With neither, it refuses to continue.
+3. **Migrate** (`migrate.py`): extract, reset, load, reconcile, report. The run stops if a report check fails.
+4. **Item pictures** (`images.py --clean`).
+5. **Flush Redis**, the query cache.
+
+The console output is also written to `reports/run-<timestamp>.log`, next to the report.
+
+Options:
+- `--skip-extract` reuses the previous extract.
+- `--skip-images` skips stage 4.
+- `--images-limit N` copies only N pictures, for quick rehearsals.
+
+The steps can also be run on their own: `migrate.py --confirm-reset <db>` and `images.py`.
+
+The target database needs the Norbiz schema and seed data before the first run. Start the app against it once and let `DataInitializer` finish. After a run, start the app again: `DataInitializer` re-adds anything missing, recreates the empty default "Norbiz" company and generates print templates for the migrated company. The loader links `super_admin` to the migrated company.
 
 **Wait for seeding to finish** before stopping a freshly started app. `DataInitializer` runs *after* the "Started NorbizApplication" log line. Poll for the `super_admin` user instead of relying on that line.
 
@@ -28,6 +48,24 @@ Configuration (`config.env`) is plain environment variables:
 | `MSSQL_DATABASE` | `jbsKarutora` |
 | `PG_DSN` | `postgresql://norbiz:changeme@localhost:5432/norbiz_mig` |
 | `ITEM_IMAGE_UPLOAD_DIR` | `~/norbiz`. Must be the Norbiz server's `app.item-image.upload-dir`. |
+| `PG_DOCKER_CONTAINER` | *(none)*. The Postgres container used for the backup when `pg_dump` isn't installed. |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / *(empty)*, the same Redis the app uses. |
+
+## Cutover day
+
+1. Freeze the legacy system: no more postings.
+2. Take a fresh SQL Server backup and restore it as `jbsKarutora` on the SQL Server in `config.env`.
+3. Stop Norbiz.
+4. Run `./run_migration.sh --confirm-reset <production db>` (about 10 min, plus 20–40 min for pictures).
+5. Review `reports/migration-<timestamp>.txt`. Every check must PASS. Read the Issues and transit sections.
+6. Start Norbiz and wait for `DataInitializer`.
+7. Reset the migrated users' passwords and assign roles.
+8. Spot-check:
+   - a few migrated documents and an outlet's stock card against legacy;
+   - that a new Delivery Receipt continues the legacy numbering.
+9. Go live.
+
+If anything is wrong, restore the backup the run took (`pg_restore --clean --if-exists -d <db> backups/<file>.dump`), fix the cause, and run again. Rehearse on a copy (e.g. `norbiz_mig`) with an earlier legacy backup first.
 
 ## Pipeline
 
@@ -60,7 +98,7 @@ The loader writes with set-based SQL, not through the services. The "on-hand can
 | `tblItemDescriptions` | `item_categories` (by distinct name, plus `UNCATEGORIZED`) |
 | `tblCategoryChartsOrig` | `item_groups` (the code in parentheses becomes BN initials) |
 | `tblBrands` | `brands` |
-| `tblSMSKUs`, `tblItems.SMSKUNo/ImonoSKUNo` | `item_skus`. See limitations. |
+| `tblSMSKUs`, `tblItems.SMSKUNo/ImonoSKUNo` | `item_skus`: every SKU each item carries. Legacy shares one SM SKU code across many items (≈47.6k items, ≈11.9k codes), and Norbiz allows that, since codes are unique per item only. Price = the SKU master's price for the code, else the item's unit price. |
 | `tblSuppliers` | `suppliers` (keep IDs) |
 | `tblPullOutReasons`, `tblBillofMaterial`+`RawDetail` | `pull_out_reasons`, `bills_of_materials` |
 | `tblInventoryAdjustment` / `tblOutletInventoryAdjustment` | Inventory Adjustment (outlet ones: header ID +100,000; main lines: ID +3,000,000) |
@@ -125,7 +163,6 @@ Report checks, any failure fails the run:
 
 ## Known limitations
 
-- **SM SKUs:** legacy shares one SM SKU code across many items (≈47.6k items carry only ≈11.9k distinct codes). Norbiz requires `item_skus.sku_code` to be unique across all items, so each code stays with its first item and the rest are dropped (logged).
 - **Payables:** supplier invoice payment status is derived from legacy amount paid. Payments themselves aren't migrated (Norbiz has no supplier payments module yet).
 - **Customer and supplier details** (address, TIN, terms, credit limit) and item units, colour and size have no Norbiz fields and aren't migrated.
 - **Unmigratable documents:** receives with no lines, and receives whose only lines name items not on their source, can't be migrated as documents. They are logged as skipped; any stock they moved is carried by reconstructed adjustments.

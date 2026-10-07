@@ -30,5 +30,17 @@ DELETE FROM user_roles       WHERE user_id IN (SELECT id FROM users WHERE userna
 DELETE FROM users            WHERE username NOT IN ('admin', 'super_admin', 'system_admin');
 SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT coalesce(max(id), 0) + 1 FROM users), false);
 
+-- Schema housekeeping the app's ddl-auto=update can't do: SKU codes became unique per item only, but
+-- a database created before that change still carries the old global constraint (see db/init.sql).
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'item_skus_sku_code_uq') THEN
+        ALTER TABLE item_skus DROP CONSTRAINT item_skus_sku_code_uq;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'item_skus_item_sku_code_uq') THEN
+        ALTER TABLE item_skus ADD CONSTRAINT ITEM_SKUS_ITEM_SKU_CODE_UQ UNIQUE (item_id, sku_code);
+    END IF;
+END $$;
+
 DROP SCHEMA IF EXISTS migration CASCADE;
 CREATE SCHEMA migration;

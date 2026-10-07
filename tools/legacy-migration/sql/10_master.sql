@@ -181,21 +181,22 @@ CROSS JOIN LATERAL (VALUES ('UNIT_PRICE', i.unitprice), ('COST_PRICE', i.costpri
 
 INSERT INTO item_tags (item_id, tag) SELECT id, 'INVENTORY' FROM legacy.tblitems WHERE iinventory;
 
--- SKUs: the SM SKU master (with its own price) first, then each item's SM / Imono SKU columns.
--- sku_code is unique across all of Norbiz, so a code seen twice stays with its first owner.
+-- SKUs: every SKU an item carries — its SM and Imono SKU columns, plus SM SKU master rows assigned
+-- to it. Legacy shares one SM SKU code across many items (a department-store SKU covers a whole
+-- design), which Norbiz allows: codes are unique per item only. The price is the SKU master's price
+-- for that code when it has one, else the item's unit price.
 WITH candidates AS (
-    SELECT btrim(s.skuno) AS code, s.itemid, s.price, 1 AS pri, s.itemid AS ord FROM legacy.tblsmskus s
-    WHERE s.itemid IS NOT NULL AND btrim(s.skuno) <> '' AND EXISTS (SELECT 1 FROM legacy.tblitems i WHERE i.id = s.itemid)
-    UNION ALL SELECT btrim(i.smskuno), i.id, i.unitprice, 2, i.id FROM legacy.tblitems i WHERE btrim(i.smskuno) <> ''
-    UNION ALL SELECT btrim(i.imonoskuno), i.id, i.unitprice, 3, i.id FROM legacy.tblitems i WHERE btrim(i.imonoskuno) <> ''),
-ranked AS (SELECT *, row_number() OVER (PARTITION BY code ORDER BY pri, ord) AS rn FROM candidates WHERE length(code) <= 100)
+    SELECT i.id AS item_id, btrim(i.smskuno) AS code FROM legacy.tblitems i WHERE btrim(i.smskuno) <> ''
+    UNION SELECT i.id, btrim(i.imonoskuno) FROM legacy.tblitems i WHERE btrim(i.imonoskuno) <> ''
+    UNION SELECT s.itemid, btrim(s.skuno) FROM legacy.tblsmskus s
+          WHERE s.itemid IS NOT NULL AND btrim(s.skuno) <> '' AND EXISTS (SELECT 1 FROM legacy.tblitems i WHERE i.id = s.itemid)),
+master AS (SELECT DISTINCT ON (btrim(skuno)) btrim(skuno) AS code, price FROM legacy.tblsmskus ORDER BY btrim(skuno), active DESC, skuno)
 INSERT INTO item_skus (item_id, sku_code, unit_price, created_at, updated_at, created_by, updated_by)
-SELECT itemid, code, coalesce(price, 0), now(), now(), 'legacy-migration', 'legacy-migration' FROM ranked WHERE rn = 1;
-
-INSERT INTO migration.issues (kind, entity, legacy_id, detail)
-SELECT 'dropped', 'ItemSku', i.id, 'SKU ' || btrim(i.smskuno) || ' is already used by item ' || s.item_id
-FROM legacy.tblitems i JOIN item_skus s ON s.sku_code = btrim(i.smskuno)
-WHERE btrim(i.smskuno) <> '' AND s.item_id <> i.id;
+SELECT c.item_id, c.code, round(coalesce(m.price, i.unitprice, 0), 4), now(), now(), 'legacy-migration', 'legacy-migration'
+FROM candidates c
+JOIN legacy.tblitems i ON i.id = c.item_id
+LEFT JOIN master m ON m.code = c.code
+WHERE length(c.code) <= 100;
 
 -- ---- suppliers ------------------------------------------------------------------------------
 

@@ -79,8 +79,9 @@ public class ItemSkuService {
 
         assertCompanyAccess(username, item.getCompany().getId());
 
-        if (itemSkuRepository.existsBySkuCode(request.getSkuCode())) {
-            throw new IllegalArgumentException("SKU code already exists: " + request.getSkuCode());
+        // A code may be shared by several items, but each item lists it once.
+        if (itemSkuRepository.existsByItemIdAndSkuCode(item.getId(), request.getSkuCode())) {
+            throw new IllegalArgumentException("Item " + item.getItemCode() + " already has SKU code " + request.getSkuCode());
         }
 
         ItemSku sku = new ItemSku();
@@ -108,8 +109,8 @@ public class ItemSkuService {
         assertCompanyAccess(username, sku.getItem().getCompany().getId());
 
         if (!sku.getSkuCode().equals(request.getSkuCode())
-                && itemSkuRepository.existsBySkuCode(request.getSkuCode())) {
-            throw new IllegalArgumentException("SKU code already exists: " + request.getSkuCode());
+                && itemSkuRepository.existsByItemIdAndSkuCode(sku.getItem().getId(), request.getSkuCode())) {
+            throw new IllegalArgumentException("Item " + sku.getItem().getItemCode() + " already has SKU code " + request.getSkuCode());
         }
 
         sku.setSkuCode(request.getSkuCode());

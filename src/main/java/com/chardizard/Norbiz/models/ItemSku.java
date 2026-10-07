@@ -12,7 +12,9 @@ import java.math.BigDecimal;
 @Entity
 @Table(
     name = "item_skus",
-    uniqueConstraints = @UniqueConstraint(name = "ITEM_SKUS_SKU_CODE_UQ", columnNames = "sku_code")
+    // A SKU code may be shared by several items (legacy department-store SKUs cover many items), but an
+    // item lists each code at most once.
+    uniqueConstraints = @UniqueConstraint(name = "ITEM_SKUS_ITEM_SKU_CODE_UQ", columnNames = {"item_id", "sku_code"})
 )
 public class ItemSku extends Auditable {
 

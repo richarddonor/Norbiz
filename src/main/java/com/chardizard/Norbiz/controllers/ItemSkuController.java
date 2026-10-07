@@ -72,7 +72,7 @@ public class ItemSkuController {
         return ResponseEntity.ok(AppResponse.of(toResponse(itemSkuService.findById(id, userDetails.getUsername()))));
     }
 
-    @Operation(summary = "Create SKU", description = "Creates a new SKU for an item. skuCode must be globally unique. itemId, skuCode and unitPrice are required.")
+    @Operation(summary = "Create SKU", description = "Creates a new SKU for an item. skuCode may be shared with other items but must be unique within the item. itemId, skuCode and unitPrice are required.")
     @ApiResponse(responseCode = "201", description = "SKU created")
     @ApiResponse(responseCode = "400", description = "Validation error or duplicate SKU code")
     @ApiResponse(responseCode = "403", description = "Missing CREATE_ITEM permission or no access to company")

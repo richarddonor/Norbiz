@@ -189,10 +189,7 @@ public class ItemService {
         lines.forEach((code, line) -> {
             ItemSku sku = existing.get(code);
             if (sku == null) {
-                // SKU codes are unique across all companies.
-                if (itemSkuRepository.existsBySkuCode(code)) {
-                    throw new IllegalArgumentException("SKU code already exists: " + code);
-                }
+                // Another item may use the same code; duplicates within this item are rejected above.
                 sku = new ItemSku();
                 sku.setItem(item);
                 sku.setSkuCode(code);
