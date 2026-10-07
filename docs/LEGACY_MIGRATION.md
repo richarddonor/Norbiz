@@ -1,48 +1,25 @@
 # Legacy Migration (jbsKarutora → Norbiz)
 
-One-time migration of master data and transaction history from the legacy **jbsKarutora** system (SQL Server) into Norbiz (Postgres). The tooling lives in `tools/legacy-migration/`, outside the Spring app. It never goes through the REST API or the service layer.
+One-time migration of the legacy jbsKarutora ERP (SQL Server 2019) into Norbiz. Legacy history is recreated as real Norbiz transactions, not archived: every legacy document becomes the matching Norbiz transaction, and the inventory ledger is rebuilt from those documents. The tooling lives in `tools/legacy-migration/`.
 
-## Status
+The run is **repeatable**. It always starts by wiping Norbiz down to its seeded basics, so a rehearsal and the real cutover are the same command against a freshly restored legacy backup.
 
-| Piece | State |
-|---|---|
-| `extract.py`: copy the raw legacy tables into a `legacy` schema | **Built** |
-| `sql/00_prepare.sql`: index `legacy.*`, create the `migration` working schema | **Built** |
-| `origin` column on every transaction header, plus `TransactionOrigin` enum, list/report filter | **Built** (app side) |
-| Legacy-only transaction types (Stock Transfer, Outlet Pull Out, Pull Out Receive, Assembly) | **Built** (app side), see `docs/TRANSACTIONS.md` |
-| `sql/01+`: transform `legacy.*` into Norbiz tables, post movements and balances | **Not written yet** |
-| Reconciliation against `tblInventory` | **Not written yet** |
-| `images.py` (item pictures) and `config.env.example` | **Referenced by `extract.py` but missing** |
+## Running it
 
-Everything below the "Load" heading describes the contract the rest of the codebase already assumes. Treat it as the spec for the unwritten loader steps.
+```bash
+cd tools/legacy-migration
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp config.env.example config.env    # fill in, then: set -a; . ./config.env; set +a
 
-## Pipeline
-
-```
-SQL Server (jbsKarutora backup)
-   │  extract.py — as-is copy, no transformation
-   ▼
-Postgres schema `legacy`      (dropped + recreated every extract)
-   │  sql/00_prepare.sql — indexes, ANALYZE, fresh `migration` schema
-   ▼
-Postgres schema `migration`   (working tables: id maps, staging)
-   │  sql/01+ — set-based INSERTs into Norbiz tables          ← not written yet
-   ▼
-Norbiz tables (public schema) → reconcile against legacy.tblinventory
+.venv/bin/python migrate.py --confirm-reset <target db name>   # extract + load + report (~10 min)
+.venv/bin/python images.py                                      # item pictures (~146k files, ~20 GB)
 ```
 
-Run it against a **scratch database** (default `norbiz_mig`), never a live one. Both the `legacy` and `migration` schemas are disposable and rebuilt on every run.
+`migrate.py` refuses to run unless `--confirm-reset` names the target database, because step 01 truncates it. `--skip-extract` reuses the last extract. The report lands in `reports/` and the process exits non-zero if a check fails. Start the Norbiz app afterwards: `DataInitializer` re-adds roles, permissions and seeded users, and generates print templates for the migrated company.
 
-## 1. Extract (`extract.py`)
+**Wait for seeding to finish** before stopping a freshly started app. `DataInitializer` runs *after* the "Started NorbizApplication" log line. Poll for the `super_admin` user instead of relying on that line.
 
-- Connects to SQL Server with `pymssql` and to Postgres with `psycopg` 3. Dependencies are in `tools/legacy-migration/.venv`.
-- Each run drops and recreates `legacy`, so it always mirrors whichever backup is currently restored.
-- Copies each table in its `TABLES` dict as-is: column names are lower-cased, types are mapped via `PG_TYPES`, and data is loaded with `COPY` in 20k-row batches. Any unmapped SQL Server type aborts the run instead of guessing.
-- Skips binary columns (`image`, `varbinary`, `binary`, `timestamp`). Item pictures are meant to come from a separate `images.py`.
-- Strips NUL characters from strings, since Postgres `text` can't store them.
-- Only extracts the non-zero rows of `tblInventory` (`Quantity <> 0 OR IntransitQty <> 0`). The table has about 75M rows, almost all zero.
-
-Configuration comes from environment variables:
+Configuration (`config.env`) is plain environment variables:
 
 | Variable | Default |
 |---|---|
@@ -50,78 +27,105 @@ Configuration comes from environment variables:
 | `MSSQL_USER` / `MSSQL_PASSWORD` | `sa` / *(empty)* |
 | `MSSQL_DATABASE` | `jbsKarutora` |
 | `PG_DSN` | `postgresql://norbiz:changeme@localhost:5432/norbiz_mig` |
+| `ITEM_IMAGE_UPLOAD_DIR` | `~/norbiz`. Must be the Norbiz server's `app.item-image.upload-dir`. |
 
-```bash
-cd tools/legacy-migration
-.venv/bin/python extract.py
-psql "$PG_DSN" -f sql/00_prepare.sql
-```
+## Pipeline
 
-## 2. Prepare (`sql/00_prepare.sql`)
+| Step | File | What it does |
+|---|---|---|
+| extract | `extract.py` | Copies the 44 needed legacy tables as-is into a fresh `legacy` schema in the target database (picture columns skipped; `tblInventory` only non-zero rows). |
+| 00 | `sql/00_prepare.sql` | Indexes the legacy copy. |
+| 01 | `sql/01_reset_data.sql` | Truncates every Norbiz table except permissions, roles, role_permissions and the seeded users (admin, super_admin, system_admin). |
+| 10 | `sql/10_master.sql` | Company, users, employees, catalog, suppliers, customers + outlet warehouses, pull out reasons, bills of materials. |
+| 20 | `sql/20_documents.sql` | All transactions: headers, lines, loaded quantities, reconstructed documents. |
+| 25 | `match_returns.py` | Links each Outlet Delivery Return to the sale it reverses. |
+| 40 | `sql/40_ledger.sql` | Inventory movements, balances and CREATED/VOIDED history, generated from the documents. |
+| 50 | `sql/50_reconcile.sql` | Aligns on-hand with the legacy stock balance. |
+| 60 | `sql/60_finalize.sql` | Identity sequences, reference numbering, audit marker. |
+| report | `report.py` | Counts, reconstructed documents, fixes, balance reconciliation, hard checks. |
+| images | `images.py` | Item pictures into the item-image store. |
 
-- Adds indexes on the detail→master join columns (`masterid`, `drid`, `odrid`, `returnslipmasterid`, `ancdetailid`, …) and on the legacy ledger (`tbltransactions`, `tbltransactiondetails`), then runs `ANALYZE`.
-- Drops and recreates the `migration` schema for working tables. Must run after every extract, because the extract drops the indexed tables.
+The loader writes with set-based SQL, not through the services. The "on-hand can't go below zero" rule therefore doesn't apply during the load (legacy carries negative balances). It applies as normal once the app runs. Each step writes rows exactly as the matching Norbiz service would. After a load, Redis must be flushed: bulk SQL bypasses cache invalidation.
 
-## 3. Load (not written yet)
-
-### Legacy table → Norbiz mapping
-
-Mappings marked *(confirm)* are inferred from table names and reference prefixes and haven't been checked against the data yet.
-
-**Master data**
+## Mapping
 
 | Legacy | Norbiz |
 |---|---|
-| `tblCompany` | `Company` |
-| `tblWareHouses` | `Warehouse` (one marked `main` per company; outlet warehouses linked via `Customer.warehouse`) |
-| `tblSecurityUsers` | `User` + `user_companies` *(confirm password handling: users will likely need a reset)* |
-| `tblEmployees` | `Employee` (agents tagged `AGENT`) |
-| `tblBrands` | `Brand` |
-| `tblCategoryChartsOrig` | `ItemCategory` |
-| `tblItems`, `tblItemDescriptions`, `tblSMSKUs` | `Item` / `ItemSku` *(confirm split)* |
-| `tblSuppliers` | `Supplier` |
-| `tblCustomers`, `tblCustomerTypes` | `Customer` (`type = OUTLET` for outlets) |
-| `tblPullOutReasons` | `PullOutReason` |
-| `tblBillofMaterial`, `tblBillOfMaterialRawDetail` | `BillOfMaterial` |
+| `tblCompany` | a new `companies` row |
+| `tblWareHouses` (ID 1) | main warehouse, keeps ID 1 |
+| `tblCustomers` | `customers` (keep IDs). `OUTLET` when legacy typed it so **or it held stock**. Every outlet gets a warehouse with the customer's ID, because legacy keyed outlet stock by customer ID. |
+| `tblSecurityUsers` | `users`, linked to the company, no roles, and a password that can't match. **An admin must reset each password** and assign roles (legacy security groups don't map 1:1 to Norbiz roles). |
+| `tblEmployees` | `employees` (keep IDs). Every ODR agent is tagged `AGENT`. |
+| `tblItems` | `items` (keep IDs) + the 4 `item_prices` + `INVENTORY` tag from `IInventory` |
+| `tblItemDescriptions` | `item_categories` (by distinct name, plus `UNCATEGORIZED`) |
+| `tblCategoryChartsOrig` | `item_groups` (the code in parentheses becomes BN initials) |
+| `tblBrands` | `brands` |
+| `tblSMSKUs`, `tblItems.SMSKUNo/ImonoSKUNo` | `item_skus`. See limitations. |
+| `tblSuppliers` | `suppliers` (keep IDs) |
+| `tblPullOutReasons`, `tblBillofMaterial`+`RawDetail` | `pull_out_reasons`, `bills_of_materials` |
+| `tblInventoryAdjustment` / `tblOutletInventoryAdjustment` | Inventory Adjustment (outlet ones: header ID +100,000; main lines: ID +3,000,000) |
+| `tblStockTransfer` | Stock Transfer. `DRId` becomes the DR's `stock_transfer_id`. |
+| `tblDeliveryReceipts` | Delivery Receipt |
+| `tblOutletReceives` | Outlet Receive |
+| `tblOutletDeliveryReceipts` | Outlet Delivery Receipt |
+| `tblOutletDeliveryReturns` | Outlet Delivery Return |
+| `tblReturnSlips` | Outlet Pull Out |
+| `tblOutletPullOut` | Pull Out Receive |
+| `tblSupplierInvoices` | Direct Purchase Invoice |
+| `tblItemReceive` | Purchase Receive |
+| `tblAssembly` + `Detail` + `RawMaterial` | Assembly (raw material lines: ID +1,000) |
 
-**Transactions** (headers + details)
+The legacy ledger (`tblTransactions`, `tblTransactionDetails`) is not migrated as documents. It is only used to classify how each legacy document posted (e.g. a pull out that went through transit vs straight to on-hand) and to reconcile the result.
 
-| Legacy | Norbiz type | Notes |
-|---|---|---|
-| `tblInventoryAdjustment` | Inventory Adjustment | |
-| `tblOutletInventoryAdjustment` | Inventory Adjustment (outlet's warehouse) | *(confirm)* |
-| `tblStockTransfer` | Stock Transfer (`STF`) | `drid` links the delivering DR |
-| `tblDeliveryReceipts` | Delivery Receipt | |
-| `tblOutletReceives` | Outlet Receive | `ancdetailid` → DR line |
-| `tblOutletDeliveryReceipts` | Outlet Delivery Receipt | |
-| `tblOutletDeliveryReturns` | Outlet Delivery Return | details keyed by `returnslipmasterid` *(confirm)* |
-| `tblReturnSlips` | Outlet Pull Out (`DRR`) | *(confirm)* |
-| `tblOutletPullOut` | Pull Out Receive (`OPO`) | `ancdetailid` → pull-out line *(confirm)* |
-| `tblSupplierInvoices` | Purchase Invoice (Direct) | no PO table is extracted, so POs aren't migrated |
-| `tblItemReceive` | Purchase Receive | |
-| `tblAssembly`, `tblAssemblyDetail`, `tblAssemblyRawMaterial` | Assembly | outputs / raw materials → `AssemblyLine.kind` |
+Every migrated document keeps its legacy reference and sheet number and carries `origin = MIGRATED`. Norbiz numbering continues after the highest legacy number for each prefix legacy shared (DR, OR, ODR, ODRR, STF, DRR, OPO, ASM), so the next DR after `DR-093121` is `DR-093122`.
 
-The legacy ledger (`tblTransactionTypes`, `tblTransactions`, `tblTransactionDetails`) isn't migrated as documents. It's used to classify legacy documents and to work out which movements each one actually posted.
+## Rules
 
-### Origin
+- **Voided** legacy documents are migrated voided and post no movements. Legacy removed a voided document's ledger rows, and a create + void pair would net to zero.
+- **Never-posted documents** are migrated **voided**, with remarks saying why. This covers unposted (draft) Outlet Receives and supplier invoices that never touched stock and were never received (pre-inventory, 2019–Feb 2023). They had no stock effect in legacy either.
+- **Reconstructed documents** (`origin = RECONSTRUCTED`, `RCN-<prefix>-000001`, remarks name the legacy source) fill steps the legacy flow skipped:
+  - **Pull Out Receive:** for each pull out legacy posted straight into main on-hand.
+  - **Purchase Receive:** for each supplier invoice legacy posted straight into on-hand.
+  - **Zero-price Outlet Delivery Receipt:** for return lines no sale could account for.
+  - **Inventory Adjustment, over-receiving:** for stock a receive took beyond what its source still had outstanding (legacy allowed this).
+  - **Inventory Adjustment, cutover correction:** one per warehouse, aligning on-hand with the legacy balance at cutover.
+- **Receive allocation:** a receive line loads its source line only up to what is still outstanding, in date order. The excess becomes the reconstructed adjustment above.
+- **Splits:** a Norbiz receive has one source and a return reverses one sale. A legacy receive spanning several sources, or a return spanning several sales, is split into one document per source (`<ref>-2`, `<ref>-3`, …).
+- **Return matching** (`match_returns.py`):
+  - Returns are processed in date order. Each one is matched to the most recent non-voided sale of the same outlet, on or before the return, that covers the most of its lines with unreturned quantity.
+  - Lines are covered whole. Within a sale, quantity is taken from its lines oldest first, as the service does.
+  - Unit price and agent come from the sale.
+- **Prices:** line unit price = legacy net amount ÷ quantity (legacy discounts folded in), so document totals match legacy.
+- **Dates:**
+  - Business dates become the UTC midnight of the legacy calendar day.
+  - Impossible dates (before 2000, or more than a year past cutover) fall back to the creation date, then the cutover.
+  - Audit timestamps are read as Asia/Manila local time.
+- **Authors:** legacy `CreatedByID`/`VoidedBy` hold employee IDs. They become the employee's login, else `legacy-<employee code>`, else `legacy-migration`.
+- **Codes:**
+  - Blank codes become `LEGACY-<id>` / `C-<id>` / `S-<id>`.
+  - Duplicate codes keep the oldest owner; later duplicates get `-<id>` appended.
+  - Duplicate supplier-invoice and receive numbers are renamed the same way.
+- **Audit:** bulk inserts don't fire `AuditableEntityListener`, so migrated master data has no change history before cutover. One `audit_logs` marker on the company records the load. Migrated rows carry `created_by = legacy-migration` (or the legacy author).
+- **Columns nullable only for legacy:** some FKs are nullable just so legacy rows without them fit (e.g. `OutletPullOut.pullOutReason`). The API still requires them.
 
-Every transaction header has `origin` (`TransactionOrigin`, column default `'NATIVE'`). Only the loader writes anything other than `NATIVE`:
+Every fix is logged in `migration.issues` (kind, entity, legacy ID, detail) and summarised by the report.
 
-- **`MIGRATED`**: a legacy document copied 1:1. It **keeps its legacy reference number**, so legacy prefixes (`STF`, `DRR`, `OPO`, …) were kept in Norbiz to let numbering continue.
-- **`RECONSTRUCTED`**: a document that didn't exist in legacy, created to complete a flow the legacy data skipped. Example: a Pull Out Receive for a pull out that went straight to on-hand. Its `remarks` must name the legacy source document.
+## Reconciliation
 
-Services never set `origin` and request DTOs never accept it. List endpoints and detailed reports filter by it (see `docs/TRANSACTIONS.md` → "Origin").
+The documents reproduce the legacy ledger (`tblTransactionDetails`) almost exactly; the only differences come from the reconstructed documents. Legacy's stored balances (`tblInventory`) disagree with its own ledger for a few thousand outlet item/warehouse pairs. `tblInventory` is what legacy users see as stock, so step 50 aligns on-hand to it.
 
-### Loader rules
+**Transit** differences can't be corrected by an adjustment. They are reported, not fixed (about 1.4k pairs, 3.3k units, all legacy-internal inconsistencies).
 
-- **Set-based SQL, not the API.** Movements (`inventory_movements`) and balances (`inventory_balances`) are written directly. Each migrated line posts the same `quantityDelta` / `transitQuantityDelta` / `sourceType` its Norbiz transaction type would (see `docs/INVENTORY.md` and `docs/TRANSACTIONS.md`), so ledger reports read the same as for native data.
-- **The negative-stock rule doesn't apply during the load.** That rule lives in `InventoryStockService`, which the loader bypasses, and legacy history contains negative balances. Load it as-is; don't "fix" history to satisfy the rule. Once the load is done, every API posting is subject to the rule as normal. Any balance that ends up negative can only be moved toward zero, since an adjustment *adding* stock is always allowed (see `docs/INVENTORY.md` → "Negative stock").
-- **Reference sequences.** After loading, set each `transaction_sequences.last_number` to the highest migrated number per (company, transaction type), so `TransactionReferenceService` continues from there instead of reissuing legacy numbers.
-- **Caches.** Bulk SQL bypasses the cache invalidation listener. Bump `GenerationStore` for every affected region, or flush Redis, after loading (see `docs/CACHING.md`).
-- **Audit.** Bulk inserts don't fire `AuditableEntityListener`, so master data arrives with no audit history. That's expected. Set `created_by` to a recognizable migration user.
-- **Transaction history.** Record a `CREATED` (and, for voided legacy documents, `VOIDED`) `TransactionEvent` per migrated header so the history panel isn't empty. `db/backfill_transaction_events.sql` shows the pattern.
-- **Nullable-for-legacy columns.** Some FKs are nullable only so legacy rows without them fit (e.g. `OutletPullOut.pullOutReason`). The API still requires them.
+Report checks, any failure fails the run:
+- Document counts per type equal legacy − skipped + split parts.
+- Every return line is linked to a sale.
+- On-hand equals the legacy balance.
+- Balances equal the sum of movements.
+- No line is loaded beyond its quantity.
 
-## 4. Reconcile (not written yet)
+## Known limitations
 
-After loading, compare Norbiz `inventory_balances` (quantity, transit) per item and warehouse against `legacy.tblinventory` (`Quantity`, `IntransitQty`) and list every mismatch. A mismatch means a mapping or `sourceType` error in the loader (or a gap that needs a `RECONSTRUCTED` document), not something to fix with an adjustment.
+- **SM SKUs:** legacy shares one SM SKU code across many items (≈47.6k items carry only ≈11.9k distinct codes). Norbiz requires `item_skus.sku_code` to be unique across all items, so each code stays with its first item and the rest are dropped (logged).
+- **Payables:** supplier invoice payment status is derived from legacy amount paid. Payments themselves aren't migrated (Norbiz has no supplier payments module yet).
+- **Customer and supplier details** (address, TIN, terms, credit limit) and item units, colour and size have no Norbiz fields and aren't migrated.
+- **Unmigratable documents:** receives with no lines, and receives whose only lines name items not on their source, can't be migrated as documents. They are logged as skipped; any stock they moved is carried by reconstructed adjustments.

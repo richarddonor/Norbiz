@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/ENTITY_MODEL.md` — Entity relationship diagram and key service implementation patterns.
 - `docs/OBSERVABILITY.md` — OpenTelemetry tracing/metrics/logs wiring, config, and telemetry rules.
 - `docs/CACHING.md` — Redis query cache for lookup/list endpoints: generation-counter invalidation, key safety rules.
-- `docs/LEGACY_MIGRATION.md` — jbsKarutora → Norbiz migration tooling (`tools/legacy-migration/`), transaction `origin`, loader rules.
+- `docs/LEGACY_MIGRATION.md` — jbsKarutora → Norbiz migration: how to run `tools/legacy-migration/`, legacy→Norbiz mapping, migrated/reconstructed document rules, reconciliation, known limitations.
 
 `docs/` is where all non-`CLAUDE.md` project markdown lives — `CLAUDE.md` itself stays at the repo root since Claude Code only auto-discovers it there.
 
