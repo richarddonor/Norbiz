@@ -107,6 +107,7 @@ def build(pg):
     rows = [(label, one(pg, "SELECT count(*) FROM " + t)) for label, t in [
         ("Users (password reset required)", "users WHERE password LIKE '!legacy-migration%'"), ("Employees", "employees"),
         ("Sales agents", "employee_tags WHERE tag = 'AGENT'"), ("Items", "items"), ("Item SKUs", "item_skus"),
+        ("  of which without an item", "item_skus WHERE item_id IS NULL"),
         ("Item categories", "item_categories"), ("Item groups", "item_groups"), ("Brands", "brands"), ("Suppliers", "suppliers"),
         ("Customers", "customers"), ("  of which outlets", "customers WHERE type = 'OUTLET'"), ("Warehouses", "warehouses"),
         ("Pull out reasons", "pull_out_reasons"), ("Bills of materials", "bills_of_materials")]]

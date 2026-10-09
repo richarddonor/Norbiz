@@ -1,6 +1,7 @@
 package com.chardizard.Norbiz.config;
 
 import com.chardizard.Norbiz.models.Company;
+import com.chardizard.Norbiz.models.DashboardWidget;
 import com.chardizard.Norbiz.models.DetailedReportType;
 import com.chardizard.Norbiz.models.Permission;
 import com.chardizard.Norbiz.models.Role;
@@ -16,6 +17,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -130,6 +132,12 @@ public class DataInitializer implements CommandLineRunner {
         List<Permission> detailedReportPermissions = Arrays.stream(DetailedReportType.values())
                 .map(t -> findOrCreate(t.getPermission(), t.getPermissionDescription()))
                 .toList();
+        // One VIEW_DASHBOARD_<KEY> per dashboard widget
+        List<Permission> dashboardWidgetPermissions = Arrays.stream(DashboardWidget.values())
+                .map(w -> findOrCreate(w.getPermission(), w.getPermissionDescription()))
+                .toList();
+        List<Permission> reportPermissions = new ArrayList<>(detailedReportPermissions);
+        reportPermissions.addAll(dashboardWidgetPermissions);
 
         // Roles — permissions are always synced on startup
         Role adminRole = roleRepository.findByName("ADMIN").orElseGet(() -> {
@@ -148,7 +156,7 @@ public class DataInitializer implements CommandLineRunner {
             return r;
         });
         systemAdminRole.setDisplayName("System Administrator");
-        systemAdminRole.setPermissions(withAll(detailedReportPermissions,
+        systemAdminRole.setPermissions(withAll(reportPermissions,
                 viewUserPermission, createUserPermission, viewRolePermission,
                 viewItemPermission, createItemPermission, updateItemPermission,
                 viewBrandPermission, createBrandPermission, updateBrandPermission,
@@ -182,7 +190,7 @@ public class DataInitializer implements CommandLineRunner {
             return r;
         });
         superAdminRole.setDisplayName("Super Administrator");
-        superAdminRole.setPermissions(withAll(detailedReportPermissions, manageSystemPermission,
+        superAdminRole.setPermissions(withAll(reportPermissions, manageSystemPermission,
                 viewUserPermission, createUserPermission, updateUserPermission, deleteUserPermission, resetUserPasswordPermission,
                 viewRolePermission, createRolePermission, updateRolePermission, deleteRolePermission,
                 viewItemPermission, createItemPermission, updateItemPermission, deleteItemPermission, viewCostPricePermission,

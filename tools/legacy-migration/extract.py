@@ -27,6 +27,7 @@ TABLES = {
     "tblItemDescriptions": None,
     "tblItems": None,
     "tblSMSKUs": None,
+    "tblPricePoints": None,
     "tblSuppliers": None,
     "tblCustomers": None,
     "tblCustomerTypes": None,

@@ -31,6 +31,7 @@ import static org.mockito.Mockito.when;
 class LegacyTransactionTypesFlowTest {
 
     @Autowired StockTransferService stockTransferService;
+    @Autowired DashboardService dashboardService;
     @Autowired DeliveryReceiptService deliveryReceiptService;
     @Autowired OutletReceiveService outletReceiveService;
     @Autowired OutletPullOutService outletPullOutService;
@@ -194,6 +195,30 @@ class LegacyTransactionTypesFlowTest {
         pullOutReceiveService.create(porRequest(po, "3"), user);
         assertThat(po.isLoaded()).isTrue();
         assertBalance(mainWarehouse, item, "88", "0");
+    }
+
+    @Test
+    void pullOutsAwaitingReceiveWidgetTracksTheOutstandingQuantityByReason() {
+        stockOutlet("20");
+        OutletPullOut partial = outletPullOutService.create(poRequest("8"), user);    // 2026-10-06
+        pullOutReceiveService.create(porRequest(partial, "3"), user);                 // 5 left
+        OutletPullOut full = outletPullOutService.create(poRequest("2"), user);
+        pullOutReceiveService.create(porRequest(full, "2"), user);                    // fully received: excluded
+
+        BacklogResponse widget = dashboardService.pullOutsAwaitingReceive(user, company.getId(), java.time.LocalDate.parse("2026-10-08"));
+
+        assertThat(widget.documentCount()).isEqualTo(1);
+        assertThat(widget.outstandingQuantity()).isEqualByComparingTo("5");
+        assertThat(widget.progressPercent()).isEqualByComparingTo("37.5");
+        assertThat(widget.oldestAgeDays()).isEqualTo(2);
+        assertThat(widget.breakdown()).singleElement().satisfies(b -> {
+            assertThat(b.name()).isEqualTo("Damaged");
+            assertThat(b.quantity()).isEqualByComparingTo("5");
+        });
+        assertThat(widget.oldest()).singleElement().satisfies(d -> {
+            assertThat(d.id()).isEqualTo(partial.getId());
+            assertThat(d.group()).isEqualTo("Damaged");
+        });
     }
 
     @Test

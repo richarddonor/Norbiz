@@ -42,6 +42,8 @@ class DeliveryReceiptFlowTest {
     @Autowired InventoryBalanceRepository inventoryBalanceRepository;
     @Autowired UserRepository userRepository;
     @Autowired InventoryAdjustmentService inventoryAdjustmentService;
+    @Autowired DashboardService dashboardService;
+    @Autowired DeliveryReceiptLineRepository deliveryReceiptLineRepository;
     @MockitoBean TransactionReferenceService transactionReferenceService;
 
     private final String suffix = UUID.randomUUID().toString().substring(0, 8);
@@ -206,6 +208,58 @@ class DeliveryReceiptFlowTest {
         deliveryReceiptService.voidDeliveryReceipt(dr.getId(), user);
         assertBalance(mainWarehouse, "100", "0");
         assertBalance(outlet.getWarehouse(), "0", "0");
+    }
+
+    @Test
+    void pendingOutletReceivesWidgetCountsOnlyOutstandingOutletDeliveries() {
+        DeliveryReceipt partial = deliveryReceiptService.create(drRequest(outlet, "10"), user);   // 6 left after receiving 4
+        outletReceiveService.create(orRequest(partial, "4"), user);
+        DeliveryReceipt full = deliveryReceiptService.create(drRequest(outlet, "3"), user);       // fully received: excluded
+        outletReceiveService.create(orRequest(full, "3"), user);
+        DeliveryReceipt voided = deliveryReceiptService.create(drRequest(outlet, "2"), user);     // voided: excluded
+        deliveryReceiptService.voidDeliveryReceipt(voided.getId(), user);
+        deliveryReceiptService.create(drRequest(customer, "5"), user);                            // plain customer: excluded
+        deliveryReceiptLineRepository.flush();
+
+        BacklogResponse widget = dashboardService.pendingOutletReceives(user, company.getId(), java.time.LocalDate.parse("2026-10-14"));
+
+        assertThat(widget.documentCount()).isEqualTo(1);
+        assertThat(widget.counterpartyCount()).isEqualTo(1);
+        assertThat(widget.outstandingQuantity()).isEqualByComparingTo("6");
+        assertThat(widget.outstandingAmount()).isEqualByComparingTo("150.00");   // 6 x 25.00
+        assertThat(widget.progressPercent()).isEqualByComparingTo("40.0");
+        assertThat(widget.oldestAgeDays()).isEqualTo(10);                       // delivered 2026-10-04
+        assertThat(widget.aging()).filteredOn(b -> b.documentCount() > 0).singleElement()
+                .satisfies(b -> assertThat(b.label()).isEqualTo("8-14 days"));
+        assertThat(widget.byCounterparty()).singleElement().satisfies(o -> assertThat(o.id()).isEqualTo(outlet.getId()));
+        assertThat(widget.oldest()).singleElement().satisfies(d -> assertThat(d.id()).isEqualTo(partial.getId()));
+    }
+
+    @Test
+    void stockInTransitWidgetSplitsTransitByWarehouseKind() {
+        DeliveryReceipt dr = deliveryReceiptService.create(drRequest(outlet, "10"), user);
+        outletReceiveService.create(orRequest(dr, "4"), user);
+
+        StockInTransitResponse widget = dashboardService.stockInTransit(user, company.getId());
+
+        assertThat(widget.transitQuantity()).isEqualByComparingTo("6");
+        assertThat(widget.onHandQuantity()).isEqualByComparingTo("94");   // main 90 + outlet 4
+        assertThat(widget.warehousesWithTransit()).isEqualTo(1);
+        assertThat(widget.itemsInTransit()).isEqualTo(1);
+        assertThat(widget.byKind()).extracting(StockInTransitResponse.KindTotal::kind).containsExactly("MAIN", "OUTLET");
+        assertThat(widget.warehouses()).singleElement().satisfies(w -> {
+            assertThat(w.id()).isEqualTo(outlet.getWarehouse().getId());
+            assertThat(w.kind()).isEqualTo("OUTLET");
+        });
+    }
+
+    @Test
+    void pendingOutletReceivesWidgetRejectsOtherCompanies() {
+        Company other = new Company();
+        other.setName("Other DR Co " + suffix);
+        Long otherId = companyRepository.save(other).getId();
+        assertThatThrownBy(() -> dashboardService.pendingOutletReceives(user, otherId, null))
+                .isInstanceOf(SecurityException.class);
     }
 
     // --- Negative stock rule (docs/INVENTORY.md "Negative stock"); setUp stocks 100 in the main warehouse.

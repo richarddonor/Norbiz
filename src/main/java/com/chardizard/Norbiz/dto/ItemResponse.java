@@ -34,6 +34,9 @@ public class ItemResponse {
         private Long id;
         private String skuCode;
         private BigDecimal unitPrice;
+        // Read-only here: a SKU's brand is edited on the Item SKUs page.
+        private Long brandId;
+        private String brandName;
     }
 
     @Getter

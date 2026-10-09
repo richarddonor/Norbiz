@@ -191,6 +191,7 @@ public class ItemService {
             if (sku == null) {
                 // Another item may use the same code; duplicates within this item are rejected above.
                 sku = new ItemSku();
+                sku.setCompany(item.getCompany());
                 sku.setItem(item);
                 sku.setSkuCode(code);
                 item.getSkus().add(sku);

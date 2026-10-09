@@ -30,6 +30,7 @@ import static org.mockito.Mockito.when;
 class OutletDeliveryReceiptFlowTest {
 
     @Autowired OutletDeliveryReceiptService outletDeliveryReceiptService;
+    @Autowired DashboardService dashboardService;
     @Autowired OutletDeliveryReturnService outletDeliveryReturnService;
     @Autowired TransactionDetailedReportService reportService;
     @Autowired CustomerService customerService;
@@ -203,6 +204,106 @@ class OutletDeliveryReceiptFlowTest {
 
         filter.setAgentId(nonAgent.getId());
         assertThat(reportService.find(DetailedReportType.OUTLET_DELIVERY_RECEIPT, user, filter, false, PageRequest.of(0, 50)).getContent()).isEmpty();
+    }
+
+    @Test
+    void outletSalesWidgetNetsReturnsPerDayOutletAndAgent() {
+        OutletDeliveryReceipt odr = outletDeliveryReceiptService.create(odrRequest(outlet, agent, "4"), user);   // 2026-10-06: 100.00
+        outletDeliveryReturnService.create(returnRequest(odr, "1"), user);                                       // 2026-10-07: 25.00
+        OutletDeliveryReceipt voided = outletDeliveryReceiptService.create(odrRequest(outlet, agent, "2"), user);
+        outletDeliveryReceiptService.voidOutletDeliveryReceipt(voided.getId(), user);
+
+        OutletSalesResponse widget = dashboardService.outletSales(user, company.getId(), 7, java.time.LocalDate.parse("2026-10-08"));
+
+        assertThat(widget.daily()).hasSize(7);
+        assertThat(widget.grossSales()).isEqualByComparingTo("100.00");
+        assertThat(widget.returns()).isEqualByComparingTo("25.00");
+        assertThat(widget.netSales()).isEqualByComparingTo("75.00");
+        assertThat(widget.documentCount()).isEqualTo(1);
+        assertThat(widget.previousNetSales()).isEqualByComparingTo("0");
+        assertThat(widget.daily().get(4).sales()).isEqualByComparingTo("100.00");   // 10-02 .. 10-08 → index 4 = 10-06
+        assertThat(widget.daily().get(5).net()).isEqualByComparingTo("-25.00");
+        assertThat(widget.topOutlets()).singleElement().satisfies(o -> {
+            assertThat(o.id()).isEqualTo(outlet.getId());
+            assertThat(o.netSales()).isEqualByComparingTo("75.00");
+        });
+        assertThat(widget.topAgents()).singleElement().satisfies(a ->
+                assertThat(a.name()).isEqualTo(agent.getFirstName() + " " + agent.getLastName()));
+    }
+
+    @Test
+    void agentLeaderboardRanksByNetAndCarriesADailySeries() {
+        OutletDeliveryReceipt odr = outletDeliveryReceiptService.create(odrRequest(outlet, agent, "4"), user);   // 2026-10-06: 100.00
+        outletDeliveryReturnService.create(returnRequest(odr, "1"), user);                                       // 2026-10-07: 25.00
+
+        AgentLeaderboardResponse widget = dashboardService.agentLeaderboard(user, company.getId(), 7, java.time.LocalDate.parse("2026-10-08"));
+
+        assertThat(widget.activeAgents()).isEqualTo(1);
+        assertThat(widget.agents()).singleElement().satisfies(a -> {
+            assertThat(a.rank()).isEqualTo(1);
+            assertThat(a.id()).isEqualTo(agent.getId());
+            assertThat(a.netSales()).isEqualByComparingTo("75.00");
+            assertThat(a.grossSales()).isEqualByComparingTo("100.00");
+            assertThat(a.returns()).isEqualByComparingTo("25.00");
+            assertThat(a.documentCount()).isEqualTo(1);
+            assertThat(a.previousRank()).isNull();
+            assertThat(a.dailyNet()).hasSize(7);
+            assertThat(a.dailyNet().get(4)).isEqualByComparingTo("100.00");
+            assertThat(a.dailyNet().get(5)).isEqualByComparingTo("-25.00");
+        });
+    }
+
+    @Test
+    void outletStockHealthRatesDaysOfCoverAtTheSalesRate() {
+        outletDeliveryReceiptService.create(odrRequest(outlet, agent, "60"), user);   // 100 -> 40 on hand, 60 sold in 30 days = 2/day
+
+        OutletStockHealthResponse widget = dashboardService.outletStockHealth(user, company.getId(), 30, java.time.LocalDate.parse("2026-10-08"));
+
+        assertThat(widget.pairsTracked()).isEqualTo(1);
+        assertThat(widget.stockOuts()).isZero();
+        assertThat(widget.lowCover()).isZero();
+        assertThat(widget.cells()).singleElement().satisfies(c -> {
+            assertThat(c.onHand()).isEqualByComparingTo("40");
+            assertThat(c.soldQuantity()).isEqualByComparingTo("60");
+            assertThat(c.daysOfCover()).isEqualByComparingTo("20.0");
+        });
+
+        outletDeliveryReceiptService.create(odrRequest(outlet, agent, "40"), user);   // drained
+        OutletStockHealthResponse out = dashboardService.outletStockHealth(user, company.getId(), 30, java.time.LocalDate.parse("2026-10-08"));
+        assertThat(out.stockOuts()).isEqualTo(1);
+        assertThat(out.alerts()).singleElement().satisfies(a -> assertThat(a.onHand()).isEqualByComparingTo("0"));
+    }
+
+    @Test
+    void inventoryAdjustmentTrendSplitsAddedAndRemovedUnits() {
+        // setUp posted +100 into the outlet warehouse on 2026-01-01.
+        InventoryAdjustmentTrendResponse widget = dashboardService.inventoryAdjustmentTrend(user, company.getId(), 7, java.time.LocalDate.parse("2026-01-03"));
+
+        assertThat(widget.unitsAdded()).isEqualByComparingTo("100");
+        assertThat(widget.unitsRemoved()).isEqualByComparingTo("0");
+        assertThat(widget.documentCount()).isEqualTo(1);
+        assertThat(widget.daily()).hasSize(7);
+        assertThat(widget.daily().get(4).added()).isEqualByComparingTo("100");   // 12-28 .. 01-03 → index 4 = 01-01
+        assertThat(widget.byWarehouse()).singleElement().satisfies(w -> assertThat(w.id()).isEqualTo(outlet.getWarehouse().getId()));
+    }
+
+    @Test
+    void transactionActivityCountsCreatedAndVoidedEventsPerDay() {
+        OutletDeliveryReceipt odr = outletDeliveryReceiptService.create(odrRequest(outlet, agent, "1"), user);
+        outletDeliveryReceiptService.voidOutletDeliveryReceipt(odr.getId(), user);
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Manila"));
+
+        TransactionActivityResponse widget = dashboardService.transactionActivity(user, company.getId(), 7, today, "Asia/Manila");
+
+        assertThat(widget.dates()).hasSize(7).last().isEqualTo(today);
+        assertThat(widget.types()).filteredOn(t -> t.transactionType().equals("OUTLET_DELIVERY_RECEIPT")).singleElement()
+                .satisfies(t -> {
+                    assertThat(t.created()).isEqualTo(1);
+                    assertThat(t.voided()).isEqualTo(1);
+                    assertThat(t.counts().getLast()).isEqualTo(1);
+                });
+        assertThatThrownBy(() -> dashboardService.transactionActivity(user, company.getId(), 7, today, "Mars/Base"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     // Opening stock via a posted Inventory Adjustment — deliveries can't take on-hand below zero.
