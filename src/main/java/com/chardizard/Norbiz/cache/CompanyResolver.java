@@ -80,7 +80,7 @@ final class CompanyResolver {
             case AssemblyLine l -> l.getAssembly().getCompany().getId();
             case BillOfMaterialLine l -> l.getBillOfMaterial().getCompany().getId();
             case ItemPrice p -> p.getItem().getCompany().getId();
-            case ItemSku s -> s.getItem().getCompany().getId();
+            case ItemSku s -> s.getCompany().getId();
             case PurchaseInvoiceFee f -> f.getPurchaseInvoice().getCompany().getId();
             case PurchaseInvoiceLine l -> l.getPurchaseInvoice().getCompany().getId();
             case PurchaseOrderLine l -> l.getPurchaseOrder().getCompany().getId();

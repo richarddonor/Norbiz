@@ -142,6 +142,10 @@ public class ItemController {
             entry.setId(s.getId());
             entry.setSkuCode(s.getSkuCode());
             entry.setUnitPrice(s.getUnitPrice());
+            if (s.getBrand() != null) {
+                entry.setBrandId(s.getBrand().getId());
+                entry.setBrandName(s.getBrand().getName());
+            }
             return entry;
         }).collect(Collectors.toList()));
         res.setPrices(item.getPrices().stream()

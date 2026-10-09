@@ -42,5 +42,35 @@ BEGIN
     END IF;
 END $$;
 
+-- SKUs gained their own company (item_id became optional) and the legacy price point columns; an app
+-- that hasn't restarted on the new code yet hasn't added them. The table is empty here, so company_id
+-- can be NOT NULL straight away. Mirrors db/init.sql.
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS company_id       BIGINT NOT NULL;
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS item_category_id BIGINT;
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS brand_id         BIGINT;
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS price_type       VARCHAR(20);
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS store_item_code  VARCHAR(100);
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS barcode          VARCHAR(100);
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS vendor_part      VARCHAR(100);
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS rds_description  VARCHAR(255);
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS active           BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS rds_sku          BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE item_skus ADD COLUMN IF NOT EXISTS landmark_sku     BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE item_skus ALTER COLUMN item_id DROP NOT NULL;
+-- The brand/category/price search index is rebuilt by 10_master.sql after the SKU bulk load.
+DROP INDEX IF EXISTS item_skus_brand_category_price_ix;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'item_skus_company_id_fk') THEN
+        ALTER TABLE item_skus ADD CONSTRAINT ITEM_SKUS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'item_skus_item_category_id_fk') THEN
+        ALTER TABLE item_skus ADD CONSTRAINT ITEM_SKUS_ITEM_CATEGORY_ID_FK FOREIGN KEY (item_category_id) REFERENCES item_categories(id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'item_skus_brand_id_fk') THEN
+        ALTER TABLE item_skus ADD CONSTRAINT ITEM_SKUS_BRAND_ID_FK FOREIGN KEY (brand_id) REFERENCES brands(id);
+    END IF;
+END $$;
+
 DROP SCHEMA IF EXISTS migration CASCADE;
 CREATE SCHEMA migration;

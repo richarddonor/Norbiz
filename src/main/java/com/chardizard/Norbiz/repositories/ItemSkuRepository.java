@@ -10,6 +10,6 @@ import java.util.List;
 
 public interface ItemSkuRepository extends JpaRepository<ItemSku, Long>, JpaSpecificationExecutor<ItemSku> {
     List<ItemSku> findByItemId(Long itemId);
-    Page<ItemSku> findByItemCompanyIdIn(List<Long> companyIds, Pageable pageable);
+    Page<ItemSku> findByCompanyIdIn(List<Long> companyIds, Pageable pageable);
     boolean existsByItemIdAndSkuCode(Long itemId, String skuCode);
 }

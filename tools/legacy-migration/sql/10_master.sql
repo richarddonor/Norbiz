@@ -149,6 +149,16 @@ SELECT (SELECT company_id FROM migration.ctx), migration.trunc(name, 255), now()
 FROM legacy.tblbrands WHERE migration.trunc(name, 255) IS NOT NULL
 ON CONFLICT DO NOTHING;
 
+-- Every SM SKU (tblSMSKUs) goes under one brand, SM, whatever legacy brand it carried.
+INSERT INTO brands (company_id, name, created_at, updated_at, created_by, updated_by)
+VALUES ((SELECT company_id FROM migration.ctx), 'SM', now(), now(), 'legacy-migration', 'legacy-migration')
+ON CONFLICT DO NOTHING;
+
+CREATE TABLE migration.brand_map AS
+SELECT b.id AS legacy_id, n.id AS brand_id
+FROM legacy.tblbrands b
+JOIN brands n ON n.name = migration.trunc(b.name, 255) AND n.company_id = (SELECT company_id FROM migration.ctx);
+
 -- Items keep their legacy ID. Blank codes become LEGACY-<id>; a code used by several items stays
 -- on the oldest one and the others get "-<id>" appended (item code is unique per company).
 INSERT INTO items (id, company_id, item_category_id, item_group_id, item_code, name, active,
@@ -181,22 +191,103 @@ CROSS JOIN LATERAL (VALUES ('UNIT_PRICE', i.unitprice), ('COST_PRICE', i.costpri
 
 INSERT INTO item_tags (item_id, tag) SELECT id, 'INVENTORY' FROM legacy.tblitems WHERE iinventory;
 
--- SKUs: every SKU an item carries — its SM and Imono SKU columns, plus SM SKU master rows assigned
--- to it. Legacy shares one SM SKU code across many items (a department-store SKU covers a whole
--- design), which Norbiz allows: codes are unique per item only. The price is the SKU master's price
--- for that code when it has one, else the item's unit price.
-WITH candidates AS (
-    SELECT i.id AS item_id, btrim(i.smskuno) AS code FROM legacy.tblitems i WHERE btrim(i.smskuno) <> ''
-    UNION SELECT i.id, btrim(i.imonoskuno) FROM legacy.tblitems i WHERE btrim(i.imonoskuno) <> ''
-    UNION SELECT s.itemid, btrim(s.skuno) FROM legacy.tblsmskus s
-          WHERE s.itemid IS NOT NULL AND btrim(s.skuno) <> '' AND EXISTS (SELECT 1 FROM legacy.tblitems i WHERE i.id = s.itemid)),
-master AS (SELECT DISTINCT ON (btrim(skuno)) btrim(skuno) AS code, price FROM legacy.tblsmskus ORDER BY btrim(skuno), active DESC, skuno)
-INSERT INTO item_skus (item_id, sku_code, unit_price, created_at, updated_at, created_by, updated_by)
-SELECT c.item_id, c.code, round(coalesce(m.price, i.unitprice, 0), 4), now(), now(), 'legacy-migration', 'legacy-migration'
-FROM candidates c
-JOIN legacy.tblitems i ON i.id = c.item_id
-LEFT JOIN master m ON m.code = c.code
-WHERE length(c.code) <= 100;
+-- SKUs come from two legacy masters, SM SKUs (tblSMSKUs) and price points (tblPricePoints). A price
+-- point without a real item code attaches to items by category (ItemDescriptionID = item
+-- SKUDescriptionID) and price, so one code may span many items (Norbiz allows that: codes are unique
+-- per item only).
+--   * SM SKU: only to the items whose SMSKUNo names it (active or not) — never by category and
+--     price. One that no item names is still kept as an item-less SKU.
+--   * Price point: when its ItemCode is a real legacy item code, an active one goes to that item
+--     only (whatever its category and price). Otherwise an active one goes to every item whose unit
+--     price (PriceTypeID 1 = regular, or none) or focal price (PriceTypeID 2) equals its PricePoint.
+--     One that matches no item, or is inactive, is still kept as an item-less SKU.
+-- When both give an item the same code, the price point wins (it carries more columns). Every SM SKU
+-- gets the SM brand; a price point keeps its own. ImonoSKUNo and tblSMSKUs.ItemID are not used.
+CREATE TABLE migration.sku_items AS
+SELECT id, skudescriptionid AS category_id, btrim(smskuno) AS smskuno, unitprice, focalprice,
+       CASE WHEN focalprice > 0 THEN focalprice ELSE unitprice END AS sm_price
+FROM legacy.tblitems;
+
+CREATE TABLE migration.sm_skus AS
+SELECT DISTINCT ON (btrim(skuno)) btrim(skuno) AS code, itemdescriptionid AS category_id, brandid, price, active
+FROM legacy.tblsmskus
+WHERE btrim(skuno) <> '' AND length(btrim(skuno)) <= 100
+ORDER BY btrim(skuno), active DESC, skuno;
+
+CREATE TABLE migration.price_points AS
+SELECT p.id, btrim(p.skuno) AS code, p.itemdescriptionid AS category_id, p.brandid, p.pricepoint AS price,
+       CASE p.pricetypeid WHEN 1 THEN 'UNIT_PRICE' WHEN 2 THEN 'FOCAL_PRICE' END AS price_type,
+       p.pricetypeid, coalesce(p.active, false) AS active,
+       migration.trunc(p.itemcode, 100) AS store_item_code, migration.trunc(p.barcode, 100) AS barcode,
+       migration.trunc(p.vendorpart, 100) AS vendor_part, migration.trunc(p.rdsdescription, 255) AS rds_description,
+       coalesce(p.isrdssku, false) AS rds_sku, coalesce(p.islandmarksku, false) AS landmark_sku,
+       coalesce(migration.at(p.dateencoded), now()) AS created_at, migration.actor(p.encodedbyid) AS created_by
+FROM legacy.tblpricepoints p
+WHERE btrim(p.skuno) <> '' AND length(btrim(p.skuno)) <= 100 AND p.pricepoint IS NOT NULL;
+
+CREATE TABLE migration.price_point_items AS
+WITH by_code AS (
+    SELECT p.id AS price_point_id, i.id AS item_id
+    FROM migration.price_points p
+    JOIN legacy.tblitems i ON upper(btrim(i.itemcode)) = upper(p.store_item_code)
+    WHERE p.active)
+SELECT price_point_id, item_id FROM by_code
+UNION ALL
+SELECT p.id, i.id
+FROM migration.price_points p
+JOIN migration.sku_items i ON i.category_id = p.category_id
+                          AND p.price = CASE WHEN p.pricetypeid = 2 THEN i.focalprice ELSE i.unitprice END
+WHERE p.active AND NOT EXISTS (SELECT 1 FROM by_code c WHERE c.price_point_id = p.id);
+
+INSERT INTO item_skus (company_id, item_id, sku_code, unit_price, item_category_id, brand_id, price_type,
+                       store_item_code, barcode, vendor_part, rds_description, active, rds_sku, landmark_sku,
+                       created_at, updated_at, created_by, updated_by)
+SELECT DISTINCT ON (item_id, code)
+       (SELECT company_id FROM migration.ctx), item_id, code, round(price, 4), cm.category_id,
+       CASE WHEN source = 2 THEN (SELECT id FROM brands WHERE name = 'SM' AND company_id = (SELECT company_id FROM migration.ctx))
+            ELSE bm.brand_id END, price_type,
+       store_item_code, barcode, vendor_part, rds_description, active, rds_sku, landmark_sku,
+       created_at, now(), created_by, 'legacy-migration'
+FROM (
+    SELECT m.item_id, p.code, p.price, p.category_id AS legacy_category_id, p.brandid, p.price_type,
+           p.store_item_code, p.barcode, p.vendor_part, p.rds_description, p.active, p.rds_sku, p.landmark_sku,
+           p.created_at, p.created_by, 1 AS source, p.id AS source_order
+    FROM migration.price_point_items m JOIN migration.price_points p ON p.id = m.price_point_id
+    UNION ALL
+    SELECT i.id, s.code, coalesce(s.price, i.sm_price, 0), s.category_id, s.brandid, NULL,
+           NULL, NULL, NULL, NULL, coalesce(s.active, false), false, false,
+           now(), 'legacy-migration', 2, 0
+    FROM migration.sku_items i
+    JOIN migration.sm_skus s ON s.code = i.smskuno
+) x
+LEFT JOIN migration.category_map cm ON cm.legacy_id = x.legacy_category_id
+LEFT JOIN migration.brand_map bm ON bm.legacy_id = x.brandid
+ORDER BY item_id, code, source, source_order;
+
+-- Price points that went to no item: one item-less SKU each.
+INSERT INTO item_skus (company_id, item_id, sku_code, unit_price, item_category_id, brand_id, price_type,
+                       store_item_code, barcode, vendor_part, rds_description, active, rds_sku, landmark_sku,
+                       created_at, updated_at, created_by, updated_by)
+SELECT (SELECT company_id FROM migration.ctx), NULL, p.code, round(p.price, 4), cm.category_id, bm.brand_id, p.price_type,
+       p.store_item_code, p.barcode, p.vendor_part, p.rds_description, p.active, p.rds_sku, p.landmark_sku,
+       p.created_at, now(), p.created_by, 'legacy-migration'
+FROM migration.price_points p
+LEFT JOIN migration.category_map cm ON cm.legacy_id = p.category_id
+LEFT JOIN migration.brand_map bm ON bm.legacy_id = p.brandid
+WHERE NOT EXISTS (SELECT 1 FROM migration.price_point_items m WHERE m.price_point_id = p.id);
+
+-- SM SKUs no item's SMSKUNo names: one item-less SKU each, under the SM brand.
+INSERT INTO item_skus (company_id, item_id, sku_code, unit_price, item_category_id, brand_id, active,
+                       created_at, updated_at, created_by, updated_by)
+SELECT (SELECT company_id FROM migration.ctx), NULL, s.code, round(coalesce(s.price, 0), 4), cm.category_id,
+       (SELECT id FROM brands WHERE name = 'SM' AND company_id = (SELECT company_id FROM migration.ctx)),
+       coalesce(s.active, false), now(), now(), 'legacy-migration', 'legacy-migration'
+FROM migration.sm_skus s
+LEFT JOIN migration.category_map cm ON cm.legacy_id = s.category_id
+WHERE NOT EXISTS (SELECT 1 FROM migration.sku_items i WHERE i.smskuno = s.code);
+
+-- Built after the bulk load rather than maintained row by row (01_reset_data.sql drops it).
+CREATE INDEX IF NOT EXISTS ITEM_SKUS_BRAND_CATEGORY_PRICE_IX ON item_skus (company_id, brand_id, item_category_id, unit_price);
 
 -- ---- suppliers ------------------------------------------------------------------------------
 
