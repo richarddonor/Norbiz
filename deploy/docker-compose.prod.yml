@@ -20,7 +20,9 @@ services:
       # Only runs when the volume is empty (first deploy) — later schema changes go in db/migrations.
       - ./src/Norbiz/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "127.0.0.1:${DB_PORT:-5432}:5432"   # reachable from the server itself / an SSH tunnel only
+      # Reachable from other machines (password auth). DB_BIND=127.0.0.1 in .env limits it to the
+      # server itself / an SSH tunnel.
+      - "${DB_BIND:-0.0.0.0}:${DB_PORT:-5432}:5432"
     networks:
       - backend
     healthcheck:

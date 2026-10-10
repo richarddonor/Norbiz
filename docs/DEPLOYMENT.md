@@ -26,8 +26,10 @@ Current target: Ubuntu VirtualBox VM `10.16.32.64`, user `vboxuser`.
 | `deploy/bootstrap.sh` | One-time server setup |
 | `deploy/.env.example` | Template for `~/norbiz/.env` |
 
-Exposed ports: `80` web (SPA + `/api`), `8080` app (direct API / Swagger UI). Postgres (5432) and
-Grafana (3000) are bound to the server's localhost only — use an SSH tunnel.
+Exposed ports: `80` web (SPA + `/api`), `8080` app (direct API / Swagger UI), `5432` Postgres (database
+`norbiz`, user/password = `DB_USERNAME`/`DB_PASSWORD` from `~/norbiz/.env`). Grafana (3000) is bound to the
+server's localhost only — use an SSH tunnel. Set `DB_BIND=127.0.0.1` in `.env` and redeploy to close
+Postgres to other machines again.
 
 The frontend is built with `VITE_API_BASE=/api`; no Norbiz-Web changes are needed.
 
@@ -121,6 +123,10 @@ Grafana (traces/logs/metrics) from your machine:
 ssh -L 3000:localhost:3000 vboxuser@10.16.32.64
 ```
 
-then open http://localhost:3000. Postgres works the same way with `-L 5432:localhost:5432`.
+then open http://localhost:3000.
+
+Postgres from another machine (e.g. DBeaver/psql): host `10.16.32.64`, port `5432`, database `norbiz`,
+user `DB_USERNAME`, password `DB_PASSWORD` (`ssh vboxuser@10.16.32.64 'grep ^DB_ ~/norbiz/.env'`).
+This is the app's own superuser account — treat it accordingly.
 
 The stack restarts by itself after a VM reboot (`restart: unless-stopped`, Docker enabled at boot).
