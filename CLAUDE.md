@@ -15,6 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/CACHING.md` — Redis query cache for lookup/list endpoints: generation-counter invalidation, key safety rules.
 - `docs/DASHBOARD.md` — Per-user dashboard widgets: `DashboardWidget` catalog, one `VIEW_DASHBOARD_*` permission per widget, layout saved as the user's `dashboard.layout` preference, adding a widget.
 - `docs/LEGACY_MIGRATION.md` — jbsKarutora → Norbiz migration: how to run `tools/legacy-migration/`, legacy→Norbiz mapping, migrated/reconstructed document rules, reconciliation, known limitations.
+- `docs/DEPLOYMENT.md` — Releasing to the Docker-only Ubuntu server: `deploy/` scripts (bootstrap, deploy, migrate), prod compose/nginx, `db/migrations/` rules, backups and rollback.
 
 `docs/` is where all non-`CLAUDE.md` project markdown lives — `CLAUDE.md` itself stays at the repo root since Claude Code only auto-discovers it there.
 

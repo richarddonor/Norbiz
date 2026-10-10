@@ -1,0 +1,129 @@
+# Production stack for the Ubuntu deploy server — see docs/DEPLOYMENT.md.
+# Always run through deploy/deploy.sh (or with the same flags it uses):
+#   docker compose -p norbiz --project-directory ~/norbiz --env-file ~/norbiz/.env \
+#     -f ~/norbiz/src/Norbiz/deploy/docker-compose.prod.yml <command>
+# Relative paths below resolve against ~/norbiz (the --project-directory), where deploy.sh
+# clones both repos into src/Norbiz and src/Norbiz-Web.
+
+name: norbiz
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: norbiz
+      POSTGRES_USER: ${DB_USERNAME:?set DB_USERNAME in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Only runs when the volume is empty (first deploy) — later schema changes go in db/migrations.
+      - ./src/Norbiz/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"   # reachable from the server itself / an SSH tunnel only
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d norbiz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  app:
+    build:
+      context: ./src/Norbiz
+    image: norbiz-app:latest
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/norbiz
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SERVER_PORT: 8080
+      # nginx forwards Host/X-Forwarded-*, so browser calls through /api are seen as same-origin.
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS in .env}
+      ITEM_IMAGE_UPLOAD_DIR: /home/appuser/norbiz
+      JAVA_TOOL_OPTIONS: -Xmx${APP_MAX_HEAP:-768m}
+      OTEL_EXPORT_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-prod}
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      REDIS_HOST: redis
+    volumes:
+      - item_images:/home/appuser/norbiz
+    ports:
+      - "${APP_PORT:-8080}:8080"   # direct API / Swagger UI access
+    networks:
+      - backend
+    # The runtime image has no curl/wget — probe the public health endpoint with bash's /dev/tcp.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && grep -q "\"UP\"" <&3'
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      lgtm:
+        condition: service_started
+
+  # Query cache (docs/CACHING.md) — same settings as the dev compose.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru", "--save", ""]
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # OTel Collector + Tempo + Loki + Prometheus + Grafana. Grafana has anonymous admin access, so
+  # it is bound to the server's localhost: ssh -L 3000:localhost:3000 <user>@<server>
+  lgtm:
+    image: grafana/otel-lgtm:0.34.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - lgtm_data:/data
+    networks:
+      - backend
+
+  web:
+    build:
+      context: ./src/Norbiz-Web
+      args:
+        VITE_API_BASE: /api   # same-origin: nginx proxies /api/* to the app
+    image: norbiz-web:latest
+    restart: unless-stopped
+    volumes:
+      - ./src/Norbiz/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${WEB_PORT:-80}:80"
+    networks:
+      - backend
+    depends_on:
+      - app
+
+volumes:
+  postgres_data:
+  item_images:
+  lgtm_data:
+
+networks:
+  backend:
+    driver: bridge
