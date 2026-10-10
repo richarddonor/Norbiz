@@ -21,7 +21,7 @@ cp config.env.example config.env        # fill in (git-ignored)
    - **the Norbiz app is not connected** (no JDBC sessions);
    - the schema and seed data exist;
    - the legacy SQL Server database is reachable.
-2. **Backup.** Always takes a `pg_dump` of the target to `backups/<db>-<timestamp>.dump`. It uses `pg_dump` if it's on PATH, else `docker exec $PG_DOCKER_CONTAINER pg_dump`. With neither, it refuses to continue.
+2. **Backup.** Always takes a `pg_dump` of the target to `backups/<db>-<timestamp>.dump`. It uses `pg_dump` if it's on PATH, else `docker exec $PG_DOCKER_CONTAINER pg_dump` when `PG_DSN` points at localhost, else a throwaway `docker run postgres:17-alpine pg_dump` against `PG_DSN` (remote targets). With neither pg_dump nor docker, it refuses to continue.
 3. **Migrate** (`migrate.py`): extract, reset, load, reconcile, report. The run stops if a report check fails.
 4. **Item pictures** (`images.py --clean`).
 5. **Flush Redis**, the query cache.
@@ -48,7 +48,7 @@ Configuration (`config.env`) is plain environment variables:
 | `MSSQL_DATABASE` | `jbsKarutora` |
 | `PG_DSN` | `postgresql://norbiz:changeme@localhost:5432/norbiz_mig` |
 | `ITEM_IMAGE_UPLOAD_DIR` | `~/norbiz`. Must be the Norbiz server's `app.item-image.upload-dir`. |
-| `PG_DOCKER_CONTAINER` | *(none)*. The Postgres container used for the backup when `pg_dump` isn't installed. |
+| `PG_DOCKER_CONTAINER` | *(none)*. The Postgres container used for the backup when `pg_dump` isn't installed and `PG_DSN` is localhost; ignored for remote targets. |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / *(empty)*, the same Redis the app uses. |
 
 ## Cutover day
@@ -73,7 +73,7 @@ If anything is wrong, restore the backup the run took (`pg_restore --clean --if-
 |---|---|---|
 | extract | `extract.py` | Copies the 44 needed legacy tables as-is into a fresh `legacy` schema in the target database (picture columns skipped; `tblInventory` only non-zero rows). |
 | 00 | `sql/00_prepare.sql` | Indexes the legacy copy. |
-| 01 | `sql/01_reset_data.sql` | Truncates every Norbiz table except permissions, roles, role_permissions and the seeded users (admin, super_admin, system_admin). |
+| 01 | `sql/01_reset_data.sql` | Truncates every Norbiz table except permissions, roles, role_permissions and the seeded users (admin, super_admin, system_admin). Also puts back the column DEFAULTs from `db/init.sql` that a schema created by the app's `ddl-auto=update` lacks, which the bulk INSERTs rely on. |
 | 10 | `sql/10_master.sql` | Company, users, employees, catalog, suppliers, customers + outlet warehouses, pull out reasons, bills of materials. |
 | 20 | `sql/20_documents.sql` | All transactions: headers, lines, loaded quantities, reconstructed documents. |
 | 25 | `match_returns.py` | Links each Outlet Delivery Return to the sale it reverses. |

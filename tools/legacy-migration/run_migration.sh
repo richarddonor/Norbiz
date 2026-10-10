@@ -12,7 +12,8 @@
 #   5. redis      — flush the query cache (bulk SQL bypasses cache invalidation)
 #
 # Configuration comes from the environment, normally ./config.env (see config.env.example). The
-# backup uses pg_dump if it is on PATH, else `docker exec $PG_DOCKER_CONTAINER pg_dump`.
+# backup uses pg_dump if it is on PATH, else `docker exec $PG_DOCKER_CONTAINER pg_dump` for a localhost
+# PG_DSN, else `docker run postgres:17-alpine pg_dump` against PG_DSN (remote targets).
 # Afterwards: start Norbiz and let DataInitializer finish (see docs/LEGACY_MIGRATION.md).
 # =============================================================================================
 set -euo pipefail
@@ -50,13 +51,18 @@ step "1/5 preflight"
 
 step "2/5 backup"
 DB="$("$PY" cutover.py dsn dbname)"
+DB_HOST="$("$PY" cutover.py dsn host)"
 BACKUP="backups/$DB-$STAMP.dump"
 if command -v pg_dump >/dev/null 2>&1; then
     pg_dump --format=custom --file="$BACKUP" "$PG_DSN"
-elif [[ -n "${PG_DOCKER_CONTAINER:-}" ]]; then
+elif [[ -n "${PG_DOCKER_CONTAINER:-}" && "$DB_HOST" =~ ^(localhost|127\.0\.0\.1|::1)$ ]]; then
+    # Local target: dump from inside its own container (only valid when PG_DSN points at this machine).
     docker exec "$PG_DOCKER_CONTAINER" pg_dump --format=custom -U "$("$PY" cutover.py dsn user)" -d "$DB" > "$BACKUP"
+elif command -v docker >/dev/null 2>&1; then
+    # Remote target: run a throwaway pg_dump client (same major version as the server) against PG_DSN.
+    docker run --rm postgres:17-alpine pg_dump --format=custom "$PG_DSN" > "$BACKUP"
 else
-    echo "No pg_dump on PATH and PG_DOCKER_CONTAINER is not set — refusing to reset without a backup." >&2
+    echo "No pg_dump on PATH and no docker to run one — refusing to reset without a backup." >&2
     exit 1
 fi
 [[ -s "$BACKUP" ]] || { echo "Backup $BACKUP is empty — stopping." >&2; exit 1; }
