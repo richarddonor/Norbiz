@@ -50,7 +50,8 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS in .env}
       ITEM_IMAGE_UPLOAD_DIR: /home/appuser/norbiz
       JAVA_TOOL_OPTIONS: -Xmx${APP_MAX_HEAP:-768m}
-      OTEL_EXPORT_ENABLED: "true"
+      # Off unless the opt-in observability profile (lgtm) is running — see docs/DEPLOYMENT.md.
+      OTEL_EXPORT_ENABLED: ${OTEL_EXPORT_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-prod}
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
@@ -77,8 +78,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      lgtm:
-        condition: service_started
 
   # Query cache (docs/CACHING.md) — same settings as the dev compose.
   redis:
@@ -93,10 +92,13 @@ services:
       timeout: 3s
       retries: 5
 
-  # OTel Collector + Tempo + Loki + Prometheus + Grafana. Grafana has anonymous admin access, so
-  # it is bound to the server's localhost: ssh -L 3000:localhost:3000 <user>@<server>
+  # OTel Collector + Tempo + Loki + Prometheus + Grafana. Not started by deploy.sh — opt in with
+  # `$C --profile observability up -d lgtm` and OTEL_EXPORT_ENABLED=true in .env.
+  # Grafana has anonymous admin access, so it is bound to the server's localhost:
+  #   ssh -L 3000:localhost:3000 <user>@<server>
   lgtm:
     image: grafana/otel-lgtm:0.34.0
+    profiles: ["observability"]
     restart: unless-stopped
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"

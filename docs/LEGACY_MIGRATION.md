@@ -48,6 +48,7 @@ Configuration (`config.env`) is plain environment variables:
 | `MSSQL_DATABASE` | `jbsKarutora` |
 | `PG_DSN` | `postgresql://norbiz:changeme@localhost:5432/norbiz_mig` |
 | `ITEM_IMAGE_UPLOAD_DIR` | `~/norbiz`. Must be the Norbiz server's `app.item-image.upload-dir`. |
+| `ITEM_IMAGE_REMOTE` | *(none)*. For a Norbiz server on another machine: `<ssh user@host>:<Docker volume>` (prod: `vboxuser@10.16.32.64:norbiz_item_images`, the volume mounted at the app's upload dir). `images.py` streams the pictures over SSH as one tar straight into that volume, owned by the app user; nothing is written locally. Takes precedence over `ITEM_IMAGE_UPLOAD_DIR`. |
 | `PG_DOCKER_CONTAINER` | *(none)*. The Postgres container used for the backup when `pg_dump` isn't installed and `PG_DSN` is localhost; ignored for remote targets. |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / *(empty)*, the same Redis the app uses. |
 

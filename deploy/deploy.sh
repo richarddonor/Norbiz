@@ -46,9 +46,9 @@ else
 fi
 
 # --- 4. Infrastructure up, app stopped while the schema changes -------------------------------
-log "Starting db, redis, lgtm"
+# The observability stack (lgtm: Prometheus/Grafana/...) is opt-in and never started here.
+log "Starting db, redis"
 compose up -d --wait db redis
-compose up -d lgtm
 
 APP_WAS_RUNNING=""
 if [ -n "$(compose ps --status running -q app)" ]; then

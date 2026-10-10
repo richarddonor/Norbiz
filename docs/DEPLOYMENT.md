@@ -19,7 +19,7 @@ Current target: Ubuntu VirtualBox VM `10.16.32.64`, user `vboxuser`.
 
 | File | Purpose |
 |---|---|
-| `deploy/docker-compose.prod.yml` | db, app, redis, lgtm, web — `restart: unless-stopped` |
+| `deploy/docker-compose.prod.yml` | db, app, redis, web — `restart: unless-stopped`; `lgtm` only under the opt-in `observability` profile |
 | `deploy/nginx.conf` | Web container config: serves the SPA, proxies `/api/*` → `app:8080` (one origin, no CORS) |
 | `deploy/deploy.sh` | The release command |
 | `deploy/migrate.sh` | Applies `db/migrations/*.sql` (see `db/migrations/README.md`) |
@@ -76,7 +76,7 @@ What `deploy.sh` does, in order:
 1. Pulls both repos to the requested refs, then re-runs the freshly pulled `deploy.sh`.
 2. Builds the `app` and `web` images — the running version keeps serving during the build.
 3. `pg_dump`s the database to `~/norbiz/backups/norbiz-<timestamp>-<sha>.sql.gz`.
-4. Starts db/redis/lgtm and stops the app.
+4. Starts db/redis and stops the app. The observability container (`lgtm`) is never started by a release.
 5. Runs `migrate.sh`. On failure that migration is rolled back, the previous app is restarted, and the
    release stops.
 6. Starts the new app and web and waits (up to 5 min) for `/actuator/health`; prints app logs if it
@@ -115,6 +115,14 @@ All commands on the server, from `~/norbiz`, with `$C` as above:
 $C ps                      # status
 $C logs -f --tail 200 app  # app logs
 $C restart app
+```
+
+The observability stack (`lgtm`: OTel Collector, Tempo, Loki, Prometheus, Grafana) is **not** started by
+releases and OTLP export is off. To turn it on, set `OTEL_EXPORT_ENABLED=true` in `.env`, then:
+
+```bash
+$C --profile observability up -d lgtm
+SKIP_FETCH=1 ~/norbiz/deploy.sh   # restart the app with export enabled
 ```
 
 Grafana (traces/logs/metrics) from your machine:
