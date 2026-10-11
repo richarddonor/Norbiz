@@ -46,3 +46,9 @@ __pycache__/
 tools/legacy-migration/reports/
 tools/legacy-migration/backups/
 tools/legacy-migration/config.env
+
+### TLS certificates / private keys — they live only on the deploy server (docs/DEPLOYMENT.md#https) ###
+*.p12
+*.pfx
+*.key
+*.pem

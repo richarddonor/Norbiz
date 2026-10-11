@@ -62,3 +62,15 @@ git_sha() {
   docker run --rm -v "$SRC_DIR/$1:/repo:ro" --entrypoint sh "$GIT_IMAGE" -c \
     'git config --global --add safe.directory "*"; git -C /repo rev-parse --short HEAD'
 }
+
+# nginx's HTTPS certificate (PEM) lives only on the server in $NORBIZ_HOME/certs — see
+# docs/DEPLOYMENT.md. nginx reads it as root, so the key can stay owner-only.
+check_tls_cert() {
+  local dir="$NORBIZ_HOME/certs" f
+  for f in tls.crt tls.key; do
+    [ -f "$dir/$f" ] || die "$dir/$f missing — copy the certificate and private key there (PEM)"
+  done
+  chmod 700 "$dir"
+  chmod 644 "$dir/tls.crt"
+  chmod 600 "$dir/tls.key"
+}

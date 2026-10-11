@@ -10,8 +10,8 @@ HERE="$(dirname "$(readlink -f "$0")")"
 
 docker info >/dev/null 2>&1 || die "cannot talk to Docker as $(whoami) — run: sudo usermod -aG docker $(whoami), then log out and back in"
 
-mkdir -p "$NORBIZ_HOME"/{src,backups,ssh}
-chmod 700 "$NORBIZ_HOME/ssh"
+mkdir -p "$NORBIZ_HOME"/{src,backups,ssh,certs}
+chmod 700 "$NORBIZ_HOME/ssh" "$NORBIZ_HOME/certs"
 
 # --- .env with generated secrets -------------------------------------------------------------------
 if [ ! -f "$ENV_FILE" ]; then

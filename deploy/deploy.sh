@@ -31,6 +31,9 @@ log "Deploying Norbiz $SHA, Norbiz-Web $WEB_SHA"
 log "Building images (first build downloads Maven/npm dependencies and takes a while)"
 compose build app web
 
+# Checked before anything is stopped, so a missing certificate aborts with nothing changed.
+check_tls_cert
+
 # --- 3. Back up the database before touching it ----------------------------------------------
 BACKUP=""
 if [ -n "$(compose ps --status running -q db)" ]; then
@@ -73,10 +76,12 @@ if ! compose up -d --wait --wait-timeout 300 app web; then
   die "app did not become healthy. Migrations (if any) were applied.${BACKUP:+ Pre-release backup: $BACKUP}
   Roll back code: ~/norbiz/deploy.sh <previous-ref>"
 fi
+# An unchanged web container isn't recreated — reload so a replaced certificate is picked up.
+compose exec -T web nginx -s reload >/dev/null
 
 # --- 7. Housekeeping -----------------------------------------------------------------------------
 docker image prune -f >/dev/null
 docker builder prune -f --filter until=168h >/dev/null || true
 
 compose ps
-log "Released Norbiz $SHA / Norbiz-Web $WEB_SHA — http://${PUBLIC_HOST:-<server>}${WEB_PORT:+:$WEB_PORT}"
+log "Released Norbiz $SHA / Norbiz-Web $WEB_SHA — https://${PUBLIC_HOST:-<server>}$([ "${WEB_HTTPS_PORT:-443}" = 443 ] || echo ":$WEB_HTTPS_PORT")"

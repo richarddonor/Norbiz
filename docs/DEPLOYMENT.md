@@ -14,24 +14,54 @@ Current target: Ubuntu VirtualBox VM `10.16.32.64`, user `vboxuser`.
   src/Norbiz/                  checkout made by deploy.sh (git runs in an alpine/git container)
   src/Norbiz-Web/              checkout made by deploy.sh
   backups/                     pg_dump taken before every release (last BACKUP_KEEP kept)
+  certs/                       tls.crt / tls.key — the HTTPS certificate (PEM), only ever on the server
   deploy.sh -> src/Norbiz/deploy/deploy.sh
 ```
 
 | File | Purpose |
 |---|---|
 | `deploy/docker-compose.prod.yml` | db, app, redis, web — `restart: unless-stopped`; `lgtm` only under the opt-in `observability` profile |
-| `deploy/nginx.conf` | Web container config: serves the SPA, proxies `/api/*` → `app:8080` (one origin, no CORS) |
+| `deploy/nginx.conf` | Web container config: HTTPS on 443 (80 redirects), serves the SPA, proxies `/api/*` → `app:8080` (one origin, no CORS) |
 | `deploy/deploy.sh` | The release command |
 | `deploy/migrate.sh` | Applies `db/migrations/*.sql` (see `db/migrations/README.md`) |
 | `deploy/bootstrap.sh` | One-time server setup |
 | `deploy/.env.example` | Template for `~/norbiz/.env` |
 
-Exposed ports: `80` web (SPA + `/api`), `8080` app (direct API / Swagger UI), `5432` Postgres (database
-`norbiz`, user/password = `DB_USERNAME`/`DB_PASSWORD` from `~/norbiz/.env`). Grafana (3000) is bound to the
-server's localhost only — use an SSH tunnel. Set `DB_BIND=127.0.0.1` in `.env` and redeploy to close
+Exposed ports: `443` web (SPA + `/api`, HTTPS), `80` (redirects to HTTPS), `5432` Postgres (database
+`norbiz`, user/password = `DB_USERNAME`/`DB_PASSWORD` from `~/norbiz/.env`). The app (8080) and Grafana (3000) are bound
+to the server's localhost only — use an SSH tunnel. Set `DB_BIND=127.0.0.1` in `.env` and redeploy to close
 Postgres to other machines again.
 
 The frontend is built with `VITE_API_BASE=/api`; no Norbiz-Web changes are needed.
+
+## HTTPS
+
+The certificate is a PEM pair in `~/norbiz/certs/` on the server: `tls.crt` (certificate, followed by any
+intermediate CA certificates) and `tls.key` (unencrypted private key). It is never committed — git and
+the images don't contain it.
+
+- **nginx** is the only TLS endpoint: HTTPS on 443 for the SPA and `/api`; port 80 only redirects. It
+  proxies to the app over plain HTTP — that hop never leaves the server's Docker network, which also
+  carries the (plaintext) Postgres and Redis connections, so encrypting it alone would add nothing.
+- **App** speaks plain HTTP and is published on the server's localhost only, so nothing reaches it except
+  through nginx. Swagger UI: `https://<host>/api/swagger-ui.html` (nginx sends `X-Forwarded-Prefix: /api`).
+  Direct access without nginx: `ssh -L 8080:localhost:8080 vboxuser@10.16.32.64`, then http://localhost:8080.
+- `deploy.sh` refuses to release (before stopping anything) if either file is missing, sets the
+  directory and key to owner-only, and reloads nginx after the stack is up.
+
+Install or replace the certificate from your machine, then release:
+
+```bash
+scp tls.crt tls.key vboxuser@10.16.32.64:~/norbiz/certs/
+ssh vboxuser@10.16.32.64 'SKIP_FETCH=1 ~/norbiz/deploy.sh'
+```
+
+From a PKCS12 keystore (`keytool`'s default format):
+`openssl pkcs12 -in keystore.p12 -nokeys -out tls.crt` and
+`openssl pkcs12 -in keystore.p12 -nocerts -nodes -out tls.key`.
+
+The certificate must be issued for `PUBLIC_HOST`; a self-signed one makes browsers warn until it is
+trusted on each client machine.
 
 ## First-time server setup
 
@@ -56,7 +86,8 @@ The frontend is built with `VITE_API_BASE=/api`; no Norbiz-Web changes are neede
    ```bash
    ssh vboxuser@10.16.32.64 'bash /tmp/bootstrap.sh'
    ```
-6. Review `~/norbiz/.env` (`PUBLIC_HOST`, `CORS_ALLOWED_ORIGINS`, `APP_MAX_HEAP` for the VM's RAM), then
+6. Copy the HTTPS certificate to `~/norbiz/certs/` (see [HTTPS](#https)). Review `~/norbiz/.env`
+   (`PUBLIC_HOST`, `CORS_ALLOWED_ORIGINS`, `APP_MAX_HEAP` for the VM's RAM), then
    do the first release (below). The first build downloads all Maven/npm dependencies and takes a while.
    On the empty database `db/init.sql` creates the schema and the app's `DataInitializer` seeds it.
 
@@ -74,13 +105,14 @@ The frontend is built with `VITE_API_BASE=/api`; no Norbiz-Web changes are neede
 What `deploy.sh` does, in order:
 
 1. Pulls both repos to the requested refs, then re-runs the freshly pulled `deploy.sh`.
-2. Builds the `app` and `web` images — the running version keeps serving during the build.
+2. Builds the `app` and `web` images — the running version keeps serving during the build — and exports
+   checks the TLS certificate is in place.
 3. `pg_dump`s the database to `~/norbiz/backups/norbiz-<timestamp>-<sha>.sql.gz`.
 4. Starts db/redis and stops the app. The observability container (`lgtm`) is never started by a release.
 5. Runs `migrate.sh`. On failure that migration is rolled back, the previous app is restarted, and the
    release stops.
 6. Starts the new app and web and waits (up to 5 min) for `/actuator/health`; prints app logs if it
-   doesn't come up.
+   doesn't come up. Reloads nginx so a new certificate takes effect.
 7. Prunes dangling images and old build cache.
 
 ## Database changes
