@@ -15,6 +15,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 
@@ -116,12 +117,13 @@ public class AuditableEntityListener {
             Map<String, Object> original = MAPPER.readValue(originalJson, new TypeReference<>() {});
             Map<String, Object> current  = extractFields(entity);
 
+            Set<String> decimals = decimalFields(entity);
             List<Map<String, Object>> changes = new ArrayList<>();
             for (Map.Entry<String, Object> entry : current.entrySet()) {
                 String key        = entry.getKey();
                 Object currentVal = entry.getValue();
                 Object originalVal = original.get(key);
-                if (!Objects.equals(currentVal, originalVal)) {
+                if (decimals.contains(key) ? !sameNumber(originalVal, currentVal) : !Objects.equals(currentVal, originalVal)) {
                     changes.add(change(key, originalVal, currentVal));
                 }
             }
@@ -141,6 +143,24 @@ public class AuditableEntityListener {
             return MAPPER.writeValueAsString(changes);
         } catch (Exception e) {
             return snapshot(entity, false);
+        }
+    }
+
+    /** BigDecimal fields: a request's 0.0 and the column's 0.00 are the same value, not a change. */
+    private static Set<String> decimalFields(Object entity) {
+        Set<String> result = new HashSet<>();
+        for (Field field : fields(entity)) {
+            if (field.getType() == BigDecimal.class) result.add(field.getName());
+        }
+        return result;
+    }
+
+    private static boolean sameNumber(Object a, Object b) {
+        if (a == null || b == null) return a == b;
+        try {
+            return new BigDecimal(a.toString()).compareTo(new BigDecimal(b.toString())) == 0;
+        } catch (NumberFormatException e) {
+            return a.equals(b);
         }
     }
 
@@ -187,24 +207,30 @@ public class AuditableEntityListener {
 
     private void saveLog(Auditable entity, AuditAction action, String changes) {
         try {
-            AuditLog log = new AuditLog();
-            log.setEntityType(entity.getClass().getSimpleName());
-            log.setEntityId(asLong(idOf(entity)));
-            log.setChangeSet(AuditChangeSet.current());
+            AuditLog entry = new AuditLog();
+            entry.setEntityType(entity.getClass().getSimpleName());
+            entry.setEntityId(asLong(idOf(entity)));
+            entry.setChangeSet(AuditChangeSet.current());
             Object parent = parentOf(entity);
             if (parent != null) {
-                log.setParentType(classOf(parent).getSimpleName());
-                log.setParentId(asLong(idOf(parent)));
+                entry.setParentType(classOf(parent).getSimpleName());
+                entry.setParentId(asLong(idOf(parent)));
             }
-            log.setAction(action);
-            log.setChangedBy(currentUsername());
-            log.setChangedAt(Instant.now());
-            log.setChanges(changes);
+            entry.setAction(action);
+            entry.setChangedBy(currentUsername());
+            entry.setChangedAt(Instant.now());
+            entry.setChanges(changes);
 
             AuditLogRepository repo = ApplicationContextHolder.getBean(AuditLogRepository.class);
-            repo.save(log);
-        } catch (Exception ignored) {
-            // Audit failures must never break the main operation
+            if (repo == null) {
+                // Context not refreshed yet (application start).
+                log.debug("Audit log skipped for {} {}: application context not ready", action, entry.getEntityType());
+                return;
+            }
+            repo.save(entry);
+        } catch (Exception e) {
+            // Audit failures must never break the main operation — but must not go unnoticed either.
+            log.warn("Audit log not written for {} {} (id={}): {}", action, entity.getClass().getSimpleName(), idOf(entity), e.toString());
         }
     }
 

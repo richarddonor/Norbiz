@@ -4,7 +4,7 @@ Every entity extending `Auditable` (a `@MappedSuperclass`) is automatically logg
 
 - `@PostLoad` — snapshots entity state into a transient `originalSnapshot` map (reflection-based, skips `@AuditExclude` fields) and keeps references to its `@ElementCollection`/`@ManyToMany` collections in `originalCollections`.
 - `@PostPersist` — logs a CREATE action with the full entity snapshot as JSON.
-- `@PostUpdate` — diffs current state against the snapshot and logs `{field, oldValue, newValue}` for changed fields only, then re-snapshots so a second flush in the same transaction doesn't log the same change twice.
+- `@PostUpdate` — diffs current state against the snapshot and logs `{field, oldValue, newValue}` for changed fields only, then re-snapshots so a second flush in the same transaction doesn't log the same change twice. `BigDecimal` fields are compared numerically (`0.0` → `0.00` is not a change).
 - `@PreRemove` — logs a DELETE action with the final snapshot.
 
 What a snapshot holds:
@@ -12,6 +12,8 @@ What a snapshot holds:
 - `@ManyToOne`/`@OneToOne` associations as the related record's **id** — read off the proxy without initializing it, since loading anything mid-flush is unsafe. Names are resolved when the history is read.
 - `@ElementCollection`/`@ManyToMany` as a **sorted array** of element values (ids for entities). The pre-update contents come from the loaded collection's Hibernate stored snapshot. When a setter replaced a never-loaded collection (e.g. `item.setTags(new HashSet<>(…))`), the old, dereferenced instance is initialized during `@PostUpdate`. That's safe because Hibernate runs collection deletes after entity updates.
 - `@OneToMany` children are skipped. They're audited as their own entities, and a field marked `@AuditParent` (e.g. `ItemSku.item`, `ItemPrice.item`) stamps their logs with `parent_type`/`parent_id` so they show up in the parent's history.
+
+A log that can't be written never fails the save; it's logged at WARN (`Audit log not written for …`) instead.
 
 Every log also carries `change_set`: one UUID per database transaction (`AuditChangeSet`), so one save of an item and the SKU/price rows it rewrote can be read back as one change. Logs written before this have `change_set`/`parent_*` null, and an association/collection change there shows only as an UPDATE with no recorded fields.
 
@@ -32,3 +34,7 @@ Each entry in the response is one change set: the record's own logs plus its `@A
 - `detailed=false` marks entries from before change sets existed.
 
 Adding a new part type means annotating its parent field `@AuditParent` and adding a `PartSpec` in `MasterDataHistoryService`.
+
+### Records written by bulk SQL
+
+Rows inserted with plain SQL (the legacy loader, `init.sql` seeds) never pass through the listener, so they'd have no history at all — the form would show "No changes recorded." `db/migrations/003_backfill_master_data_create_audit.sql` gives each master-data record without a CREATE log one, built in the listener's snapshot shape and dated at the row's `created_at`/`created_by`. A record already edited through the app is rolled back to its created values using each field's earliest `oldValue`. It covers the records themselves only; SKUs, prices and BOM lines (parts) aren't backfilled, so a migrated SKU's own history starts at its first edit. The script is idempotent, and the legacy loader runs it after every load. Any other bulk load of a master-data type should run it too. Adding a master-data type means adding its snapshot there as well.

@@ -80,6 +80,7 @@ If anything is wrong, restore the backup the run took (`pg_restore --clean --if-
 | 25 | `match_returns.py` | Links each Outlet Delivery Return to the sale it reverses. |
 | 40 | `sql/40_ledger.sql` | Inventory movements, balances and CREATED/VOIDED history, generated from the documents. |
 | 50 | `sql/50_reconcile.sql` | Aligns on-hand with the legacy stock balance. |
+| 55 | `db/migrations/003_backfill_master_data_create_audit.sql` | A CREATE audit log per master-data record, so change history starts with "Created" (see `docs/AUDIT.md`). |
 | 60 | `sql/60_finalize.sql` | Identity sequences, reference numbering, audit marker. |
 | report | `report.py` | Counts, reconstructed documents, fixes, balance reconciliation, hard checks. |
 | images | `images.py` | Item pictures into the item-image store. |
@@ -144,7 +145,7 @@ Every migrated document keeps its legacy reference and sheet number and carries 
   - Blank codes become `LEGACY-<id>` / `C-<id>` / `S-<id>`.
   - Duplicate codes keep the oldest owner; later duplicates get `-<id>` appended.
   - Duplicate supplier-invoice and receive numbers are renamed the same way.
-- **Audit:** bulk inserts don't fire `AuditableEntityListener`, so migrated master data has no change history before cutover. One `audit_logs` marker on the company records the load. Migrated rows carry `created_by = legacy-migration` (or the legacy author).
+- **Audit:** bulk inserts don't fire `AuditableEntityListener`. Step 55 writes each migrated master-data record a CREATE log in the listener's format, dated at its legacy creation and attributed to its author, so its change history starts with "Created". SKUs, prices and BOM lines get none. One `audit_logs` marker on the company records the load. Migrated rows carry `created_by = legacy-migration` (or the legacy author).
 - **Columns nullable only for legacy:** some FKs are nullable just so legacy rows without them fit (e.g. `OutletPullOut.pullOutReason`). The API still requires them.
 
 Every fix is logged in `migration.issues` (kind, entity, legacy ID, detail) and summarised by the report.

@@ -32,6 +32,8 @@ STEPS = [
     ("py", "match_returns.py", "outlet delivery returns"),
     ("sql", "40_ledger.sql", "ledger and history"),
     ("sql", "50_reconcile.sql", "reconcile on-hand with legacy"),
+    # Shared with existing databases: run as-is from db/migrations (idempotent).
+    ("sql", "../../../db/migrations/003_backfill_master_data_create_audit.sql", "master data creation audit"),
     ("sql", "60_finalize.sql", "finalize"),
 ]
 
