@@ -218,7 +218,8 @@ public class DataInitializer implements CommandLineRunner {
                 viewInventoryReportPermission, manageDocumentTemplatesPermission, manageTransactionActionsPermission));
         roleRepository.save(superAdminRole);
 
-        // Default company — super admin is pre-assigned; other users are assigned to tenants later
+        // Default company — the seeded users are pre-assigned (login requires at least one company);
+        // other users are assigned to tenants later
         Company defaultCompany = companyRepository.findByName("Norbiz").orElseGet(() -> {
             Company c = new Company();
             c.setName("Norbiz");
@@ -238,6 +239,7 @@ public class DataInitializer implements CommandLineRunner {
             admin.setEmail("admin@norbiz.com");
             admin.setPassword(passwordEncoder.encode("password"));
             admin.setRoles(Set.of(adminRole));
+            admin.setCompanies(Set.of(defaultCompany));
             userRepository.save(admin);
         }
 
@@ -257,6 +259,7 @@ public class DataInitializer implements CommandLineRunner {
             systemAdmin.setEmail("system.admin@norbiz.com");
             systemAdmin.setPassword(passwordEncoder.encode("password"));
             systemAdmin.setRoles(Set.of(systemAdminRole));
+            systemAdmin.setCompanies(Set.of(defaultCompany));
             userRepository.save(systemAdmin);
         }
     }

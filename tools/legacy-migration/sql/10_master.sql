@@ -72,9 +72,10 @@ INSERT INTO user_companies (user_id, company_id)
 SELECT u.id, (SELECT company_id FROM migration.ctx)
 FROM users u JOIN migration.user_map m ON m.username = u.username;
 
--- super_admin works in the migrated company too.
+-- The seeded admins work in the migrated company too (login requires at least one company).
 INSERT INTO user_companies (user_id, company_id)
-SELECT u.id, (SELECT company_id FROM migration.ctx) FROM users u WHERE u.username = 'super_admin'
+SELECT u.id, (SELECT company_id FROM migration.ctx) FROM users u
+WHERE u.username IN ('super_admin', 'system_admin', 'admin')
 ON CONFLICT DO NOTHING;
 
 -- ---- employees ------------------------------------------------------------------------------

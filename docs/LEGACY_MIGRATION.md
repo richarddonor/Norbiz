@@ -35,7 +35,7 @@ Options:
 
 The steps can also be run on their own: `migrate.py --confirm-reset <db>` and `images.py`.
 
-The target database needs the Norbiz schema and seed data before the first run. Start the app against it once and let `DataInitializer` finish. After a run, start the app again: `DataInitializer` re-adds anything missing, recreates the empty default "Norbiz" company and generates print templates for the migrated company. The loader links `super_admin` to the migrated company.
+The target database needs the Norbiz schema and seed data before the first run. Start the app against it once and let `DataInitializer` finish. After a run, start the app again: `DataInitializer` re-adds anything missing, recreates the empty default "Norbiz" company and generates print templates for the migrated company. The loader links the seeded users (`super_admin`, `system_admin`, `admin`) to the migrated company, since login requires at least one company.
 
 **Wait for seeding to finish** before stopping a freshly started app. `DataInitializer` runs *after* the "Started NorbizApplication" log line. Poll for the `super_admin` user instead of relying on that line.
 

@@ -44,6 +44,7 @@ public class AuthController {
     @Operation(summary = "Login", description = "Authenticate with username and password. Returns a JWT and the list of companies the user belongs to.")
     @ApiResponse(responseCode = "200", description = "Authentication successful")
     @ApiResponse(responseCode = "401", description = "Invalid credentials")
+    @ApiResponse(responseCode = "403", description = "User is not assigned to any company")
     @SecurityRequirements
     @PostMapping("/login")
     public ResponseEntity<AppResponse<AuthResponse>> login(@Valid @RequestBody AuthRequest request) {
@@ -55,8 +56,14 @@ public class AuthController {
             log.warn("Failed login attempt for user '{}'", request.getUsername());
             throw ex;
         }
-        UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
         User user = userService.findByUsername(request.getUsername());
+        // Every session is scoped to one company, so a user with none would get a token that can't
+        // load anything. Checked only after the password is verified so it can't probe usernames.
+        if (user.getCompanies().isEmpty()) {
+            log.warn("Login refused for user '{}': not assigned to any company", request.getUsername());
+            throw new SecurityException("Your account is not assigned to any company. Contact your administrator.");
+        }
+        UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
         String token = jwtUtil.generateToken(userDetails, user.getDisplayName());
 
         List<AuthResponse.CompanyInfo> companies = user.getCompanies().stream()

@@ -985,7 +985,7 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO user_companies (user_id, company_id)
 SELECT u.id, c.id FROM users u JOIN companies c ON true
-WHERE u.username = 'super_admin' AND c.name = 'Norbiz'
+WHERE u.username IN ('admin', 'super_admin', 'system_admin') AND c.name = 'Norbiz'
 ON CONFLICT DO NOTHING;
 
 -- Transaction origin (NATIVE | MIGRATED | RECONSTRUCTED). Only the legacy migration loader writes anything

@@ -89,6 +89,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - Public endpoints: `/auth/**`, `/health`, `/swagger-ui/**`, `/v3/api-docs/**`, `/item-images/**`.
 - Admin paths (`/admin/**`) require `SUPER_ADMIN` or `SYSTEM_ADMIN`.
 - At application start, `DataInitializer` guarantees that '`SUPER_ADMIN` user and all roles and privileges/permissions are given to it.
+- A user must belong to at least one `Company` to log in — `POST /auth/login` returns 403 (after the password check) for a user with none.
 - When logging in, if a user belongs to more than one `Company` they need to select the `Company` they wish to login to. The user's actions in that session will be scoped only to that selected `Company`
 - Form dropdowns use the slim `/lookups/*` endpoints, gated by `LookupAccess` (entity's VIEW_ permission OR any permission whose form needs it) and always scoped to **one** company (`companyId` param, else the `X-Company-Id` header; required). Adding a transaction type/form that references an entity means adding its permission there — see `docs/LIST_FILTERING.md`.
 - `GlobalExceptionHandler` must explicitly catch `org.springframework.security.authorization.AuthorizationDeniedException` and return 403. Spring Security throws this *from inside* the controller invocation whenever a caller lacks the required `@PreAuthorize` authority entirely (as opposed to the company-scoping `SecurityException` case) — with no explicit handler it falls through to the generic `Exception` → 500 handler, which is wrong.
