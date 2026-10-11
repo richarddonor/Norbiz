@@ -1,6 +1,5 @@
 package com.chardizard.Norbiz.services;
 
-import com.chardizard.Norbiz.dto.AssemblyMaterialRequest;
 import com.chardizard.Norbiz.dto.AssemblyOutputRequest;
 import com.chardizard.Norbiz.dto.AssemblyRequest;
 import com.chardizard.Norbiz.models.*;
@@ -17,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -108,17 +109,26 @@ public class AssemblyService {
         assembly.setCreatedBy(username);
 
         // Outputs first, then materials — one line-number sequence, so the collection's order is entry order.
+        // Raw materials aren't taken from the request: each output's BOM components x quantity built, summed
+        // per item in first-seen order.
         int lineNumber = 1;
+        Map<Long, BigDecimal> materialQuantities = new LinkedHashMap<>();
         for (AssemblyOutputRequest outputRequest : request.getOutputs()) {
             Item item = loadItem(outputRequest.getItemId(), company);
+            BillOfMaterial bom = loadBillOfMaterial(outputRequest.getBillOfMaterialId(), company, item);
             AssemblyLine line = newLine(assembly, AssemblyLineKind.OUTPUT, item, outputRequest.getQuantity(), lineNumber++);
-            if (outputRequest.getBillOfMaterialId() != null) {
-                line.setBillOfMaterial(loadBillOfMaterial(outputRequest.getBillOfMaterialId(), company, item));
+            line.setBillOfMaterial(bom);
+            for (BillOfMaterialLine component : bom.getComponents()) {
+                materialQuantities.merge(component.getItem().getId(),
+                        component.getQuantity().multiply(outputRequest.getQuantity()), BigDecimal::add);
             }
         }
-        for (AssemblyMaterialRequest materialRequest : request.getMaterials()) {
-            Item item = loadItem(materialRequest.getItemId(), company);
-            newLine(assembly, AssemblyLineKind.MATERIAL, item, materialRequest.getQuantity(), lineNumber++);
+        if (materialQuantities.isEmpty()) {
+            throw new IllegalArgumentException("The outputs' bills of materials have no raw material components");
+        }
+        for (Map.Entry<Long, BigDecimal> material : materialQuantities.entrySet()) {
+            Item item = loadItem(material.getKey(), company);
+            newLine(assembly, AssemblyLineKind.MATERIAL, item, material.getValue().setScale(4, RoundingMode.HALF_UP), lineNumber++);
         }
 
         // Raw materials consumed can't take on-hand below zero (docs/INVENTORY.md "Negative stock").

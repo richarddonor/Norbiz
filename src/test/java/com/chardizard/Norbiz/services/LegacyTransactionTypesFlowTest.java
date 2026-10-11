@@ -275,9 +275,11 @@ class LegacyTransactionTypesFlowTest {
         stock(mainWarehouse, material, "50");
         BillOfMaterial bom = billOfMaterialService.create(bomRequest(item, material, "2"), user);
 
-        Assembly assembly = assemblyService.create(assemblyRequest(item, "5", bom.getId(), material, "10"), user);
+        // Materials are computed from the BOM: 2 per unit x 5 built = 10.
+        Assembly assembly = assemblyService.create(assemblyRequest(item, "5", bom.getId()), user);
         assertThat(assembly.getLines()).extracting(AssemblyLine::getKind)
                 .containsExactly(AssemblyLineKind.OUTPUT, AssemblyLineKind.MATERIAL);
+        assertThat(assembly.getLines().get(1).getQuantity()).isEqualByComparingTo("10");
         assertBalance(mainWarehouse, item, "105", "0");
         assertBalance(mainWarehouse, material, "40", "0");
 
@@ -289,7 +291,8 @@ class LegacyTransactionTypesFlowTest {
     @Test
     void assemblyShortOfMaterialsIsRejected() {
         stock(mainWarehouse, material, "3");
-        assertThatThrownBy(() -> assemblyService.create(assemblyRequest(item, "1", null, material, "4"), user))
+        BillOfMaterial bom = billOfMaterialService.create(bomRequest(item, material, "4"), user);
+        assertThatThrownBy(() -> assemblyService.create(assemblyRequest(item, "1", bom.getId()), user))
                 .isInstanceOf(InsufficientStockException.class);
     }
 
@@ -299,7 +302,7 @@ class LegacyTransactionTypesFlowTest {
         Item other = item("PENDANT-" + suffix);
         BillOfMaterial bom = billOfMaterialService.create(bomRequest(other, material, "1"), user);
 
-        assertThatThrownBy(() -> assemblyService.create(assemblyRequest(item, "1", bom.getId(), material, "1"), user))
+        assertThatThrownBy(() -> assemblyService.create(assemblyRequest(item, "1", bom.getId()), user))
                 .hasMessageContaining("doesn't produce");
     }
 
@@ -422,19 +425,15 @@ class LegacyTransactionTypesFlowTest {
         return req;
     }
 
-    private AssemblyRequest assemblyRequest(Item output, String outputQuantity, Long bomId, Item consumed, String consumedQuantity) {
+    private AssemblyRequest assemblyRequest(Item output, String outputQuantity, Long bomId) {
         AssemblyOutputRequest out = new AssemblyOutputRequest();
         out.setItemId(output.getId());
         out.setQuantity(new BigDecimal(outputQuantity));
         out.setBillOfMaterialId(bomId);
-        AssemblyMaterialRequest mat = new AssemblyMaterialRequest();
-        mat.setItemId(consumed.getId());
-        mat.setQuantity(new BigDecimal(consumedQuantity));
         AssemblyRequest req = new AssemblyRequest();
         req.setCompanyId(company.getId());
         req.setAssemblyDate("2026-10-08");
         req.setOutputs(List.of(out));
-        req.setMaterials(List.of(mat));
         return req;
     }
 }

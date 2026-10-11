@@ -27,13 +27,9 @@ public class AssemblyRequest {
     @Size(max = 100)
     private String sheetNumber;
 
-    // Finished items produced (added to on-hand).
+    // Finished items produced (added to on-hand). No materials list: the raw materials consumed are
+    // always computed server-side from each output's bill of materials x quantity built.
     @NotEmpty
     @Valid
     private List<AssemblyOutputRequest> outputs;
-
-    // Raw materials consumed (deducted from on-hand).
-    @NotEmpty
-    @Valid
-    private List<AssemblyMaterialRequest> materials;
 }

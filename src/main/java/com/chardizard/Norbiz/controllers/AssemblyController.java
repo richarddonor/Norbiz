@@ -72,8 +72,9 @@ public class AssemblyController {
         return ResponseEntity.ok(AppResponse.of(toResponse(assemblyService.findById(id, userDetails.getUsername()))));
     }
 
-    @Operation(summary = "Post Assembly", description = "Posts outputs (+on-hand) and consumed raw materials (-on-hand) in the main warehouse. Every item must be active and " +
-            "INVENTORY-tagged; raw materials must be on hand. An output may name the bill of materials it was built from (it must produce that item).")
+    @Operation(summary = "Post Assembly", description = "Posts outputs (+on-hand) and consumed raw materials (-on-hand) in the main warehouse. Every output names the bill of materials it is built from " +
+            "(it must produce that item); the raw materials consumed are computed from those BOMs' components x quantity built. Every item must be active and " +
+            "INVENTORY-tagged; raw materials must be on hand.")
     @ApiResponse(responseCode = "201", description = "Posted")
     @ApiResponse(responseCode = "400", description = "Validation error (e.g. inactive item, bill of materials for another item, no main warehouse)")
     @ApiResponse(responseCode = "403", description = "Missing CREATE_ASSEMBLY permission or no access to company")
