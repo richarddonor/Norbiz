@@ -38,7 +38,7 @@ public class OutletPullOutLine {
     @Column(name = "line_number", nullable = false)
     private Integer lineNumber;
 
-    // Amount already received by Pull Out Receive(s).
+    // Amount already received by Pull-out Receipt(s).
     @Column(name = "quantity_loaded", nullable = false, precision = 19, scale = 4)
     private BigDecimal quantityLoaded = BigDecimal.ZERO;
 }

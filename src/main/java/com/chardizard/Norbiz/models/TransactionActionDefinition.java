@@ -8,7 +8,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 // Company-configured action that users can take on a transaction of a given type
-// (e.g. Purchase Receive: BARCODE_DISTRIBUTION, BARCODE_PRINTING, ENCODED_BY).
+// (e.g. Purchase Receipt: BARCODE_DISTRIBUTION, BARCODE_PRINTING, ENCODED_BY).
 // See docs/TRANSACTION_ACTIONS.md.
 @Getter
 @Setter

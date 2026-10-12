@@ -47,14 +47,14 @@ public class TransactionDetailedReportService {
     private final InventoryAdjustmentLineRepository inventoryAdjustmentLineRepository;
     private final PurchaseOrderLineRepository purchaseOrderLineRepository;
     private final PurchaseInvoiceLineRepository purchaseInvoiceLineRepository;
-    private final PurchaseReceiveLineRepository purchaseReceiveLineRepository;
+    private final PurchaseReceiptLineRepository purchaseReceiptLineRepository;
     private final DeliveryReceiptLineRepository deliveryReceiptLineRepository;
-    private final OutletReceiveLineRepository outletReceiveLineRepository;
+    private final OutletReceiptLineRepository outletReceiptLineRepository;
     private final OutletDeliveryReceiptLineRepository outletDeliveryReceiptLineRepository;
     private final OutletDeliveryReturnLineRepository outletDeliveryReturnLineRepository;
     private final StockTransferLineRepository stockTransferLineRepository;
     private final OutletPullOutLineRepository outletPullOutLineRepository;
-    private final PullOutReceiveLineRepository pullOutReceiveLineRepository;
+    private final PullOutReceiptLineRepository pullOutReceiptLineRepository;
     private final AssemblyLineRepository assemblyLineRepository;
 
     /**
@@ -77,15 +77,15 @@ public class TransactionDetailedReportService {
             case PURCHASE_INVOICE -> query(purchaseInvoiceLineRepository,
                     new Shape("purchaseInvoice", "invoiceDate", "remarks", "supplier", null, "purchaseOrder"),
                     type, username, filter, pageable, l -> fromPurchaseInvoice(l, canViewCostPrice));
-            case PURCHASE_RECEIVE -> query(purchaseReceiveLineRepository,
-                    new Shape("purchaseReceive", "receiptDate", "remarks", "supplier", null, "purchaseOrder", "purchaseInvoice"),
-                    type, username, filter, pageable, l -> fromPurchaseReceive(l, canViewCostPrice));
+            case PURCHASE_RECEIPT -> query(purchaseReceiptLineRepository,
+                    new Shape("purchaseReceipt", "receiptDate", "remarks", "supplier", null, "purchaseOrder", "purchaseInvoice"),
+                    type, username, filter, pageable, l -> fromPurchaseReceipt(l, canViewCostPrice));
             case DELIVERY_RECEIPT -> query(deliveryReceiptLineRepository,
                     new Shape("deliveryReceipt", "deliveryDate", "remarks", "customer", null, "stockTransfer"),
                     type, username, filter, pageable, this::fromDeliveryReceipt);
-            case OUTLET_RECEIVE -> query(outletReceiveLineRepository,
-                    new Shape("outletReceive", "receiptDate", "remarks", "customer", null, "deliveryReceipt"),
-                    type, username, filter, pageable, this::fromOutletReceive);
+            case OUTLET_RECEIPT -> query(outletReceiptLineRepository,
+                    new Shape("outletReceipt", "receiptDate", "remarks", "customer", null, "deliveryReceipt"),
+                    type, username, filter, pageable, this::fromOutletReceipt);
             case OUTLET_DELIVERY_RECEIPT -> query(outletDeliveryReceiptLineRepository,
                     new Shape("outletDeliveryReceipt", "deliveryDate", "remarks", "customer", "agent"),
                     type, username, filter, pageable, this::fromOutletDeliveryReceipt);
@@ -98,9 +98,9 @@ public class TransactionDetailedReportService {
             case OUTLET_PULL_OUT -> query(outletPullOutLineRepository,
                     new Shape("outletPullOut", "pullOutDate", "remarks", "customer", null),
                     type, username, filter, pageable, this::fromOutletPullOut);
-            case PULL_OUT_RECEIVE -> query(pullOutReceiveLineRepository,
-                    new Shape("pullOutReceive", "receiptDate", "remarks", "customer", null, "outletPullOut"),
-                    type, username, filter, pageable, this::fromPullOutReceive);
+            case PULL_OUT_RECEIPT -> query(pullOutReceiptLineRepository,
+                    new Shape("pullOutReceipt", "receiptDate", "remarks", "customer", null, "outletPullOut"),
+                    type, username, filter, pageable, this::fromPullOutReceipt);
             case ASSEMBLY -> query(assemblyLineRepository,
                     new Shape("assembly", "assemblyDate", "remarks", null, null),
                     type, username, filter, pageable, this::fromAssembly);
@@ -145,7 +145,7 @@ public class TransactionDetailedReportService {
                 addContains(cb, predicates, f.getCounterparty(), header.get(shape.counterparty()).get("name"));
             }
             if (StringUtils.hasText(f.getSourceReferenceNumber())) {
-                // Any source matches — Purchase Receive loads from either a PO or a Direct invoice.
+                // Any source matches — Purchase Receipt loads from either a PO or a Direct invoice.
                 List<Predicate> any = new ArrayList<>();
                 for (String source : shape.sources()) {
                     addContains(cb, any, f.getSourceReferenceNumber(), header.join(source, JoinType.LEFT).get("referenceNumber"));
@@ -222,8 +222,8 @@ public class TransactionDetailedReportService {
         return row;
     }
 
-    private TransactionDetailedReportRow fromPurchaseReceive(PurchaseReceiveLine line, boolean canViewCostPrice) {
-        PurchaseReceive h = line.getPurchaseReceive();
+    private TransactionDetailedReportRow fromPurchaseReceipt(PurchaseReceiptLine line, boolean canViewCostPrice) {
+        PurchaseReceipt h = line.getPurchaseReceipt();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReceiptDate(), h.getWarehouse(), h.getRemarks());
         status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
@@ -231,7 +231,7 @@ public class TransactionDetailedReportService {
         row.setCounterpartyName(h.getSupplier().getName());
         if (h.getPurchaseOrder() != null) row.setSourceReferenceNumber(h.getPurchaseOrder().getReferenceNumber());
         else if (h.getPurchaseInvoice() != null) row.setSourceReferenceNumber(h.getPurchaseInvoice().getReferenceNumber());
-        // A receive line has no price of its own — value it at the cost of the line it received against.
+        // A receipt line has no price of its own — value it at the cost of the line it received against.
         if (canViewCostPrice) {
             if (line.getPurchaseInvoiceLine() != null) price(row, line.getPurchaseInvoiceLine().getCostPrice(), line.getPurchaseInvoiceLine().getDiscountPercentage());
             else if (line.getPurchaseOrderLine() != null) price(row, line.getPurchaseOrderLine().getCostPrice(), null);
@@ -251,8 +251,8 @@ public class TransactionDetailedReportService {
         return row;
     }
 
-    private TransactionDetailedReportRow fromOutletReceive(OutletReceiveLine line) {
-        OutletReceive h = line.getOutletReceive();
+    private TransactionDetailedReportRow fromOutletReceipt(OutletReceiptLine line) {
+        OutletReceipt h = line.getOutletReceipt();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReceiptDate(), h.getWarehouse(), h.getRemarks());
         status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
@@ -312,8 +312,8 @@ public class TransactionDetailedReportService {
         return row;
     }
 
-    private TransactionDetailedReportRow fromPullOutReceive(PullOutReceiveLine line) {
-        PullOutReceive h = line.getPullOutReceive();
+    private TransactionDetailedReportRow fromPullOutReceipt(PullOutReceiptLine line) {
+        PullOutReceipt h = line.getPullOutReceipt();
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReceiptDate(), h.getWarehouse(), h.getRemarks());
         status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());

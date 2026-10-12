@@ -3,7 +3,7 @@
 Transaction **history** and company-configured **actions** (sign-offs) on every transaction type. See `docs/TRANSACTIONS.md` for the transactions themselves.
 
 ## Concepts
-- **`TransactionActionDefinition`** (`transaction_action_definitions`, company-scoped, `Auditable`): an action a company lets users take on one `TransactionType`. Example for Purchase Receive: `BARCODE_DISTRIBUTION`, `BARCODE_PRINTING` (prerequisite: `BARCODE_DISTRIBUTION`), `ENCODED_BY`.
+- **`TransactionActionDefinition`** (`transaction_action_definitions`, company-scoped, `Auditable`): an action a company lets users take on one `TransactionType`. Example for Purchase Receipt: `BARCODE_DISTRIBUTION`, `BARCODE_PRINTING` (prerequisite: `BARCODE_DISTRIBUTION`), `ENCODED_BY`.
   - `code` is UPPER_SNAKE and unique per `(company, transactionType)`; `name` is the display label; `sortOrder` orders the buttons; `active=false` hides it without losing history.
   - `allowedRoles` (join table `transaction_action_definition_roles`, at least one): a user holding any of these roles may take the action. `SUPER_ADMIN` always may.
   - `prerequisites` (join table `transaction_action_definition_prerequisites`): **all** of them must already have been taken on the transaction, by **any** user. They must be the same company and transaction type, and the graph must be acyclic (enforced on create/update).
@@ -29,7 +29,7 @@ Transaction **history** and company-configured **actions** (sign-offs) on every 
 | GET | `/transactions/{transactionType}/{id}/actions` | `VIEW_<TYPE>` + company access: each active action with `takenBy`, `takenByMe`, `allowedForMe`, `prerequisitesMet`, `missingPrerequisites`, `canTake` |
 | POST | `/transactions/{transactionType}/{id}/actions` | rules above; body `{ actionDefinitionId, remarks? }` |
 
-`transactionType` is one of `INVENTORY_ADJUSTMENT`, `PURCHASE_ORDER`, `PURCHASE_INVOICE`, `PURCHASE_RECEIVE`, `DELIVERY_RECEIPT`, `OUTLET_RECEIVE`, `OUTLET_DELIVERY_RECEIPT`, `OUTLET_DELIVERY_RETURN`, `STOCK_TRANSFER`, `OUTLET_PULL_OUT`, `PULL_OUT_RECEIVE`, `ASSEMBLY`.
+`transactionType` is one of `INVENTORY_ADJUSTMENT`, `PURCHASE_ORDER`, `PURCHASE_INVOICE`, `PURCHASE_RECEIPT`, `DELIVERY_RECEIPT`, `OUTLET_RECEIPT`, `OUTLET_DELIVERY_RECEIPT`, `OUTLET_DELIVERY_RETURN`, `STOCK_TRANSFER`, `OUTLET_PULL_OUT`, `PULL_OUT_RECEIPT`, `ASSEMBLY`.
 
 ## Adding a new transaction type
 1. Add a `TransactionType` value (with its `VIEW_` permission) and use `TransactionType.X.name()` as the service's `TRANSACTION_TYPE`.

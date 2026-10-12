@@ -11,7 +11,7 @@ import java.util.List;
 
 @Getter
 @Setter
-public class OutletReceiveRequest {
+public class OutletReceiptRequest {
 
     @NotNull
     private Long companyId;
@@ -32,5 +32,5 @@ public class OutletReceiveRequest {
 
     @NotEmpty
     @Valid
-    private List<OutletReceiveLineRequest> lines;
+    private List<OutletReceiptLineRequest> lines;
 }

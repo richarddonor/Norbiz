@@ -40,7 +40,7 @@ public class BillOfMaterialController {
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
 
-    @Operation(summary = "List bill of materialss", description = "Returns bill of materialss belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
+    @Operation(summary = "List bills of materials", description = "Returns bills of materials belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "List returned")
     @ApiResponse(responseCode = "403", description = "Missing VIEW_BILL_OF_MATERIAL permission")
     @GetMapping

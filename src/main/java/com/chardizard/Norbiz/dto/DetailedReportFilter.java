@@ -23,11 +23,11 @@ public class DetailedReportFilter {
     @Positive
     private Long warehouseId;
 
-    @Schema(description = "Filter by supplier ID (Purchase Order, Purchase Invoice, Purchase Receive)")
+    @Schema(description = "Filter by supplier ID (Purchase Order, Purchase Invoice, Purchase Receipt)")
     @Positive
     private Long supplierId;
 
-    @Schema(description = "Filter by customer ID (Delivery Receipt, Outlet Receive, Outlet Delivery Receipt, Outlet Delivery Return)")
+    @Schema(description = "Filter by customer ID (Delivery Receipt, Outlet Receipt, Outlet Delivery Receipt, Outlet Delivery Return)")
     @Positive
     private Long customerId;
 

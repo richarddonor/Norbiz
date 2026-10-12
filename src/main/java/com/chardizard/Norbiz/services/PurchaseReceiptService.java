@@ -1,7 +1,7 @@
 package com.chardizard.Norbiz.services;
 
-import com.chardizard.Norbiz.dto.PurchaseReceiveLineRequest;
-import com.chardizard.Norbiz.dto.PurchaseReceiveRequest;
+import com.chardizard.Norbiz.dto.PurchaseReceiptLineRequest;
+import com.chardizard.Norbiz.dto.PurchaseReceiptRequest;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.*;
 import com.chardizard.Norbiz.util.DateRangeUtils;
@@ -23,14 +23,14 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class PurchaseReceiveService {
+public class PurchaseReceiptService {
 
-    private static final Logger log = LoggerFactory.getLogger(PurchaseReceiveService.class);
-    private static final String TRANSACTION_TYPE = TransactionType.PURCHASE_RECEIVE.name();
-    private static final String VOID_SOURCE_TYPE = "PURCHASE_RECEIVE_VOID";
+    private static final Logger log = LoggerFactory.getLogger(PurchaseReceiptService.class);
+    private static final String TRANSACTION_TYPE = TransactionType.PURCHASE_RECEIPT.name();
+    private static final String VOID_SOURCE_TYPE = "PURCHASE_RECEIPT_VOID";
     private static final String REFERENCE_PREFIX = "PR";
 
-    private final PurchaseReceiveRepository purchaseReceiveRepository;
+    private final PurchaseReceiptRepository purchaseReceiptRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
@@ -42,7 +42,7 @@ public class PurchaseReceiveService {
     private final TransactionReferenceService transactionReferenceService;
     private final TransactionEventService transactionEventService;
 
-    public Page<PurchaseReceive> findAllForUser(String username, Long warehouseId, Long supplierId,
+    public Page<PurchaseReceipt> findAllForUser(String username, Long warehouseId, Long supplierId,
                                                  Map<String, String> filters, Instant dateFrom, Instant dateTo, Pageable pageable) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
@@ -50,7 +50,7 @@ public class PurchaseReceiveService {
         boolean isSuperAdmin = user.getRoles().stream()
                 .anyMatch(r -> r.getName().equals("SUPER_ADMIN"));
 
-        Specification<PurchaseReceive> companyScope = null;
+        Specification<PurchaseReceipt> companyScope = null;
         if (!isSuperAdmin) {
             List<Long> companyIds = user.getCompanies().stream()
                     .map(Company::getId)
@@ -59,12 +59,12 @@ public class PurchaseReceiveService {
             companyScope = (root, query, cb) -> root.get("company").get("id").in(companyIds);
         }
 
-        Specification<PurchaseReceive> warehouseScope = warehouseId == null ? null
+        Specification<PurchaseReceipt> warehouseScope = warehouseId == null ? null
                 : (root, query, cb) -> cb.equal(root.get("warehouse").get("id"), warehouseId);
-        Specification<PurchaseReceive> supplierScope = supplierId == null ? null
+        Specification<PurchaseReceipt> supplierScope = supplierId == null ? null
                 : (root, query, cb) -> cb.equal(root.get("supplier").get("id"), supplierId);
 
-        Specification<PurchaseReceive> spec = SpecificationUtils.allOf(
+        Specification<PurchaseReceipt> spec = SpecificationUtils.allOf(
                 companyScope,
                 warehouseScope,
                 supplierScope,
@@ -74,18 +74,18 @@ public class PurchaseReceiveService {
                 SpecificationUtils.enumEquals("origin", TransactionOrigin.class, filters.get("origin"))
         );
 
-        return purchaseReceiveRepository.findAll(spec, pageable);
+        return purchaseReceiptRepository.findAll(spec, pageable);
     }
 
-    public PurchaseReceive findById(Long id, String username) {
-        PurchaseReceive receive = purchaseReceiveRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Purchase receive not found: " + id));
-        assertCompanyAccess(username, receive.getCompany().getId());
-        return receive;
+    public PurchaseReceipt findById(Long id, String username) {
+        PurchaseReceipt receipt = purchaseReceiptRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Purchase receipt not found: " + id));
+        assertCompanyAccess(username, receipt.getCompany().getId());
+        return receipt;
     }
 
     @Transactional
-    public PurchaseReceive create(PurchaseReceiveRequest request, String username) {
+    public PurchaseReceipt create(PurchaseReceiptRequest request, String username) {
         Company company = companyRepository.findById(request.getCompanyId())
                 .orElseThrow(() -> new IllegalArgumentException("Company not found: " + request.getCompanyId()));
 
@@ -116,34 +116,34 @@ public class PurchaseReceiveService {
 
         Instant now = Instant.now();
 
-        PurchaseReceive receive = new PurchaseReceive();
-        receive.setCompany(company);
-        receive.setWarehouse(warehouse);
-        receive.setSupplier(supplier);
-        receive.setReceiptDate(receiptDate);
-        receive.setRemarks(request.getRemarks());
-        receive.setSheetNumber(request.getSheetNumber());
-        receive.setCreatedAt(now);
-        receive.setCreatedBy(username);
+        PurchaseReceipt receipt = new PurchaseReceipt();
+        receipt.setCompany(company);
+        receipt.setWarehouse(warehouse);
+        receipt.setSupplier(supplier);
+        receipt.setReceiptDate(receiptDate);
+        receipt.setRemarks(request.getRemarks());
+        receipt.setSheetNumber(request.getSheetNumber());
+        receipt.setCreatedAt(now);
+        receipt.setCreatedBy(username);
 
         PurchaseOrder purchaseOrder = null;
         PurchaseInvoice purchaseInvoice = null;
 
         if (hasPoSource) {
             purchaseOrder = loadAndValidatePurchaseOrder(request.getPurchaseOrderId(), company, warehouse, supplier);
-            receive.setPurchaseOrder(purchaseOrder);
+            receipt.setPurchaseOrder(purchaseOrder);
 
             // A PO may legitimately carry more than one line for the same item (PurchaseOrderService
             // doesn't reject it), so lookup must be one-to-many, not toMap — otherwise this throws
             // IllegalStateException: Duplicate key. Requested quantity is allocated across that item's
-            // lines oldest-first (by id), splitting into multiple PurchaseReceiveLine rows when a single
+            // lines oldest-first (by id), splitting into multiple PurchaseReceiptLine rows when a single
             // request line's quantity spans more than one source line.
             Map<Long, List<PurchaseOrderLine>> linesByItemId = purchaseOrder.getLines().stream()
                     .sorted(java.util.Comparator.comparing(PurchaseOrderLine::getId))
                     .collect(Collectors.groupingBy(l -> l.getItem().getId()));
 
             int lineNumber = 1;
-            for (PurchaseReceiveLineRequest lineRequest : request.getLines()) {
+            for (PurchaseReceiptLineRequest lineRequest : request.getLines()) {
                 List<PurchaseOrderLine> sourceLines = linesByItemId.get(lineRequest.getItemId());
                 if (sourceLines == null) {
                     throw new IllegalArgumentException("Item " + lineRequest.getItemId() + " is not on purchase order: " + request.getPurchaseOrderId());
@@ -163,13 +163,13 @@ public class PurchaseReceiveService {
                     if (outstanding.compareTo(BigDecimal.ZERO) <= 0) continue;
                     BigDecimal allocated = outstanding.min(remaining);
 
-                    PurchaseReceiveLine line = new PurchaseReceiveLine();
-                    line.setPurchaseReceive(receive);
+                    PurchaseReceiptLine line = new PurchaseReceiptLine();
+                    line.setPurchaseReceipt(receipt);
                     line.setItem(sourceLine.getItem());
                     line.setPurchaseOrderLine(sourceLine);
                     line.setQuantity(allocated);
                     line.setLineNumber(lineNumber);
-                    receive.getLines().add(line);
+                    receipt.getLines().add(line);
 
                     sourceLine.setQuantityLoaded(sourceLine.getQuantityLoaded().add(allocated));
                     remaining = remaining.subtract(allocated);
@@ -180,7 +180,7 @@ public class PurchaseReceiveService {
             purchaseOrder.setLoaded(isFullyLoaded(purchaseOrder.getLines(), PurchaseOrderLine::getQuantity, PurchaseOrderLine::getQuantityLoaded));
         } else {
             purchaseInvoice = loadAndValidatePurchaseInvoice(request.getPurchaseInvoiceId(), company, warehouse, supplier);
-            receive.setPurchaseInvoice(purchaseInvoice);
+            receipt.setPurchaseInvoice(purchaseInvoice);
 
             // Same one-to-many lookup as the PO branch above — a Direct invoice can likewise carry
             // more than one line for the same item.
@@ -189,7 +189,7 @@ public class PurchaseReceiveService {
                     .collect(Collectors.groupingBy(l -> l.getItem().getId()));
 
             int lineNumber = 1;
-            for (PurchaseReceiveLineRequest lineRequest : request.getLines()) {
+            for (PurchaseReceiptLineRequest lineRequest : request.getLines()) {
                 List<PurchaseInvoiceLine> sourceLines = linesByItemId.get(lineRequest.getItemId());
                 if (sourceLines == null) {
                     throw new IllegalArgumentException("Item " + lineRequest.getItemId() + " is not on purchase invoice: " + request.getPurchaseInvoiceId());
@@ -209,13 +209,13 @@ public class PurchaseReceiveService {
                     if (outstanding.compareTo(BigDecimal.ZERO) <= 0) continue;
                     BigDecimal allocated = outstanding.min(remaining);
 
-                    PurchaseReceiveLine line = new PurchaseReceiveLine();
-                    line.setPurchaseReceive(receive);
+                    PurchaseReceiptLine line = new PurchaseReceiptLine();
+                    line.setPurchaseReceipt(receipt);
                     line.setItem(sourceLine.getItem());
                     line.setPurchaseInvoiceLine(sourceLine);
                     line.setQuantity(allocated);
                     line.setLineNumber(lineNumber);
-                    receive.getLines().add(line);
+                    receipt.getLines().add(line);
 
                     sourceLine.setQuantityLoaded(sourceLine.getQuantityLoaded().add(allocated));
                     remaining = remaining.subtract(allocated);
@@ -228,13 +228,13 @@ public class PurchaseReceiveService {
 
         // Generated last, only once validation has fully passed, to avoid burning
         // reference numbers on requests that were always going to be rejected.
-        receive.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
+        receipt.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
 
-        PurchaseReceive saved = purchaseReceiveRepository.save(receive);
-        transactionEventService.recordSystemEvent(company, TransactionType.PURCHASE_RECEIVE, saved.getId(), saved.getReferenceNumber(),
+        PurchaseReceipt saved = purchaseReceiptRepository.save(receipt);
+        transactionEventService.recordSystemEvent(company, TransactionType.PURCHASE_RECEIPT, saved.getId(), saved.getReferenceNumber(),
                 TransactionEventType.CREATED, username, saved.getCreatedAt());
 
-        for (PurchaseReceiveLine line : saved.getLines()) {
+        for (PurchaseReceiptLine line : saved.getLines()) {
             postMovement(TRANSACTION_TYPE, company, line.getItem(), warehouse, line.getQuantity(), receiptDate, saved.getId(),
                     saved.getReferenceNumber(), saved.getSheetNumber(), now, username);
         }
@@ -245,7 +245,7 @@ public class PurchaseReceiveService {
             purchaseInvoiceRepository.save(purchaseInvoice);
         }
 
-        log.info("User '{}' posted purchase receive (id={}) with {} line(s) for warehouse {} / supplier {}{}",
+        log.info("User '{}' posted purchase receipt (id={}) with {} line(s) for warehouse {} / supplier {}{}",
                 username, saved.getId(), saved.getLines().size(), warehouse.getId(), supplier.getId(),
                 purchaseOrder != null ? " (against PO " + purchaseOrder.getReferenceNumber() + ")"
                         : " (against Direct invoice " + purchaseInvoice.getReferenceNumber() + ")");
@@ -262,7 +262,7 @@ public class PurchaseReceiveService {
             throw new IllegalArgumentException("Cannot receive against a voided purchase order: " + purchaseOrderId);
         }
         // loaded here means fully consumed downstream, whether by a PO-based invoice or a prior
-        // full receive — see docs/TRANSACTIONS.md "Purchase Receive" for why these share one flag.
+        // full receipt — see docs/TRANSACTIONS.md "Purchase Receipt" for why these share one flag.
         if (purchaseOrder.isLoaded()) {
             throw new IllegalArgumentException("Purchase order already fully processed (invoiced or received): " + purchaseOrderId);
         }
@@ -308,23 +308,23 @@ public class PurchaseReceiveService {
     // Voiding is the only sanctioned way to cancel an immutable transaction (docs/TRANSACTIONS.md "Voiding").
     // Reverses the goods movement and un-loads the source (PO or Direct invoice) by the voided amount.
     @Transactional
-    public PurchaseReceive voidPurchaseReceive(Long id, String username) {
-        PurchaseReceive receive = findById(id, username);
+    public PurchaseReceipt voidPurchaseReceipt(Long id, String username) {
+        PurchaseReceipt receipt = findById(id, username);
 
-        if (receive.isVoided()) {
-            throw new IllegalArgumentException("Purchase receive already voided: " + id);
+        if (receipt.isVoided()) {
+            throw new IllegalArgumentException("Purchase receipt already voided: " + id);
         }
 
         // Voiding takes the received stock back out of on-hand, which may since have been consumed.
-        inventoryStockService.assertAvailable(receive.getWarehouse(), receive.getLines(), PurchaseReceiveLine::getItem,
-                PurchaseReceiveLine::getQuantity);
+        inventoryStockService.assertAvailable(receipt.getWarehouse(), receipt.getLines(), PurchaseReceiptLine::getItem,
+                PurchaseReceiptLine::getQuantity);
 
         Instant now = Instant.now();
 
-        for (PurchaseReceiveLine line : receive.getLines()) {
-            postMovement(VOID_SOURCE_TYPE, receive.getCompany(), line.getItem(), receive.getWarehouse(),
-                    line.getQuantity().negate(), receive.getReceiptDate(), receive.getId(),
-                    receive.getReferenceNumber(), receive.getSheetNumber(), now, username);
+        for (PurchaseReceiptLine line : receipt.getLines()) {
+            postMovement(VOID_SOURCE_TYPE, receipt.getCompany(), line.getItem(), receipt.getWarehouse(),
+                    line.getQuantity().negate(), receipt.getReceiptDate(), receipt.getId(),
+                    receipt.getReferenceNumber(), receipt.getSheetNumber(), now, username);
 
             if (line.getPurchaseOrderLine() != null) {
                 PurchaseOrderLine sourceLine = line.getPurchaseOrderLine();
@@ -335,24 +335,24 @@ public class PurchaseReceiveService {
             }
         }
 
-        if (receive.getPurchaseOrder() != null) {
-            PurchaseOrder purchaseOrder = receive.getPurchaseOrder();
+        if (receipt.getPurchaseOrder() != null) {
+            PurchaseOrder purchaseOrder = receipt.getPurchaseOrder();
             purchaseOrder.setLoaded(isFullyLoaded(purchaseOrder.getLines(), PurchaseOrderLine::getQuantity, PurchaseOrderLine::getQuantityLoaded));
             purchaseOrderRepository.save(purchaseOrder);
         } else {
-            PurchaseInvoice purchaseInvoice = receive.getPurchaseInvoice();
+            PurchaseInvoice purchaseInvoice = receipt.getPurchaseInvoice();
             purchaseInvoice.setLoaded(isFullyLoaded(purchaseInvoice.getLines(), PurchaseInvoiceLine::getQuantity, PurchaseInvoiceLine::getQuantityLoaded));
             purchaseInvoiceRepository.save(purchaseInvoice);
         }
 
-        receive.setVoided(true);
-        receive.setVoidedAt(now);
-        receive.setVoidedBy(username);
+        receipt.setVoided(true);
+        receipt.setVoidedAt(now);
+        receipt.setVoidedBy(username);
 
-        PurchaseReceive saved = purchaseReceiveRepository.save(receive);
-        transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.PURCHASE_RECEIVE, saved.getId(), saved.getReferenceNumber(),
+        PurchaseReceipt saved = purchaseReceiptRepository.save(receipt);
+        transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.PURCHASE_RECEIPT, saved.getId(), saved.getReferenceNumber(),
                 TransactionEventType.VOIDED, username, saved.getVoidedAt());
-        log.info("User '{}' voided purchase receive (id={})", username, id);
+        log.info("User '{}' voided purchase receipt (id={})", username, id);
         return saved;
     }
 

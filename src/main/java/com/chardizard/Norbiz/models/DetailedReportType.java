@@ -8,16 +8,16 @@ package com.chardizard.Norbiz.models;
  */
 public enum DetailedReportType {
     INVENTORY_ADJUSTMENT(TransactionType.INVENTORY_ADJUSTMENT, "Inventory Adjustment", "Inventory"),
-    OUTLET_RECEIVE(TransactionType.OUTLET_RECEIVE, "Outlet Receive", "Inventory"),
+    OUTLET_RECEIPT(TransactionType.OUTLET_RECEIPT, "Outlet Receipt", "Inventory"),
     PURCHASE_ORDER(TransactionType.PURCHASE_ORDER, "Purchase Order", "Purchases"),
     PURCHASE_INVOICE(TransactionType.PURCHASE_INVOICE, "Purchase Invoice", "Purchases"),
-    PURCHASE_RECEIVE(TransactionType.PURCHASE_RECEIVE, "Purchase Receive", "Purchases"),
+    PURCHASE_RECEIPT(TransactionType.PURCHASE_RECEIPT, "Purchase Receipt", "Purchases"),
     DELIVERY_RECEIPT(TransactionType.DELIVERY_RECEIPT, "Delivery Receipt", "Sales"),
     OUTLET_DELIVERY_RECEIPT(TransactionType.OUTLET_DELIVERY_RECEIPT, "Outlet Delivery Receipt", "Sales"),
     OUTLET_DELIVERY_RETURN(TransactionType.OUTLET_DELIVERY_RETURN, "Outlet Delivery Return", "Sales"),
     STOCK_TRANSFER(TransactionType.STOCK_TRANSFER, "Stock Transfer", "Sales"),
-    OUTLET_PULL_OUT(TransactionType.OUTLET_PULL_OUT, "Outlet Pull Out", "Sales"),
-    PULL_OUT_RECEIVE(TransactionType.PULL_OUT_RECEIVE, "Pull Out Receive", "Sales"),
+    OUTLET_PULL_OUT(TransactionType.OUTLET_PULL_OUT, "Outlet Pull-out", "Sales"),
+    PULL_OUT_RECEIPT(TransactionType.PULL_OUT_RECEIPT, "Pull-out Receipt", "Sales"),
     ASSEMBLY(TransactionType.ASSEMBLY, "Assembly", "Inventory");
 
     private final TransactionType transactionType;

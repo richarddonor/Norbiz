@@ -15,22 +15,22 @@ DOCUMENTS = [
     ("inventory_adjustments", [("tblinventoryadjustment", None), ("tbloutletinventoryadjustment", None)], "Inventory Adjustment"),
     ("stock_transfers", [("tblstocktransfer", None)], "Stock Transfer"),
     ("delivery_receipts", [("tbldeliveryreceipts", None)], "Delivery Receipt"),
-    ("outlet_receives", [("tbloutletreceives", None)], "Outlet Receive"),
+    ("outlet_receipts", [("tbloutletreceives", None)], "Outlet Receipt"),
     ("outlet_delivery_receipts", [("tbloutletdeliveryreceipts", None)], "Outlet Delivery Receipt"),
     ("outlet_delivery_returns", [("tbloutletdeliveryreturns", None)], "Outlet Delivery Return"),
-    ("outlet_pull_outs", [("tblreturnslips", None)], "Outlet Pull Out"),
-    ("pull_out_receives", [("tbloutletpullout", None)], "Pull Out Receive"),
+    ("outlet_pull_outs", [("tblreturnslips", None)], "Outlet Pull-out"),
+    ("pull_out_receipts", [("tbloutletpullout", None)], "Pull-out Receipt"),
     ("purchase_invoices", [("tblsupplierinvoices", None)], "Purchase Invoice"),
-    ("purchase_receives", [("tblitemreceive", None)], "Purchase Receive"),
+    ("purchase_receipts", [("tblitemreceive", None)], "Purchase Receipt"),
     ("assemblies", [("tblassembly", None)], "Assembly"),
 ]
 
 ENTITY_OF = {
     "inventory_adjustments": ("InventoryAdjustment", "OutletInventoryAdjustment"),
-    "stock_transfers": ("StockTransfer",), "delivery_receipts": ("DeliveryReceipt",), "outlet_receives": ("OutletReceive",),
+    "stock_transfers": ("StockTransfer",), "delivery_receipts": ("DeliveryReceipt",), "outlet_receipts": ("OutletReceipt",),
     "outlet_delivery_receipts": ("OutletDeliveryReceipt",), "outlet_delivery_returns": ("OutletDeliveryReturn",),
-    "outlet_pull_outs": ("OutletPullOut",), "pull_out_receives": ("PullOutReceive",), "purchase_invoices": ("PurchaseInvoice",),
-    "purchase_receives": ("PurchaseReceive",), "assemblies": ("Assembly",),
+    "outlet_pull_outs": ("OutletPullOut",), "pull_out_receipts": ("PullOutReceipt",), "purchase_invoices": ("PurchaseInvoice",),
+    "purchase_receipts": ("PurchaseReceipt",), "assemblies": ("Assembly",),
 }
 
 
@@ -95,9 +95,9 @@ def build(pg):
     rows = pg.execute("""
         SELECT label, count(*) FROM (
             SELECT CASE WHEN reason LIKE '%%stock balance at cutover%%' THEN 'Inventory Adjustment — on-hand correction to legacy balance'
-                        ELSE 'Inventory Adjustment — receive took more than its source had' END label FROM inventory_adjustments WHERE origin = 'RECONSTRUCTED'
-            UNION ALL SELECT 'Pull Out Receive — legacy pull out went straight to on-hand' FROM pull_out_receives WHERE origin = 'RECONSTRUCTED'
-            UNION ALL SELECT 'Purchase Receive — legacy invoice posted straight to on-hand' FROM purchase_receives WHERE origin = 'RECONSTRUCTED'
+                        ELSE 'Inventory Adjustment — receipt took more than its source had' END label FROM inventory_adjustments WHERE origin = 'RECONSTRUCTED'
+            UNION ALL SELECT 'Pull-out Receipt — legacy pull-out went straight to on-hand' FROM pull_out_receipts WHERE origin = 'RECONSTRUCTED'
+            UNION ALL SELECT 'Purchase Receipt — legacy invoice posted straight to on-hand' FROM purchase_receipts WHERE origin = 'RECONSTRUCTED'
             UNION ALL SELECT 'Outlet Delivery Receipt (zero price) — return matched no sale' FROM outlet_delivery_receipts WHERE origin = 'RECONSTRUCTED'
         ) x GROUP BY label ORDER BY label""").fetchall()
     r.table(("Reconstructed", "Count"), rows)
@@ -110,7 +110,7 @@ def build(pg):
         ("  of which without an item", "item_skus WHERE item_id IS NULL"),
         ("Item categories", "item_categories"), ("Item groups", "item_groups"), ("Brands", "brands"), ("Suppliers", "suppliers"),
         ("Customers", "customers"), ("  of which outlets", "customers WHERE type = 'OUTLET'"), ("Warehouses", "warehouses"),
-        ("Pull out reasons", "pull_out_reasons"), ("Bills of materials", "bills_of_materials")]]
+        ("Pull-out reasons", "pull_out_reasons"), ("Bills of materials", "bills_of_materials")]]
     r.table(("Record", "Count"), rows)
 
     # ---- issues ----

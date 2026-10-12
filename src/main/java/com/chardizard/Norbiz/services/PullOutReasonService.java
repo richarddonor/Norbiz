@@ -63,7 +63,7 @@ public class PullOutReasonService {
 
     public PullOutReason findById(Long id, String username) {
         PullOutReason reason = pullOutReasonRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Pull out reason not found: " + id));
+                .orElseThrow(() -> new IllegalArgumentException("Pull-out reason not found: " + id));
         assertCompanyAccess(username, reason.getCompany().getId());
         return reason;
     }
@@ -76,14 +76,14 @@ public class PullOutReasonService {
         assertCompanyAccess(username, company.getId());
 
         if (pullOutReasonRepository.existsByNameAndCompanyId(request.getName(), company.getId())) {
-            throw new IllegalArgumentException("Pull out reason already exists for this company: " + request.getName());
+            throw new IllegalArgumentException("Pull-out reason already exists for this company: " + request.getName());
         }
 
         PullOutReason reason = new PullOutReason();
         reason.setCompany(company);
         apply(reason, request);
         PullOutReason saved = pullOutReasonRepository.save(reason);
-        log.info("User '{}' created pull out reason '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
+        log.info("User '{}' created pull-out reason '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
         return saved;
     }
 
@@ -93,21 +93,21 @@ public class PullOutReasonService {
 
         if (!reason.getName().equals(request.getName())
                 && pullOutReasonRepository.existsByNameAndCompanyId(request.getName(), reason.getCompany().getId())) {
-            throw new IllegalArgumentException("Pull out reason already exists for this company: " + request.getName());
+            throw new IllegalArgumentException("Pull-out reason already exists for this company: " + request.getName());
         }
 
         apply(reason, request);
         PullOutReason saved = pullOutReasonRepository.save(reason);
-        log.info("User '{}' updated pull out reason '{}' (id={})", username, saved.getName(), saved.getId());
+        log.info("User '{}' updated pull-out reason '{}' (id={})", username, saved.getName(), saved.getId());
         return saved;
     }
 
-    // Rejected with ENTITY_IN_USE once any Outlet Pull Out references it — deactivate instead.
+    // Rejected with ENTITY_IN_USE once any Outlet Pull-out references it — deactivate instead.
     @Transactional
     public void delete(Long id, String username) {
         PullOutReason reason = findById(id, username);
-        ForeignKeyViolations.deleteOrThrow(pullOutReasonRepository, reason, "Pull Out Reason", id);
-        log.info("User '{}' deleted pull out reason '{}' (id={})", username, reason.getName(), id);
+        ForeignKeyViolations.deleteOrThrow(pullOutReasonRepository, reason, "Pull-out Reason", id);
+        log.info("User '{}' deleted pull-out reason '{}' (id={})", username, reason.getName(), id);
     }
 
     private void apply(PullOutReason reason, PullOutReasonRequest request) {

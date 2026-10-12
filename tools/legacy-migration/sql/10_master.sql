@@ -1,6 +1,6 @@
 -- ============================================================================================
 -- 10 — Master data: company, users, employees, catalog, suppliers, customers + outlet warehouses,
--- pull out reasons, bills of materials.
+-- pull-out reasons, bills of materials.
 --
 -- Identity: Norbiz rows keep their legacy ID wherever one legacy table maps to one Norbiz table
 -- (items, employees, customers, suppliers, ...), so every transaction can reference them without
@@ -349,7 +349,7 @@ SELECT c.id, (SELECT company_id FROM migration.ctx), m.code, coalesce(migration.
        coalesce(migration.at(c.dateencoded), now()), now(), migration.actor(c.encodedbyid), 'legacy-migration'
 FROM legacy.tblcustomers c JOIN migration.customer_map m ON m.id = c.id;
 
--- ---- pull out reasons and bills of materials ------------------------------------------------
+-- ---- pull-out reasons and bills of materials ------------------------------------------------
 
 INSERT INTO pull_out_reasons (id, company_id, name, active, created_at, updated_at, created_by, updated_by)
 SELECT r.id, (SELECT company_id FROM migration.ctx),

@@ -12,7 +12,7 @@ import java.util.List;
 
 // Not Auditable: immutable once posted (only create/view/void) — the inventory ledger is the audit trail.
 // Pulls stock out of an outlet back to the company: deducts on-hand in the outlet's warehouse and posts the
-// same quantity as in transit in the main warehouse, later taken in by Pull Out Receive.
+// same quantity as in transit in the main warehouse, later taken in by Pull-out Receipt.
 @Getter
 @Setter
 @Entity
@@ -43,13 +43,13 @@ public class OutletPullOut {
         foreignKey = @ForeignKey(name = "OUTLET_PULL_OUTS_WAREHOUSE_ID_FK"))
     private Warehouse warehouse;
 
-    // Destination: the company's main warehouse at posting time (snapshot), holding the pull out in transit.
+    // Destination: the company's main warehouse at posting time (snapshot), holding the pull-out in transit.
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "destination_warehouse_id", nullable = false,
         foreignKey = @ForeignKey(name = "OUTLET_PULL_OUTS_DESTINATION_WAREHOUSE_ID_FK"))
     private Warehouse destinationWarehouse;
 
-    // Required on create; nullable only for migrated legacy pull outs that had none.
+    // Required on create; nullable only for migrated legacy pull-outs that had none.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pull_out_reason_id",
         foreignKey = @ForeignKey(name = "OUTLET_PULL_OUTS_PULL_OUT_REASON_ID_FK"))
@@ -84,7 +84,7 @@ public class OutletPullOut {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // True once Pull Out Receive(s) have received every line in full.
+    // True once Pull-out Receipt(s) have received every line in full.
     @Column(nullable = false)
     private boolean loaded = false;
 

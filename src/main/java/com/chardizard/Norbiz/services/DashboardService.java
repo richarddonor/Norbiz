@@ -82,9 +82,9 @@ public class DashboardService {
     // ---- backlog widgets --------------------------------------------------------------------------------------
 
     @Transactional(readOnly = true)
-    public BacklogResponse pendingOutletReceives(String username, Long companyId, LocalDate asOf) {
-        LocalDate today = begin(username, companyId, asOf, DashboardWidget.PENDING_OUTLET_RECEIVES);
-        return backlog(queries.pendingOutletReceives(companyId), today, SHORT_AGING, Rank.QUANTITY, true, true, true);
+    public BacklogResponse pendingOutletReceipts(String username, Long companyId, LocalDate asOf) {
+        LocalDate today = begin(username, companyId, asOf, DashboardWidget.PENDING_OUTLET_RECEIPTS);
+        return backlog(queries.pendingOutletReceipts(companyId), today, SHORT_AGING, Rank.QUANTITY, true, true, true);
     }
 
     /** Amounts are cost-based, so null without VIEW_COST_PRICE. Breakdown = destination warehouse. */
@@ -96,9 +96,9 @@ public class DashboardService {
 
     /** Breakdown = pull-out reason. Amounts use the pull-out line's selling price (not gated). */
     @Transactional(readOnly = true)
-    public BacklogResponse pullOutsAwaitingReceive(String username, Long companyId, LocalDate asOf) {
-        LocalDate today = begin(username, companyId, asOf, DashboardWidget.PULL_OUTS_AWAITING_RECEIVE);
-        return backlog(queries.pullOutsAwaitingReceive(companyId), today, SHORT_AGING, Rank.QUANTITY, true, true, true);
+    public BacklogResponse pullOutsAwaitingReceipt(String username, Long companyId, LocalDate asOf) {
+        LocalDate today = begin(username, companyId, asOf, DashboardWidget.PULL_OUTS_AWAITING_RECEIPT);
+        return backlog(queries.pullOutsAwaitingReceipt(companyId), today, SHORT_AGING, Rank.QUANTITY, true, true, true);
     }
 
     /**

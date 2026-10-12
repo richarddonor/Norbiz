@@ -21,9 +21,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-// Pulls stock out of an outlet back to the company (docs/TRANSACTIONS.md "Outlet Pull Out") — the reverse of a
+// Pulls stock out of an outlet back to the company (docs/TRANSACTIONS.md "Outlet Pull-out") — the reverse of a
 // Delivery Receipt: on-hand leaves the outlet's warehouse and arrives in transit in the main warehouse, to be
-// taken into on-hand there by Pull Out Receive.
+// taken into on-hand there by Pull-out Receipt.
 @Service
 @RequiredArgsConstructor
 public class OutletPullOutService {
@@ -83,7 +83,7 @@ public class OutletPullOutService {
 
     public OutletPullOut findById(Long id, String username) {
         OutletPullOut pullOut = outletPullOutRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Outlet pull out not found: " + id));
+                .orElseThrow(() -> new IllegalArgumentException("Outlet pull-out not found: " + id));
         assertCompanyAccess(username, pullOut.getCompany().getId());
         return pullOut;
     }
@@ -108,12 +108,12 @@ public class OutletPullOutService {
         }
 
         PullOutReason reason = pullOutReasonRepository.findById(request.getPullOutReasonId())
-                .orElseThrow(() -> new IllegalArgumentException("Pull out reason not found: " + request.getPullOutReasonId()));
+                .orElseThrow(() -> new IllegalArgumentException("Pull-out reason not found: " + request.getPullOutReasonId()));
         if (!reason.getCompany().getId().equals(company.getId())) {
-            throw new IllegalArgumentException("Pull out reason does not belong to company: " + company.getId());
+            throw new IllegalArgumentException("Pull-out reason does not belong to company: " + company.getId());
         }
         if (!reason.isActive()) {
-            throw new IllegalArgumentException("Pull out reason is inactive: " + reason.getName());
+            throw new IllegalArgumentException("Pull-out reason is inactive: " + reason.getName());
         }
 
         Warehouse mainWarehouse = warehouseRepository.findFirstByCompanyIdAndMainTrue(company.getId())
@@ -180,24 +180,24 @@ public class OutletPullOutService {
             postMovements(TRANSACTION_TYPE, saved, line, BigDecimal.ONE, now, username);
         }
 
-        log.info("User '{}' posted outlet pull out (id={}) with {} line(s) from outlet warehouse {} (in transit to main warehouse {})",
+        log.info("User '{}' posted outlet pull-out (id={}) with {} line(s) from outlet warehouse {} (in transit to main warehouse {})",
                 username, saved.getId(), saved.getLines().size(), saved.getWarehouse().getId(), mainWarehouse.getId());
         return saved;
     }
 
     // Voiding is the only sanctioned way to cancel an immutable transaction (docs/TRANSACTIONS.md "Voiding").
-    // Blocked once any Pull Out Receive has loaded it — void those first.
+    // Blocked once any Pull-out Receipt has loaded it — void those first.
     @Transactional
     public OutletPullOut voidOutletPullOut(Long id, String username) {
         OutletPullOut pullOut = findById(id, username);
 
         if (pullOut.isVoided()) {
-            throw new IllegalArgumentException("Outlet pull out already voided: " + id);
+            throw new IllegalArgumentException("Outlet pull-out already voided: " + id);
         }
         boolean hasLoadedQuantity = pullOut.getLines().stream()
                 .anyMatch(l -> l.getQuantityLoaded().compareTo(BigDecimal.ZERO) > 0);
         if (pullOut.isLoaded() || hasLoadedQuantity) {
-            throw new IllegalArgumentException("Cannot void an outlet pull out that has been received: " + id);
+            throw new IllegalArgumentException("Cannot void an outlet pull-out that has been received: " + id);
         }
 
         Instant now = Instant.now();
@@ -212,7 +212,7 @@ public class OutletPullOutService {
         OutletPullOut saved = outletPullOutRepository.save(pullOut);
         transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.OUTLET_PULL_OUT, saved.getId(), saved.getReferenceNumber(),
                 TransactionEventType.VOIDED, username, saved.getVoidedAt());
-        log.info("User '{}' voided outlet pull out (id={})", username, id);
+        log.info("User '{}' voided outlet pull-out (id={})", username, id);
         return saved;
     }
 
@@ -222,7 +222,7 @@ public class OutletPullOutService {
                 .orElse(BigDecimal.ZERO);
     }
 
-    // sign = +1 posts the pull out, -1 reverses it (void): the outlet loses on-hand stock and the main
+    // sign = +1 posts the pull-out, -1 reverses it (void): the outlet loses on-hand stock and the main
     // warehouse gains the same amount in transit.
     private void postMovements(String sourceType, OutletPullOut pullOut, OutletPullOutLine line, BigDecimal sign,
                                Instant now, String username) {

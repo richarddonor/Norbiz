@@ -21,16 +21,16 @@ INSERT INTO transaction_sequences (company_id, transaction_type, last_number)
 SELECT migration.cid(), s.type, coalesce(max(substring(s.reference_number FROM '^' || s.prefix || '-(\d+)$')::bigint), 0)
 FROM (
     SELECT 'DELIVERY_RECEIPT' type, 'DR' prefix, reference_number FROM delivery_receipts
-    UNION ALL SELECT 'OUTLET_RECEIVE', 'OR', reference_number FROM outlet_receives
+    UNION ALL SELECT 'OUTLET_RECEIPT', 'OR', reference_number FROM outlet_receipts
     UNION ALL SELECT 'OUTLET_DELIVERY_RECEIPT', 'ODR', reference_number FROM outlet_delivery_receipts
     UNION ALL SELECT 'OUTLET_DELIVERY_RETURN', 'ODRR', reference_number FROM outlet_delivery_returns
     UNION ALL SELECT 'STOCK_TRANSFER', 'STF', reference_number FROM stock_transfers
     UNION ALL SELECT 'OUTLET_PULL_OUT', 'DRR', reference_number FROM outlet_pull_outs
-    UNION ALL SELECT 'PULL_OUT_RECEIVE', 'OPO', reference_number FROM pull_out_receives
+    UNION ALL SELECT 'PULL_OUT_RECEIPT', 'OPO', reference_number FROM pull_out_receipts
     UNION ALL SELECT 'ASSEMBLY', 'ASM', reference_number FROM assemblies
     UNION ALL SELECT 'INVENTORY_ADJUSTMENT', 'IA', reference_number FROM inventory_adjustments
     UNION ALL SELECT 'PURCHASE_INVOICE', 'PINV', reference_number FROM purchase_invoices
-    UNION ALL SELECT 'PURCHASE_RECEIVE', 'PR', reference_number FROM purchase_receives
+    UNION ALL SELECT 'PURCHASE_RECEIPT', 'PR', reference_number FROM purchase_receipts
 ) s
 GROUP BY s.type;
 

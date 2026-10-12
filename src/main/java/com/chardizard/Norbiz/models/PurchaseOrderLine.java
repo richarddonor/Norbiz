@@ -39,7 +39,7 @@ public class PurchaseOrderLine {
     @Column(name = "cost_price", nullable = false, precision = 19, scale = 4)
     private BigDecimal costPrice = BigDecimal.ZERO;
 
-    // Inert until the future Purchase Receive transaction exists — see PurchaseOrder.loaded.
+    // Inert until the future Purchase Receipt transaction exists — see PurchaseOrder.loaded.
     @Column(name = "quantity_loaded", nullable = false, precision = 19, scale = 4)
     private BigDecimal quantityLoaded = BigDecimal.ZERO;
 }

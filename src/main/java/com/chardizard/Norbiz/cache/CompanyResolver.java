@@ -53,13 +53,13 @@ final class CompanyResolver {
             case ItemGroup g -> g.getCompany().getId();
             case PurchaseInvoice p -> p.getCompany().getId();
             case PurchaseOrder p -> p.getCompany().getId();
-            case PurchaseReceive p -> p.getCompany().getId();
-            case OutletReceive o -> o.getCompany().getId();
+            case PurchaseReceipt p -> p.getCompany().getId();
+            case OutletReceipt o -> o.getCompany().getId();
             case OutletDeliveryReceipt o -> o.getCompany().getId();
             case OutletDeliveryReturn o -> o.getCompany().getId();
             case StockTransfer t -> t.getCompany().getId();
             case OutletPullOut o -> o.getCompany().getId();
-            case PullOutReceive r -> r.getCompany().getId();
+            case PullOutReceipt r -> r.getCompany().getId();
             case Assembly a -> a.getCompany().getId();
             case PullOutReason r -> r.getCompany().getId();
             case BillOfMaterial b -> b.getCompany().getId();
@@ -71,12 +71,12 @@ final class CompanyResolver {
             case InventoryBalance b -> b.getWarehouse().getCompany().getId();
             case InventoryAdjustmentLine l -> l.getAdjustment().getCompany().getId();
             case DeliveryReceiptLine l -> l.getDeliveryReceipt().getCompany().getId();
-            case OutletReceiveLine l -> l.getOutletReceive().getCompany().getId();
+            case OutletReceiptLine l -> l.getOutletReceipt().getCompany().getId();
             case OutletDeliveryReceiptLine l -> l.getOutletDeliveryReceipt().getCompany().getId();
             case OutletDeliveryReturnLine l -> l.getOutletDeliveryReturn().getCompany().getId();
             case StockTransferLine l -> l.getStockTransfer().getCompany().getId();
             case OutletPullOutLine l -> l.getOutletPullOut().getCompany().getId();
-            case PullOutReceiveLine l -> l.getPullOutReceive().getCompany().getId();
+            case PullOutReceiptLine l -> l.getPullOutReceipt().getCompany().getId();
             case AssemblyLine l -> l.getAssembly().getCompany().getId();
             case BillOfMaterialLine l -> l.getBillOfMaterial().getCompany().getId();
             case ItemPrice p -> p.getItem().getCompany().getId();
@@ -84,7 +84,7 @@ final class CompanyResolver {
             case PurchaseInvoiceFee f -> f.getPurchaseInvoice().getCompany().getId();
             case PurchaseInvoiceLine l -> l.getPurchaseInvoice().getCompany().getId();
             case PurchaseOrderLine l -> l.getPurchaseOrder().getCompany().getId();
-            case PurchaseReceiveLine l -> l.getPurchaseReceive().getCompany().getId();
+            case PurchaseReceiptLine l -> l.getPurchaseReceipt().getCompany().getId();
             default -> throw new IllegalStateException("No company mapping for entity " + entity.getClass().getSimpleName()
                     + " — add it to CompanyResolver");
         };

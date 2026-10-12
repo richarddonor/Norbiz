@@ -209,7 +209,7 @@ public class DeliveryReceiptService {
     }
 
     // Voiding is the only sanctioned way to cancel an immutable transaction (docs/TRANSACTIONS.md "Voiding").
-    // Blocked once any Outlet Receive has loaded it — void those first.
+    // Blocked once any Outlet Receipt has loaded it — void those first.
     @Transactional
     public DeliveryReceipt voidDeliveryReceipt(Long id, String username) {
         DeliveryReceipt receipt = findById(id, username);
@@ -272,7 +272,7 @@ public class DeliveryReceiptService {
     }
 
     // sign = +1 posts the delivery, -1 reverses it (void). The main warehouse loses on-hand stock; an
-    // outlet's warehouse gains the same amount in transit, to be moved to on-hand by Outlet Receive.
+    // outlet's warehouse gains the same amount in transit, to be moved to on-hand by Outlet Receipt.
     // A delivery of a Stock Transfer also gives back the transfer's negative transit hold in the main warehouse.
     private void postMovements(String sourceType, DeliveryReceipt receipt, DeliveryReceiptLine line, BigDecimal sign,
                                Instant now, String username) {

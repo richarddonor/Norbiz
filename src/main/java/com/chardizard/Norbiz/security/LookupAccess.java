@@ -32,28 +32,28 @@ public class LookupAccess {
     static {
         ALLOWED.put(LookupType.SUPPLIER, Set.of(
                 "VIEW_SUPPLIER",
-                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE"));
+                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIPT"));
         ALLOWED.put(LookupType.CUSTOMER, Set.of(
                 "VIEW_CUSTOMER",
-                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE",
+                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIPT",
                 "CREATE_OUTLET_DELIVERY_RECEIPT", "CREATE_OUTLET_DELIVERY_RETURN",
-                "CREATE_STOCK_TRANSFER", "CREATE_OUTLET_PULL_OUT", "CREATE_PULL_OUT_RECEIVE",
+                "CREATE_STOCK_TRANSFER", "CREATE_OUTLET_PULL_OUT", "CREATE_PULL_OUT_RECEIPT",
                 // outlet filter on the outlet-sales list pages
                 "VIEW_OUTLET_DELIVERY_RECEIPT", "VIEW_OUTLET_DELIVERY_RETURN"));
         ALLOWED.put(LookupType.WAREHOUSE, Set.of(
                 "VIEW_WAREHOUSE",
                 "CREATE_INVENTORY_ADJUSTMENT",
-                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
+                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIPT",
                 "CREATE_DELIVERY_RECEIPT", "CREATE_STOCK_TRANSFER", "CREATE_OUTLET_PULL_OUT", "CREATE_ASSEMBLY",
                 "VIEW_INVENTORY_REPORT"));
         ALLOWED.put(LookupType.ITEM, Set.of(
                 "VIEW_ITEM",
                 "CREATE_ITEM", "UPDATE_ITEM",
                 "CREATE_INVENTORY_ADJUSTMENT",
-                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
-                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE",
+                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIPT",
+                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIPT",
                 "CREATE_OUTLET_DELIVERY_RECEIPT", "CREATE_OUTLET_DELIVERY_RETURN",
-                "CREATE_STOCK_TRANSFER", "CREATE_OUTLET_PULL_OUT", "CREATE_PULL_OUT_RECEIVE", "CREATE_ASSEMBLY",
+                "CREATE_STOCK_TRANSFER", "CREATE_OUTLET_PULL_OUT", "CREATE_PULL_OUT_RECEIPT", "CREATE_ASSEMBLY",
                 "CREATE_BILL_OF_MATERIAL", "UPDATE_BILL_OF_MATERIAL",
                 "VIEW_INVENTORY_REPORT"));
         ALLOWED.put(LookupType.ITEM_CATEGORY, Set.of(
@@ -76,27 +76,27 @@ public class LookupAccess {
                 "MANAGE_TRANSACTION_ACTIONS"));
         ALLOWED.put(LookupType.PURCHASE_ORDER, Set.of(
                 "VIEW_PURCHASE_ORDER",
-                "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE"));
+                "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIPT"));
         ALLOWED.put(LookupType.PURCHASE_INVOICE, Set.of(
                 "VIEW_PURCHASE_INVOICE",
-                "CREATE_PURCHASE_RECEIVE"));
+                "CREATE_PURCHASE_RECEIPT"));
         ALLOWED.put(LookupType.STOCK_TRANSFER, Set.of(
                 "VIEW_STOCK_TRANSFER",
                 "CREATE_DELIVERY_RECEIPT"));
         ALLOWED.put(LookupType.OUTLET_PULL_OUT, Set.of(
                 "VIEW_OUTLET_PULL_OUT",
-                "CREATE_PULL_OUT_RECEIVE"));
+                "CREATE_PULL_OUT_RECEIPT"));
         ALLOWED.put(LookupType.PULL_OUT_REASON, Set.of(
                 "VIEW_PULL_OUT_REASON",
                 "CREATE_OUTLET_PULL_OUT",
-                // reason filter on the Outlet Pull Out list page
+                // reason filter on the Outlet Pull-out list page
                 "VIEW_OUTLET_PULL_OUT"));
         ALLOWED.put(LookupType.BILL_OF_MATERIAL, Set.of(
                 "VIEW_BILL_OF_MATERIAL",
                 "CREATE_ASSEMBLY"));
         ALLOWED.put(LookupType.DELIVERY_RECEIPT, Set.of(
                 "VIEW_DELIVERY_RECEIPT",
-                "CREATE_OUTLET_RECEIVE"));
+                "CREATE_OUTLET_RECEIPT"));
         ALLOWED.put(LookupType.OUTLET_DELIVERY_RECEIPT, Set.of(
                 "VIEW_OUTLET_DELIVERY_RECEIPT",
                 "CREATE_OUTLET_DELIVERY_RETURN"));
@@ -104,10 +104,10 @@ public class LookupAccess {
         ALLOWED.put(LookupType.STOCK, Set.of(
                 "VIEW_INVENTORY_REPORT",
                 "CREATE_INVENTORY_ADJUSTMENT",
-                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIVE",
-                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIVE",
+                "CREATE_PURCHASE_ORDER", "CREATE_PURCHASE_INVOICE", "CREATE_PURCHASE_RECEIPT",
+                "CREATE_DELIVERY_RECEIPT", "CREATE_OUTLET_RECEIPT",
                 "CREATE_OUTLET_DELIVERY_RECEIPT", "CREATE_OUTLET_DELIVERY_RETURN",
-                "CREATE_STOCK_TRANSFER", "CREATE_OUTLET_PULL_OUT", "CREATE_PULL_OUT_RECEIVE", "CREATE_ASSEMBLY"));
+                "CREATE_STOCK_TRANSFER", "CREATE_OUTLET_PULL_OUT", "CREATE_PULL_OUT_RECEIPT", "CREATE_ASSEMBLY"));
     }
 
     static {
@@ -116,8 +116,8 @@ public class LookupAccess {
             widen(LookupType.WAREHOUSE, report.getPermission());
             widen(LookupType.ITEM, report.getPermission());
             switch (report) {
-                case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIVE -> widen(LookupType.SUPPLIER, report.getPermission());
-                case DELIVERY_RECEIPT, OUTLET_RECEIVE, STOCK_TRANSFER, OUTLET_PULL_OUT, PULL_OUT_RECEIVE ->
+                case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIPT -> widen(LookupType.SUPPLIER, report.getPermission());
+                case DELIVERY_RECEIPT, OUTLET_RECEIPT, STOCK_TRANSFER, OUTLET_PULL_OUT, PULL_OUT_RECEIPT ->
                         widen(LookupType.CUSTOMER, report.getPermission());
                 case OUTLET_DELIVERY_RECEIPT, OUTLET_DELIVERY_RETURN -> {
                     widen(LookupType.CUSTOMER, report.getPermission());

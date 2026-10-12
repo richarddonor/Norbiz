@@ -9,13 +9,12 @@ import java.math.BigDecimal;
 
 @Getter
 @Setter
-public class PurchaseReceiveLineRequest {
+public class PullOutReceiptLineRequest {
 
     @NotNull
     private Long itemId;
 
-    // Quantity to receive now — must not exceed the source line's outstanding
-    // (quantity - quantityLoaded) amount. See PurchaseReceiveService.create.
+    // Amount being received now — must not exceed the Outlet Pull-out's outstanding for this item.
     @NotNull
     @DecimalMin(value = "0.0001")
     private BigDecimal quantity;

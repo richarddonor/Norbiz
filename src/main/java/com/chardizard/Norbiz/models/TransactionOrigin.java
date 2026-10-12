@@ -7,6 +7,6 @@ public enum TransactionOrigin {
     // Copied 1:1 from a legacy document, keeping its legacy reference number.
     MIGRATED,
     // Didn't exist in legacy: created by the migration to complete a flow the legacy data skipped
-    // (e.g. a Pull Out Receive for a pull out that went straight to on-hand). Remarks say why.
+    // (e.g. a Pull-out Receipt for a pull-out that went straight to on-hand). Remarks say why.
     RECONSTRUCTED
 }

@@ -73,7 +73,7 @@ public class PurchaseOrder {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // Set once this PO has been fully received via the future Purchase Receive transaction
+    // Set once this PO has been fully received via the future Purchase Receipt transaction
     // (see docs/TRANSACTIONS.md "Transaction Loading") — inert until that transaction exists.
     @Column(nullable = false)
     private boolean loaded = false;

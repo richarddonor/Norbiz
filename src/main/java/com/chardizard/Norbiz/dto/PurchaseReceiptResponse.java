@@ -9,7 +9,7 @@ import java.util.List;
 
 @Getter
 @Setter
-public class PurchaseReceiveResponse {
+public class PurchaseReceiptResponse {
     private Long id;
     private Long companyId;
     private String companyName;
@@ -17,7 +17,7 @@ public class PurchaseReceiveResponse {
     private String warehouseName;
     private Long supplierId;
     private String supplierName;
-    // Exactly one of these pairs is non-null, matching the receive's own source.
+    // Exactly one of these pairs is non-null, matching the receipt's own source.
     private Long purchaseOrderId;
     private String purchaseOrderReferenceNumber;
     private Long purchaseInvoiceId;
@@ -33,5 +33,5 @@ public class PurchaseReceiveResponse {
     private String voidedBy;
     private boolean loaded;
     private TransactionOrigin origin;
-    private List<PurchaseReceiveLineResponse> lines;
+    private List<PurchaseReceiptLineResponse> lines;
 }

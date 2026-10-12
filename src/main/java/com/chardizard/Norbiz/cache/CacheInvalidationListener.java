@@ -12,7 +12,7 @@ import java.util.Set;
 
 /**
  * Hibernate listener that turns every entity write — whichever service or side effect made it
- * (e.g. a Purchase Receive flipping {@code PurchaseOrder.loaded}) — into a generation bump.
+ * (e.g. a Purchase Receipt flipping {@code PurchaseOrder.loaded}) — into a generation bump.
  *
  * Writes are collected per transaction and bumped once in {@code afterCompletion(COMMITTED)}, so a
  * rolled-back transaction invalidates nothing and readers never see a bump before the data commits.

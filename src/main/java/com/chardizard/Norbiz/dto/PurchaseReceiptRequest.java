@@ -11,14 +11,22 @@ import java.util.List;
 
 @Getter
 @Setter
-public class PullOutReceiveRequest {
+public class PurchaseReceiptRequest {
 
     @NotNull
     private Long companyId;
 
-    // Outlet and warehouse (the main warehouse it was pulled into) are taken from this Outlet Pull Out.
     @NotNull
-    private Long outletPullOutId;
+    private Long warehouseId;
+
+    @NotNull
+    private Long supplierId;
+
+    // Exactly one of purchaseOrderId / purchaseInvoiceId must be supplied — see
+    // PurchaseReceiptService.create. purchaseInvoiceId must reference a Direct-mode invoice.
+    private Long purchaseOrderId;
+
+    private Long purchaseInvoiceId;
 
     @NotNull
     private String receiptDate;
@@ -32,5 +40,5 @@ public class PullOutReceiveRequest {
 
     @NotEmpty
     @Valid
-    private List<PullOutReceiveLineRequest> lines;
+    private List<PurchaseReceiptLineRequest> lines;
 }

@@ -14,7 +14,7 @@ The dashboard is a per-user board of **widgets**: small live reports (KPI tiles,
 
 | Slug | Category | What it computes |
 |---|---|---|
-| `pending-outlet-receives` | Inventory | Backlog: outlet Delivery Receipts not voided, not `loaded`, with outstanding `quantity − quantityLoaded`. Value at the DR line's selling price. Short aging. Progress = share already received. |
+| `pending-outlet-receipts` | Inventory | Backlog: outlet Delivery Receipts not voided, not `loaded`, with outstanding `quantity − quantityLoaded`. Value at the DR line's selling price. Short aging. Progress = share already received. |
 | `stock-in-transit` | Inventory | `InventoryBalance` summed per warehouse: transit vs on-hand, totals by kind (MAIN/OUTLET/OTHER), top 8 warehouses by \|transit\| + Others. Main-warehouse transit nets incoming purchases/pull-outs against negative holds from open Stock Transfers. Not dated, so no `asOf`. |
 | `outlet-stock-health` | Inventory | For every outlet × item pair the outlet sold in the last `days` (7–90), days of cover = on hand ÷ (units sold ÷ days). Counts stock-outs (on hand ≤ 0) and low cover (< 7 days); grid of the 10 busiest outlets × 8 best-selling items; 8 worst pairs. |
 | `inventory-adjustment-trend` | Inventory | Non-voided adjustment lines per day over `days` (7–365): units added (+ lines) and removed (− lines), top 5 warehouses by units moved, top 5 reasons (grouped trimmed + case-insensitive). Quantities only. |
@@ -22,7 +22,7 @@ The dashboard is a per-user board of **widgets**: small live reports (KPI tiles,
 | `unpaid-purchase-invoices` | Purchases | Backlog: invoices not voided and not `PAID`, aged from the invoice date. Amount = net payable (discounted lines × (1 − header discount %) + fees), same as the invoice response. No quantity. Breakdown = payment status. |
 | `outlet-sales` | Sales | ODR sales minus ODR returns over `days` (7–365): zero-filled daily series, totals, previous equal period's net, top 5 outlets and agents. |
 | `agent-leaderboard` | Sales | Top 10 agents by net outlet sales over `days` (7–365): gross, returns, document count, daily net series, previous period's net and rank. |
-| `pull-outs-awaiting-receive` | Sales | Backlog: Outlet Pull Outs not voided, not fully received by Pull Out Receive. Value at the pull-out line's selling price. Short aging. Breakdown = pull-out reason (hidden when every row has none, as on migrated data). |
+| `pull-outs-awaiting-receipt` | Sales | Backlog: Outlet Pull-outs not voided, not fully received by Pull-out Receipt. Value at the pull-out line's selling price. Short aging. Breakdown = pull-out reason (hidden when every row has none, as on migrated data). |
 | `transaction-activity` | Operations | `TransactionEvent` CREATED/VOIDED counts per type per calendar day over `days` (7–90), bucketed in the caller's IANA `tz` (400 on an unknown zone). Migrated documents count on their legacy `created_at`. |
 
 **Backlog widgets** (the four marked "Backlog") share `BacklogResponse` and `DashboardService.backlog(...)`: totals, optional progress %, aging buckets (short: 0-3/4-7/8-14/15-30/31+ days; long: 0-30/31-60/61-90/91-180/181+), top 8 counterparties + one `Others` slice (`id: null`), an optional breakdown, and the 8 oldest documents. Fields a widget doesn't have are null. On the frontend they're all one `BacklogWidget` configured in `registry.tsx`.

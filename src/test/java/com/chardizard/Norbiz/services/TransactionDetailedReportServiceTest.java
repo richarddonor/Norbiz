@@ -30,7 +30,7 @@ class TransactionDetailedReportServiceTest {
 
     @Autowired TransactionDetailedReportService reportService;
     @Autowired DeliveryReceiptService deliveryReceiptService;
-    @Autowired OutletReceiveService outletReceiveService;
+    @Autowired OutletReceiptService outletReceiptService;
     @Autowired CustomerService customerService;
     @Autowired CompanyRepository companyRepository;
     @Autowired WarehouseRepository warehouseRepository;
@@ -139,14 +139,14 @@ class TransactionDetailedReportServiceTest {
     }
 
     @Test
-    void outletReceiveRowsCarryTheirSourceDeliveryReceiptAndFilterByIt() {
+    void outletReceiptRowsCarryTheirSourceDeliveryReceiptAndFilterByIt() {
         DeliveryReceipt dr = deliveryReceiptService.create(drRequest(), user);
-        OutletReceive or = outletReceiveService.create(orRequest(dr), user);
+        OutletReceipt or = outletReceiptService.create(orRequest(dr), user);
 
         DetailedReportFilter filter = new DetailedReportFilter();
         filter.setSourceReferenceNumber(dr.getReferenceNumber().toLowerCase());
         filter.setItemName("one");
-        Page<TransactionDetailedReportRow> page = reportService.find(DetailedReportType.OUTLET_RECEIVE, user,
+        Page<TransactionDetailedReportRow> page = reportService.find(DetailedReportType.OUTLET_RECEIPT, user,
                 filter, false, PageRequest.of(0, 50));
 
         assertThat(page.getContent()).hasSize(1);
@@ -174,14 +174,14 @@ class TransactionDetailedReportServiceTest {
             filter.setDateFrom("2026-01-01");
             filter.setDateTo("2026-12-31");
             switch (type) {
-                case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIVE -> { filter.setSupplierId(1L); filter.setCounterparty("x"); }
-                case DELIVERY_RECEIPT, OUTLET_RECEIVE, STOCK_TRANSFER, OUTLET_PULL_OUT, PULL_OUT_RECEIVE -> { filter.setCustomerId(1L); filter.setCounterparty("x"); }
+                case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIPT -> { filter.setSupplierId(1L); filter.setCounterparty("x"); }
+                case DELIVERY_RECEIPT, OUTLET_RECEIPT, STOCK_TRANSFER, OUTLET_PULL_OUT, PULL_OUT_RECEIPT -> { filter.setCustomerId(1L); filter.setCounterparty("x"); }
                 case OUTLET_DELIVERY_RECEIPT, OUTLET_DELIVERY_RETURN -> { filter.setCustomerId(1L); filter.setCounterparty("x"); filter.setAgentId(1L); }
                 case INVENTORY_ADJUSTMENT, ASSEMBLY -> { }
             }
-            if (type == DetailedReportType.PURCHASE_INVOICE || type == DetailedReportType.PURCHASE_RECEIVE
-                    || type == DetailedReportType.OUTLET_RECEIVE || type == DetailedReportType.OUTLET_DELIVERY_RETURN
-                    || type == DetailedReportType.DELIVERY_RECEIPT || type == DetailedReportType.PULL_OUT_RECEIVE) {
+            if (type == DetailedReportType.PURCHASE_INVOICE || type == DetailedReportType.PURCHASE_RECEIPT
+                    || type == DetailedReportType.OUTLET_RECEIPT || type == DetailedReportType.OUTLET_DELIVERY_RETURN
+                    || type == DetailedReportType.DELIVERY_RECEIPT || type == DetailedReportType.PULL_OUT_RECEIPT) {
                 filter.setSourceReferenceNumber("x");
             }
             assertThat(reportService.find(type, user, filter, true, PageRequest.of(0, 50)).getContent())
@@ -239,15 +239,15 @@ class TransactionDetailedReportServiceTest {
         return line;
     }
 
-    private OutletReceiveRequest orRequest(DeliveryReceipt dr) {
-        List<OutletReceiveLineRequest> lines = new ArrayList<>();
+    private OutletReceiptRequest orRequest(DeliveryReceipt dr) {
+        List<OutletReceiptLineRequest> lines = new ArrayList<>();
         for (Item item : List.of(item1, item2)) {
-            OutletReceiveLineRequest line = new OutletReceiveLineRequest();
+            OutletReceiptLineRequest line = new OutletReceiptLineRequest();
             line.setItemId(item.getId());
             line.setQuantity(new BigDecimal("4"));
             lines.add(line);
         }
-        OutletReceiveRequest req = new OutletReceiveRequest();
+        OutletReceiptRequest req = new OutletReceiptRequest();
         req.setCompanyId(company.getId());
         req.setDeliveryReceiptId(dr.getId());
         req.setReceiptDate("2026-10-05");

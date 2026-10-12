@@ -48,7 +48,7 @@ public class TransactionDetailedReportRow {
     private BigDecimal quantity;
     private BigDecimal quantityLoaded;
     // Cost price for purchase transactions (null without VIEW_COST_PRICE), selling price for
-    // Delivery Receipt / Outlet Receive / Outlet Delivery Receipt / Return, null for Inventory Adjustment.
+    // Delivery Receipt / Outlet Receipt / Outlet Delivery Receipt / Return, null for Inventory Adjustment.
     private BigDecimal price;
     // Line discount (Purchase Invoice only).
     private BigDecimal discountPercentage;

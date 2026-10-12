@@ -30,7 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Tag(name = "Transaction Action Definitions",
-     description = "Company-configured actions users can take on transactions (e.g. Purchase Receive: BARCODE_PRINTING) — requires MANAGE_TRANSACTION_ACTIONS.")
+     description = "Company-configured actions users can take on transactions (e.g. Purchase Receipt: BARCODE_PRINTING) — requires MANAGE_TRANSACTION_ACTIONS.")
 @RestController
 @RequestMapping("/transaction-action-definitions")
 @RequiredArgsConstructor

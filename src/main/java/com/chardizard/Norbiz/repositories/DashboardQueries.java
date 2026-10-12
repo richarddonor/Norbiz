@@ -31,7 +31,7 @@ public class DashboardQueries {
     }
 
     /** Outlet Delivery Receipts with quantity still in transit (not voided, not fully received). */
-    public List<BacklogRow> pendingOutletReceives(Long companyId) {
+    public List<BacklogRow> pendingOutletReceipts(Long companyId) {
         return backlog("""
                 SELECT dr.id, dr.referenceNumber, dr.deliveryDate, c.id, c.name, NULL,
                        SUM(l.quantity), SUM(l.quantity - l.quantityLoaded), SUM((l.quantity - l.quantityLoaded) * l.unitPrice)
@@ -55,8 +55,8 @@ public class DashboardQueries {
                 """, companyId);
     }
 
-    /** Outlet Pull Outs not yet fully received back by Pull Out Receive(s). Group = pull-out reason. */
-    public List<BacklogRow> pullOutsAwaitingReceive(Long companyId) {
+    /** Outlet Pull-outs not yet fully received back by Pull-out Receipt(s). Group = pull-out reason. */
+    public List<BacklogRow> pullOutsAwaitingReceipt(Long companyId) {
         return backlog("""
                 SELECT p.id, p.referenceNumber, p.pullOutDate, c.id, c.name, r.name,
                        SUM(l.quantity), SUM(l.quantity - l.quantityLoaded), SUM((l.quantity - l.quantityLoaded) * l.unitPrice)

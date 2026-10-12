@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 
 @Getter
 @Setter
-public class OutletReceiveLineRequest {
+public class OutletReceiptLineRequest {
 
     @NotNull
     private Long itemId;

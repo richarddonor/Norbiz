@@ -75,7 +75,7 @@ If anything is wrong, restore the backup the run took (`pg_restore --clean --if-
 | extract | `extract.py` | Copies the 44 needed legacy tables as-is into a fresh `legacy` schema in the target database (picture columns skipped; `tblInventory` only non-zero rows). |
 | 00 | `sql/00_prepare.sql` | Indexes the legacy copy. |
 | 01 | `sql/01_reset_data.sql` | Truncates every Norbiz table except permissions, roles, role_permissions and the seeded users (admin, super_admin, system_admin). Also puts back the column DEFAULTs from `db/init.sql` that a schema created by the app's `ddl-auto=update` lacks, which the bulk INSERTs rely on. |
-| 10 | `sql/10_master.sql` | Company, users, employees, catalog, suppliers, customers + outlet warehouses, pull out reasons, bills of materials. |
+| 10 | `sql/10_master.sql` | Company, users, employees, catalog, suppliers, customers + outlet warehouses, pull-out reasons, bills of materials. |
 | 20 | `sql/20_documents.sql` | All transactions: headers, lines, loaded quantities, reconstructed documents. |
 | 25 | `match_returns.py` | Links each Outlet Delivery Return to the sale it reverses. |
 | 40 | `sql/40_ledger.sql` | Inventory movements, balances and CREATED/VOIDED history, generated from the documents. |
@@ -106,31 +106,31 @@ The loader writes with set-based SQL, not through the services. The "on-hand can
 | `tblInventoryAdjustment` / `tblOutletInventoryAdjustment` | Inventory Adjustment (outlet ones: header ID +100,000; main lines: ID +3,000,000) |
 | `tblStockTransfer` | Stock Transfer. `DRId` becomes the DR's `stock_transfer_id`. |
 | `tblDeliveryReceipts` | Delivery Receipt |
-| `tblOutletReceives` | Outlet Receive |
+| `tblOutletReceives` | Outlet Receipt |
 | `tblOutletDeliveryReceipts` | Outlet Delivery Receipt |
 | `tblOutletDeliveryReturns` | Outlet Delivery Return |
-| `tblReturnSlips` | Outlet Pull Out |
-| `tblOutletPullOut` | Pull Out Receive |
+| `tblReturnSlips` | Outlet Pull-out |
+| `tblOutletPullOut` | Pull-out Receipt |
 | `tblSupplierInvoices` | Direct Purchase Invoice |
-| `tblItemReceive` | Purchase Receive |
+| `tblItemReceive` | Purchase Receipt |
 | `tblAssembly` + `Detail` + `RawMaterial` | Assembly (raw material lines: ID +1,000) |
 
-The legacy ledger (`tblTransactions`, `tblTransactionDetails`) is not migrated as documents. It is only used to classify how each legacy document posted (e.g. a pull out that went through transit vs straight to on-hand) and to reconcile the result.
+The legacy ledger (`tblTransactions`, `tblTransactionDetails`) is not migrated as documents. It is only used to classify how each legacy document posted (e.g. a pull-out that went through transit vs straight to on-hand) and to reconcile the result.
 
 Every migrated document keeps its legacy reference and sheet number and carries `origin = MIGRATED`. Norbiz numbering continues after the highest legacy number for each prefix legacy shared (DR, OR, ODR, ODRR, STF, DRR, OPO, ASM), so the next DR after `DR-093121` is `DR-093122`.
 
 ## Rules
 
 - **Voided** legacy documents are migrated voided and post no movements. Legacy removed a voided document's ledger rows, and a create + void pair would net to zero.
-- **Never-posted documents** are migrated **voided**, with remarks saying why. This covers unposted (draft) Outlet Receives and supplier invoices that never touched stock and were never received (pre-inventory, 2019–Feb 2023). They had no stock effect in legacy either.
+- **Never-posted documents** are migrated **voided**, with remarks saying why. This covers unposted (draft) Outlet Receipts and supplier invoices that never touched stock and were never received (pre-inventory, 2019–Feb 2023). They had no stock effect in legacy either.
 - **Reconstructed documents** (`origin = RECONSTRUCTED`, `RCN-<prefix>-000001`, remarks name the legacy source) fill steps the legacy flow skipped:
-  - **Pull Out Receive:** for each pull out legacy posted straight into main on-hand.
-  - **Purchase Receive:** for each supplier invoice legacy posted straight into on-hand.
+  - **Pull-out Receipt:** for each pull-out legacy posted straight into main on-hand.
+  - **Purchase Receipt:** for each supplier invoice legacy posted straight into on-hand.
   - **Zero-price Outlet Delivery Receipt:** for return lines no sale could account for.
-  - **Inventory Adjustment, over-receiving:** for stock a receive took beyond what its source still had outstanding (legacy allowed this).
+  - **Inventory Adjustment, over-receiving:** for stock a receipt took beyond what its source still had outstanding (legacy allowed this).
   - **Inventory Adjustment, cutover correction:** one per warehouse, aligning on-hand with the legacy balance at cutover.
-- **Receive allocation:** a receive line loads its source line only up to what is still outstanding, in date order. The excess becomes the reconstructed adjustment above.
-- **Splits:** a Norbiz receive has one source and a return reverses one sale. A legacy receive spanning several sources, or a return spanning several sales, is split into one document per source (`<ref>-2`, `<ref>-3`, …).
+- **Receipt allocation:** a receipt line loads its source line only up to what is still outstanding, in date order. The excess becomes the reconstructed adjustment above.
+- **Splits:** a Norbiz receipt has one source and a return reverses one sale. A legacy receipt spanning several sources, or a return spanning several sales, is split into one document per source (`<ref>-2`, `<ref>-3`, …).
 - **Return matching** (`match_returns.py`):
   - Returns are processed in date order. Each one is matched to the most recent non-voided sale of the same outlet, on or before the return, that covers the most of its lines with unreturned quantity.
   - Lines are covered whole. Within a sale, quantity is taken from its lines oldest first, as the service does.
@@ -144,7 +144,7 @@ Every migrated document keeps its legacy reference and sheet number and carries 
 - **Codes:**
   - Blank codes become `LEGACY-<id>` / `C-<id>` / `S-<id>`.
   - Duplicate codes keep the oldest owner; later duplicates get `-<id>` appended.
-  - Duplicate supplier-invoice and receive numbers are renamed the same way.
+  - Duplicate supplier-invoice and receipt numbers are renamed the same way.
 - **Audit:** bulk inserts don't fire `AuditableEntityListener`. Step 55 writes each migrated master-data record a CREATE log in the listener's format, dated at its legacy creation and attributed to its author, so its change history starts with "Created". SKUs, prices and BOM lines get none. One `audit_logs` marker on the company records the load. Migrated rows carry `created_by = legacy-migration` (or the legacy author).
 - **Columns nullable only for legacy:** some FKs are nullable just so legacy rows without them fit (e.g. `OutletPullOut.pullOutReason`). The API still requires them.
 
@@ -167,4 +167,4 @@ Report checks, any failure fails the run:
 
 - **Payables:** supplier invoice payment status is derived from legacy amount paid. Payments themselves aren't migrated (Norbiz has no supplier payments module yet).
 - **Customer and supplier details** (address, TIN, terms, credit limit) and item units, colour and size have no Norbiz fields and aren't migrated.
-- **Unmigratable documents:** receives with no lines, and receives whose only lines name items not on their source, can't be migrated as documents. They are logged as skipped; any stock they moved is carried by reconstructed adjustments.
+- **Unmigratable documents:** receipts with no lines, and receipts whose only lines name items not on their source, can't be migrated as documents. They are logged as skipped; any stock they moved is carried by reconstructed adjustments.

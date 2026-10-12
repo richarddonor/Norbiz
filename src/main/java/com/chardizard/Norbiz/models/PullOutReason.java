@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-// Why stock was pulled out of an outlet (e.g. damaged, slow-moving). Picked on every Outlet Pull Out.
+// Why stock was pulled out of an outlet (e.g. damaged, slow-moving). Picked on every Outlet Pull-out.
 @Getter
 @Setter
 @Entity

@@ -44,5 +44,5 @@ Use the `management.opentelemetry.*` property names — the `management.otlp.tra
 
 - **High-cardinality values (ids, usernames, reference numbers, payloads) go on spans only** — use `addHighCardinalityKeyValue`. Low-cardinality key values become metric tags; a user/company id there explodes metric series.
 - **Never put secrets or tokens in telemetry.** Payloads are redacted by `RequestLoggingFilter.SENSITIVE_FIELD_PATTERN`; extend it rather than logging raw bodies elsewhere.
-- **Log every business mutation at INFO** in the service layer, in the form `User '{}' <verb> <entity> '{}' (id={})` — see `WarehouseService` or `PurchaseReceiveService`. The trace id is attached automatically; don't add it to messages.
+- **Log every business mutation at INFO** in the service layer, in the form `User '{}' <verb> <entity> '{}' (id={})` — see `WarehouseService` or `PurchaseReceiptService`. The trace id is attached automatically; don't add it to messages.
 - Telemetry contains data from every company — treat access to the observability backend like `/admin/**`.

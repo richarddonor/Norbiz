@@ -19,7 +19,7 @@ public class OutletPullOutResponse {
     // Source: the outlet's own warehouse.
     private Long warehouseId;
     private String warehouseName;
-    // Destination: the main warehouse holding the pull out in transit.
+    // Destination: the main warehouse holding the pull-out in transit.
     private Long destinationWarehouseId;
     private String destinationWarehouseName;
     private Long pullOutReasonId;

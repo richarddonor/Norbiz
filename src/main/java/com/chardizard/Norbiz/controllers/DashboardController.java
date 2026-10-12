@@ -48,20 +48,20 @@ public class DashboardController {
         return ResponseEntity.ok(AppResponse.of(dashboardService.catalog(authentication)));
     }
 
-    @Operation(summary = "Pending Outlet Receives",
+    @Operation(summary = "Pending Outlet Receipts",
             description = "Outlet delivery receipts not voided and not yet fully received, as a backlog: totals, received %, aging, "
                     + "outstanding by outlet (top 8 plus Others) and the 8 oldest receipts. Values use the DR line selling price.")
     @ApiResponse(responseCode = "200", description = "Widget data returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_DASHBOARD_PENDING_OUTLET_RECEIVES or no access to company")
-    @GetMapping("/widgets/pending-outlet-receives")
-    @PreAuthorize("hasAuthority('VIEW_DASHBOARD_PENDING_OUTLET_RECEIVES')")
-    public ResponseEntity<AppResponse<BacklogResponse>> pendingOutletReceives(
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_DASHBOARD_PENDING_OUTLET_RECEIPTS or no access to company")
+    @GetMapping("/widgets/pending-outlet-receipts")
+    @PreAuthorize("hasAuthority('VIEW_DASHBOARD_PENDING_OUTLET_RECEIPTS')")
+    public ResponseEntity<AppResponse<BacklogResponse>> pendingOutletReceipts(
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
             @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
             @Parameter(description = AS_OF_DESC) @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         return ResponseEntity.ok(AppResponse.of(
-                dashboardService.pendingOutletReceives(userDetails.getUsername(), company(companyId, headerCompanyId), asOf)));
+                dashboardService.pendingOutletReceipts(userDetails.getUsername(), company(companyId, headerCompanyId), asOf)));
     }
 
     @Operation(summary = "Outlet Sales Pulse",
@@ -114,20 +114,20 @@ public class DashboardController {
                 authentication.getName(), company(companyId, headerCompanyId), asOf, canViewCostPrice(authentication))));
     }
 
-    @Operation(summary = "Pull-outs Awaiting Receive",
+    @Operation(summary = "Pull-outs Awaiting Receipt",
             description = "Outlet pull-outs not voided and not fully received back, as a backlog by outlet (breakdown: pull-out reason). "
                     + "Values use the pull-out line's selling price.")
     @ApiResponse(responseCode = "200", description = "Widget data returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_DASHBOARD_PULL_OUTS_AWAITING_RECEIVE or no access to company")
-    @GetMapping("/widgets/pull-outs-awaiting-receive")
-    @PreAuthorize("hasAuthority('VIEW_DASHBOARD_PULL_OUTS_AWAITING_RECEIVE')")
-    public ResponseEntity<AppResponse<BacklogResponse>> pullOutsAwaitingReceive(
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_DASHBOARD_PULL_OUTS_AWAITING_RECEIPT or no access to company")
+    @GetMapping("/widgets/pull-outs-awaiting-receipt")
+    @PreAuthorize("hasAuthority('VIEW_DASHBOARD_PULL_OUTS_AWAITING_RECEIPT')")
+    public ResponseEntity<AppResponse<BacklogResponse>> pullOutsAwaitingReceipt(
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
             @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
             @Parameter(description = AS_OF_DESC) @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         return ResponseEntity.ok(AppResponse.of(
-                dashboardService.pullOutsAwaitingReceive(userDetails.getUsername(), company(companyId, headerCompanyId), asOf)));
+                dashboardService.pullOutsAwaitingReceipt(userDetails.getUsername(), company(companyId, headerCompanyId), asOf)));
     }
 
     @Operation(summary = "Stock in Transit",

@@ -37,7 +37,7 @@ public class DeliveryReceiptLine {
     @Column(name = "line_number", nullable = false)
     private Integer lineNumber;
 
-    // Amount already received by Outlet Receive(s). Stays 0 for a plain-customer DR.
+    // Amount already received by Outlet Receipt(s). Stays 0 for a plain-customer DR.
     @Column(name = "quantity_loaded", nullable = false, precision = 19, scale = 4)
     private BigDecimal quantityLoaded = BigDecimal.ZERO;
 }

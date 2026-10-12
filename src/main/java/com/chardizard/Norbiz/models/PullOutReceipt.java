@@ -11,15 +11,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 // Not Auditable: immutable once posted (only create/view/void) — the inventory ledger is the audit trail.
-// Receives an Outlet Pull Out's in-transit quantity into the main warehouse's on-hand stock.
+// Receives an Outlet Pull-out's in-transit quantity into the main warehouse's on-hand stock.
 @Getter
 @Setter
 @Entity
 @Table(
-    name = "pull_out_receives",
-    uniqueConstraints = @UniqueConstraint(name = "PULL_OUT_RECEIVES_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
+    name = "pull_out_receipts",
+    uniqueConstraints = @UniqueConstraint(name = "PULL_OUT_RECEIPTS_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
 )
-public class PullOutReceive {
+public class PullOutReceipt {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,23 +27,23 @@ public class PullOutReceive {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false,
-        foreignKey = @ForeignKey(name = "PULL_OUT_RECEIVES_COMPANY_ID_FK"))
+        foreignKey = @ForeignKey(name = "PULL_OUT_RECEIPTS_COMPANY_ID_FK"))
     private Company company;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "outlet_pull_out_id", nullable = false,
-        foreignKey = @ForeignKey(name = "PULL_OUT_RECEIVES_OUTLET_PULL_OUT_ID_FK"))
+        foreignKey = @ForeignKey(name = "PULL_OUT_RECEIPTS_OUTLET_PULL_OUT_ID_FK"))
     private OutletPullOut outletPullOut;
 
-    // Copied from the Outlet Pull Out: the outlet and the main warehouse it was pulled into.
+    // Copied from the Outlet Pull-out: the outlet and the main warehouse it was pulled into.
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "customer_id", nullable = false,
-        foreignKey = @ForeignKey(name = "PULL_OUT_RECEIVES_CUSTOMER_ID_FK"))
+        foreignKey = @ForeignKey(name = "PULL_OUT_RECEIPTS_CUSTOMER_ID_FK"))
     private Customer customer;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "warehouse_id", nullable = false,
-        foreignKey = @ForeignKey(name = "PULL_OUT_RECEIVES_WAREHOUSE_ID_FK"))
+        foreignKey = @ForeignKey(name = "PULL_OUT_RECEIPTS_WAREHOUSE_ID_FK"))
     private Warehouse warehouse;
 
     // Auto-generated per docs/TRANSACTIONS.md — see TransactionReferenceService.
@@ -75,7 +75,7 @@ public class PullOutReceive {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // Inert: nothing loads from a Pull Out Receive. Kept for parity with every other transaction type.
+    // Inert: nothing loads from a Pull-out Receipt. Kept for parity with every other transaction type.
     @Column(nullable = false)
     private boolean loaded = false;
 
@@ -85,7 +85,7 @@ public class PullOutReceive {
     @Column(nullable = false, length = 20)
     private TransactionOrigin origin = TransactionOrigin.NATIVE;
 
-    @OneToMany(mappedBy = "pullOutReceive", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "pullOutReceipt", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
-    private List<PullOutReceiveLine> lines = new ArrayList<>();
+    private List<PullOutReceiptLine> lines = new ArrayList<>();
 }

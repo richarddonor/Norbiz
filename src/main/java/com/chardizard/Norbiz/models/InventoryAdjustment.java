@@ -65,7 +65,7 @@ public class InventoryAdjustment {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // Nothing currently loads *from* an Inventory Adjustment (only Purchase Order -> future Purchase Receive
+    // Nothing currently loads *from* an Inventory Adjustment (only Purchase Order -> future Purchase Receipt
     // is documented) — this field is inert for now, kept for parity with docs/TRANSACTIONS.md "Transaction Loading"
     // so the void-blocks-on-loaded check is uniform across every transaction type.
     @Column(nullable = false)

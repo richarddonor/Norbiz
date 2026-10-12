@@ -33,10 +33,10 @@ SELECT l.item_id, h.destination_warehouse_id, 0, l.quantity, h.delivery_date, 'D
 FROM delivery_receipts h JOIN delivery_receipt_lines l ON l.delivery_receipt_id = h.id
 WHERE NOT h.voided AND h.destination_warehouse_id IS NOT NULL;
 
--- Outlet Receive: outlet transit -> on-hand.
+-- Outlet Receipt: outlet transit -> on-hand.
 INSERT INTO migration.movement
-SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'OUTLET_RECEIVE', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM outlet_receives h JOIN outlet_receive_lines l ON l.outlet_receive_id = h.id WHERE NOT h.voided;
+SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'OUTLET_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
+FROM outlet_receipts h JOIN outlet_receipt_lines l ON l.outlet_receipt_id = h.id WHERE NOT h.voided;
 
 -- Outlet Delivery Receipt (outlet sale): outlet on-hand out. Return: back in.
 INSERT INTO migration.movement
@@ -47,7 +47,7 @@ INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, l.quantity, 0, h.return_date, 'OUTLET_DELIVERY_RETURN', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
 FROM outlet_delivery_returns h JOIN outlet_delivery_return_lines l ON l.outlet_delivery_return_id = h.id WHERE NOT h.voided;
 
--- Outlet Pull Out: outlet on-hand out, main transit in. Pull Out Receive: main transit -> on-hand.
+-- Outlet Pull-out: outlet on-hand out, main transit in. Pull-out Receipt: main transit -> on-hand.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, -l.quantity, 0, h.pull_out_date, 'OUTLET_PULL_OUT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
 FROM outlet_pull_outs h JOIN outlet_pull_out_lines l ON l.outlet_pull_out_id = h.id WHERE NOT h.voided;
@@ -57,17 +57,17 @@ SELECT l.item_id, h.destination_warehouse_id, 0, l.quantity, h.pull_out_date, 'O
 FROM outlet_pull_outs h JOIN outlet_pull_out_lines l ON l.outlet_pull_out_id = h.id WHERE NOT h.voided;
 
 INSERT INTO migration.movement
-SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'PULL_OUT_RECEIVE', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM pull_out_receives h JOIN pull_out_receive_lines l ON l.pull_out_receive_id = h.id WHERE NOT h.voided;
+SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'PULL_OUT_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
+FROM pull_out_receipts h JOIN pull_out_receipt_lines l ON l.pull_out_receipt_id = h.id WHERE NOT h.voided;
 
--- Direct Purchase Invoice: main transit in. Purchase Receive: main transit -> on-hand.
+-- Direct Purchase Invoice: main transit in. Purchase Receipt: main transit -> on-hand.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, 0, l.quantity, h.invoice_date, 'PURCHASE_INVOICE', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
 FROM purchase_invoices h JOIN purchase_invoice_lines l ON l.purchase_invoice_id = h.id WHERE NOT h.voided AND h.purchase_order_id IS NULL;
 
 INSERT INTO migration.movement
-SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'PURCHASE_RECEIVE', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM purchase_receives h JOIN purchase_receive_lines l ON l.purchase_receive_id = h.id WHERE NOT h.voided;
+SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'PURCHASE_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
+FROM purchase_receipts h JOIN purchase_receipt_lines l ON l.purchase_receipt_id = h.id WHERE NOT h.voided;
 
 -- Assembly: outputs in, raw materials out, main warehouse.
 INSERT INTO migration.movement
@@ -99,13 +99,13 @@ FROM (
     SELECT 'INVENTORY_ADJUSTMENT' type, id, reference_number, created_by, created_at, origin FROM inventory_adjustments
     UNION ALL SELECT 'STOCK_TRANSFER', id, reference_number, created_by, created_at, origin FROM stock_transfers
     UNION ALL SELECT 'DELIVERY_RECEIPT', id, reference_number, created_by, created_at, origin FROM delivery_receipts
-    UNION ALL SELECT 'OUTLET_RECEIVE', id, reference_number, created_by, created_at, origin FROM outlet_receives
+    UNION ALL SELECT 'OUTLET_RECEIPT', id, reference_number, created_by, created_at, origin FROM outlet_receipts
     UNION ALL SELECT 'OUTLET_DELIVERY_RECEIPT', id, reference_number, created_by, created_at, origin FROM outlet_delivery_receipts
     UNION ALL SELECT 'OUTLET_DELIVERY_RETURN', id, reference_number, created_by, created_at, origin FROM outlet_delivery_returns
     UNION ALL SELECT 'OUTLET_PULL_OUT', id, reference_number, created_by, created_at, origin FROM outlet_pull_outs
-    UNION ALL SELECT 'PULL_OUT_RECEIVE', id, reference_number, created_by, created_at, origin FROM pull_out_receives
+    UNION ALL SELECT 'PULL_OUT_RECEIPT', id, reference_number, created_by, created_at, origin FROM pull_out_receipts
     UNION ALL SELECT 'PURCHASE_INVOICE', id, reference_number, created_by, created_at, origin FROM purchase_invoices
-    UNION ALL SELECT 'PURCHASE_RECEIVE', id, reference_number, created_by, created_at, origin FROM purchase_receives
+    UNION ALL SELECT 'PURCHASE_RECEIPT', id, reference_number, created_by, created_at, origin FROM purchase_receipts
     UNION ALL SELECT 'ASSEMBLY', id, reference_number, created_by, created_at, origin FROM assemblies
 ) t;
 
@@ -115,12 +115,12 @@ FROM (
     SELECT 'INVENTORY_ADJUSTMENT' type, id, reference_number, voided, voided_by, voided_at FROM inventory_adjustments
     UNION ALL SELECT 'STOCK_TRANSFER', id, reference_number, voided, voided_by, voided_at FROM stock_transfers
     UNION ALL SELECT 'DELIVERY_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM delivery_receipts
-    UNION ALL SELECT 'OUTLET_RECEIVE', id, reference_number, voided, voided_by, voided_at FROM outlet_receives
+    UNION ALL SELECT 'OUTLET_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM outlet_receipts
     UNION ALL SELECT 'OUTLET_DELIVERY_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM outlet_delivery_receipts
     UNION ALL SELECT 'OUTLET_DELIVERY_RETURN', id, reference_number, voided, voided_by, voided_at FROM outlet_delivery_returns
     UNION ALL SELECT 'OUTLET_PULL_OUT', id, reference_number, voided, voided_by, voided_at FROM outlet_pull_outs
-    UNION ALL SELECT 'PULL_OUT_RECEIVE', id, reference_number, voided, voided_by, voided_at FROM pull_out_receives
+    UNION ALL SELECT 'PULL_OUT_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM pull_out_receipts
     UNION ALL SELECT 'PURCHASE_INVOICE', id, reference_number, voided, voided_by, voided_at FROM purchase_invoices
-    UNION ALL SELECT 'PURCHASE_RECEIVE', id, reference_number, voided, voided_by, voided_at FROM purchase_receives
+    UNION ALL SELECT 'PURCHASE_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM purchase_receipts
     UNION ALL SELECT 'ASSEMBLY', id, reference_number, voided, voided_by, voided_at FROM assemblies
 ) t WHERE t.voided;

@@ -92,7 +92,7 @@ public class PurchaseInvoice {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // Set once this invoice has been fully received via the future Purchase Receive transaction.
+    // Set once this invoice has been fully received via the future Purchase Receipt transaction.
     // Only meaningful for Direct-mode invoices — PO-based invoices have nothing of their own to load
     // (the goods movement already belongs to the originating PurchaseOrder).
     @Column(nullable = false)

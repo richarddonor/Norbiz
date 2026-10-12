@@ -23,7 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 // Ledger effects of the transaction types added for the legacy (jbsKarutora) migration: Stock Transfer
-// (and the Delivery Receipt that loads it), Outlet Pull Out + Pull Out Receive, and Assembly with Bills of
+// (and the Delivery Receipt that loads it), Outlet Pull-out + Pull-out Receipt, and Assembly with Bills of
 // Materials. Runs against the configured Postgres; every test rolls back. TransactionReferenceService is
 // mocked for the same reason as in TransactionEventServiceTest.
 @SpringBootTest
@@ -33,9 +33,9 @@ class LegacyTransactionTypesFlowTest {
     @Autowired StockTransferService stockTransferService;
     @Autowired DashboardService dashboardService;
     @Autowired DeliveryReceiptService deliveryReceiptService;
-    @Autowired OutletReceiveService outletReceiveService;
+    @Autowired OutletReceiptService outletReceiptService;
     @Autowired OutletPullOutService outletPullOutService;
-    @Autowired PullOutReceiveService pullOutReceiveService;
+    @Autowired PullOutReceiptService pullOutReceiptService;
     @Autowired AssemblyService assemblyService;
     @Autowired BillOfMaterialService billOfMaterialService;
     @Autowired PullOutReasonService pullOutReasonService;
@@ -176,7 +176,7 @@ class LegacyTransactionTypesFlowTest {
                 .isInstanceOf(InsufficientStockException.class);
     }
 
-    // ---- Outlet Pull Out → Pull Out Receive ----
+    // ---- Outlet Pull-out → Pull-out Receipt ----
 
     @Test
     void pullOutMovesOutletStockIntoMainTransitThenReceiveTakesItOnHand() {
@@ -188,24 +188,24 @@ class LegacyTransactionTypesFlowTest {
         assertBalance(outlet.getWarehouse(), item, "12", "0");
         assertBalance(mainWarehouse, item, "80", "8");
 
-        pullOutReceiveService.create(porRequest(po, "5"), user);
+        pullOutReceiptService.create(porRequest(po, "5"), user);
         assertThat(po.isLoaded()).isFalse();
         assertBalance(mainWarehouse, item, "85", "3");
 
-        pullOutReceiveService.create(porRequest(po, "3"), user);
+        pullOutReceiptService.create(porRequest(po, "3"), user);
         assertThat(po.isLoaded()).isTrue();
         assertBalance(mainWarehouse, item, "88", "0");
     }
 
     @Test
-    void pullOutsAwaitingReceiveWidgetTracksTheOutstandingQuantityByReason() {
+    void pullOutsAwaitingReceiptWidgetTracksTheOutstandingQuantityByReason() {
         stockOutlet("20");
         OutletPullOut partial = outletPullOutService.create(poRequest("8"), user);    // 2026-10-06
-        pullOutReceiveService.create(porRequest(partial, "3"), user);                 // 5 left
+        pullOutReceiptService.create(porRequest(partial, "3"), user);                 // 5 left
         OutletPullOut full = outletPullOutService.create(poRequest("2"), user);
-        pullOutReceiveService.create(porRequest(full, "2"), user);                    // fully received: excluded
+        pullOutReceiptService.create(porRequest(full, "2"), user);                    // fully received: excluded
 
-        BacklogResponse widget = dashboardService.pullOutsAwaitingReceive(user, company.getId(), java.time.LocalDate.parse("2026-10-08"));
+        BacklogResponse widget = dashboardService.pullOutsAwaitingReceipt(user, company.getId(), java.time.LocalDate.parse("2026-10-08"));
 
         assertThat(widget.documentCount()).isEqualTo(1);
         assertThat(widget.outstandingQuantity()).isEqualByComparingTo("5");
@@ -225,12 +225,12 @@ class LegacyTransactionTypesFlowTest {
     void receivedPullOutCantBeVoidedUntilTheReceiveIsVoided() {
         stockOutlet("20");
         OutletPullOut po = outletPullOutService.create(poRequest("8"), user);
-        PullOutReceive receive = pullOutReceiveService.create(porRequest(po, "8"), user);
+        PullOutReceipt receipt = pullOutReceiptService.create(porRequest(po, "8"), user);
 
         assertThatThrownBy(() -> outletPullOutService.voidOutletPullOut(po.getId(), user))
                 .hasMessageContaining("received");
 
-        pullOutReceiveService.voidPullOutReceive(receive.getId(), user);
+        pullOutReceiptService.voidPullOutReceipt(receipt.getId(), user);
         assertThat(po.isLoaded()).isFalse();
         assertBalance(mainWarehouse, item, "80", "8");
 
@@ -244,7 +244,7 @@ class LegacyTransactionTypesFlowTest {
         stockOutlet("20");
         OutletPullOut po = outletPullOutService.create(poRequest("8"), user);
 
-        assertThatThrownBy(() -> pullOutReceiveService.create(porRequest(po, "9"), user))
+        assertThatThrownBy(() -> pullOutReceiptService.create(porRequest(po, "9"), user))
                 .hasMessageContaining("exceeds outstanding");
     }
 
@@ -340,15 +340,15 @@ class LegacyTransactionTypesFlowTest {
     private void stockOutlet(String quantity) {
         StockTransfer st = stockTransferService.create(stRequest(outlet, quantity), user);
         DeliveryReceipt dr = deliveryReceiptService.create(drFromTransfer(st, outlet), user);
-        OutletReceiveLineRequest line = new OutletReceiveLineRequest();
+        OutletReceiptLineRequest line = new OutletReceiptLineRequest();
         line.setItemId(item.getId());
         line.setQuantity(new BigDecimal(quantity));
-        OutletReceiveRequest req = new OutletReceiveRequest();
+        OutletReceiptRequest req = new OutletReceiptRequest();
         req.setCompanyId(company.getId());
         req.setDeliveryReceiptId(dr.getId());
         req.setReceiptDate("2026-10-05");
         req.setLines(List.of(line));
-        outletReceiveService.create(req, user);
+        outletReceiptService.create(req, user);
     }
 
     private void assertBalance(Warehouse warehouse, Item balanced, String quantity, String transitQuantity) {
@@ -401,11 +401,11 @@ class LegacyTransactionTypesFlowTest {
         return req;
     }
 
-    private PullOutReceiveRequest porRequest(OutletPullOut po, String quantity) {
-        PullOutReceiveLineRequest line = new PullOutReceiveLineRequest();
+    private PullOutReceiptRequest porRequest(OutletPullOut po, String quantity) {
+        PullOutReceiptLineRequest line = new PullOutReceiptLineRequest();
         line.setItemId(item.getId());
         line.setQuantity(new BigDecimal(quantity));
-        PullOutReceiveRequest req = new PullOutReceiveRequest();
+        PullOutReceiptRequest req = new PullOutReceiptRequest();
         req.setCompanyId(company.getId());
         req.setOutletPullOutId(po.getId());
         req.setReceiptDate("2026-10-07");

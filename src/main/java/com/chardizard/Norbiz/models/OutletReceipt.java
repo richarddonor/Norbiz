@@ -15,10 +15,10 @@ import java.util.List;
 @Setter
 @Entity
 @Table(
-    name = "outlet_receives",
-    uniqueConstraints = @UniqueConstraint(name = "OUTLET_RECEIVES_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
+    name = "outlet_receipts",
+    uniqueConstraints = @UniqueConstraint(name = "OUTLET_RECEIPTS_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
 )
-public class OutletReceive {
+public class OutletReceipt {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,23 +26,23 @@ public class OutletReceive {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false,
-        foreignKey = @ForeignKey(name = "OUTLET_RECEIVES_COMPANY_ID_FK"))
+        foreignKey = @ForeignKey(name = "OUTLET_RECEIPTS_COMPANY_ID_FK"))
     private Company company;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "delivery_receipt_id", nullable = false,
-        foreignKey = @ForeignKey(name = "OUTLET_RECEIVES_DELIVERY_RECEIPT_ID_FK"))
+        foreignKey = @ForeignKey(name = "OUTLET_RECEIPTS_DELIVERY_RECEIPT_ID_FK"))
     private DeliveryReceipt deliveryReceipt;
 
     // Copied from the Delivery Receipt: the outlet customer and its warehouse.
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "customer_id", nullable = false,
-        foreignKey = @ForeignKey(name = "OUTLET_RECEIVES_CUSTOMER_ID_FK"))
+        foreignKey = @ForeignKey(name = "OUTLET_RECEIPTS_CUSTOMER_ID_FK"))
     private Customer customer;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "warehouse_id", nullable = false,
-        foreignKey = @ForeignKey(name = "OUTLET_RECEIVES_WAREHOUSE_ID_FK"))
+        foreignKey = @ForeignKey(name = "OUTLET_RECEIPTS_WAREHOUSE_ID_FK"))
     private Warehouse warehouse;
 
     @Column(name = "reference_number", nullable = false, length = 50)
@@ -72,7 +72,7 @@ public class OutletReceive {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // Inert: nothing loads from an Outlet Receive. Kept for parity with every other transaction type.
+    // Inert: nothing loads from an Outlet Receipt. Kept for parity with every other transaction type.
     @Column(nullable = false)
     private boolean loaded = false;
 
@@ -83,7 +83,7 @@ public class OutletReceive {
     @Column(nullable = false, length = 20)
     private TransactionOrigin origin = TransactionOrigin.NATIVE;
 
-    @OneToMany(mappedBy = "outletReceive", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "outletReceipt", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
-    private List<OutletReceiveLine> lines = new ArrayList<>();
+    private List<OutletReceiptLine> lines = new ArrayList<>();
 }

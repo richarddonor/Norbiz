@@ -90,15 +90,15 @@ public class DataInitializer implements CommandLineRunner {
         Permission viewPurchaseInvoicePermission       = findOrCreate("VIEW_PURCHASE_INVOICE",       "Purchases - Purchase Invoice View");
         Permission createPurchaseInvoicePermission     = findOrCreate("CREATE_PURCHASE_INVOICE",     "Purchases - Purchase Invoice Create");
         Permission voidPurchaseInvoicePermission       = findOrCreate("VOID_PURCHASE_INVOICE",       "Purchases - Purchase Invoice Void");
-        Permission viewPurchaseReceivePermission       = findOrCreate("VIEW_PURCHASE_RECEIVE",       "Purchases - Purchase Receive View");
-        Permission createPurchaseReceivePermission     = findOrCreate("CREATE_PURCHASE_RECEIVE",     "Purchases - Purchase Receive Create");
-        Permission voidPurchaseReceivePermission       = findOrCreate("VOID_PURCHASE_RECEIVE",       "Purchases - Purchase Receive Void");
+        Permission viewPurchaseReceiptPermission       = findOrCreate("VIEW_PURCHASE_RECEIPT",       "Purchases - Purchase Receipt View");
+        Permission createPurchaseReceiptPermission     = findOrCreate("CREATE_PURCHASE_RECEIPT",     "Purchases - Purchase Receipt Create");
+        Permission voidPurchaseReceiptPermission       = findOrCreate("VOID_PURCHASE_RECEIPT",       "Purchases - Purchase Receipt Void");
         Permission viewDeliveryReceiptPermission       = findOrCreate("VIEW_DELIVERY_RECEIPT",       "Sales - Delivery Receipt View");
         Permission createDeliveryReceiptPermission     = findOrCreate("CREATE_DELIVERY_RECEIPT",     "Sales - Delivery Receipt Create");
         Permission voidDeliveryReceiptPermission       = findOrCreate("VOID_DELIVERY_RECEIPT",       "Sales - Delivery Receipt Void");
-        Permission viewOutletReceivePermission         = findOrCreate("VIEW_OUTLET_RECEIVE",         "Inventory - Outlet Receive View");
-        Permission createOutletReceivePermission       = findOrCreate("CREATE_OUTLET_RECEIVE",       "Inventory - Outlet Receive Create");
-        Permission voidOutletReceivePermission         = findOrCreate("VOID_OUTLET_RECEIVE",         "Inventory - Outlet Receive Void");
+        Permission viewOutletReceiptPermission         = findOrCreate("VIEW_OUTLET_RECEIPT",         "Inventory - Outlet Receipt View");
+        Permission createOutletReceiptPermission       = findOrCreate("CREATE_OUTLET_RECEIPT",       "Inventory - Outlet Receipt Create");
+        Permission voidOutletReceiptPermission         = findOrCreate("VOID_OUTLET_RECEIPT",         "Inventory - Outlet Receipt Void");
         Permission viewOutletDeliveryReceiptPermission   = findOrCreate("VIEW_OUTLET_DELIVERY_RECEIPT",   "Sales - Outlet Delivery Receipt View");
         Permission createOutletDeliveryReceiptPermission = findOrCreate("CREATE_OUTLET_DELIVERY_RECEIPT", "Sales - Outlet Delivery Receipt Create");
         Permission voidOutletDeliveryReceiptPermission   = findOrCreate("VOID_OUTLET_DELIVERY_RECEIPT",   "Sales - Outlet Delivery Receipt Void");
@@ -108,19 +108,19 @@ public class DataInitializer implements CommandLineRunner {
         Permission viewStockTransferPermission           = findOrCreate("VIEW_STOCK_TRANSFER",            "Sales - Stock Transfer View");
         Permission createStockTransferPermission         = findOrCreate("CREATE_STOCK_TRANSFER",          "Sales - Stock Transfer Create");
         Permission voidStockTransferPermission           = findOrCreate("VOID_STOCK_TRANSFER",            "Sales - Stock Transfer Void");
-        Permission viewOutletPullOutPermission           = findOrCreate("VIEW_OUTLET_PULL_OUT",           "Sales - Outlet Pull Out View");
-        Permission createOutletPullOutPermission         = findOrCreate("CREATE_OUTLET_PULL_OUT",         "Sales - Outlet Pull Out Create");
-        Permission voidOutletPullOutPermission           = findOrCreate("VOID_OUTLET_PULL_OUT",           "Sales - Outlet Pull Out Void");
-        Permission viewPullOutReceivePermission          = findOrCreate("VIEW_PULL_OUT_RECEIVE",          "Sales - Pull Out Receive View");
-        Permission createPullOutReceivePermission        = findOrCreate("CREATE_PULL_OUT_RECEIVE",        "Sales - Pull Out Receive Create");
-        Permission voidPullOutReceivePermission          = findOrCreate("VOID_PULL_OUT_RECEIVE",          "Sales - Pull Out Receive Void");
+        Permission viewOutletPullOutPermission           = findOrCreate("VIEW_OUTLET_PULL_OUT",           "Sales - Outlet Pull-out View");
+        Permission createOutletPullOutPermission         = findOrCreate("CREATE_OUTLET_PULL_OUT",         "Sales - Outlet Pull-out Create");
+        Permission voidOutletPullOutPermission           = findOrCreate("VOID_OUTLET_PULL_OUT",           "Sales - Outlet Pull-out Void");
+        Permission viewPullOutReceiptPermission          = findOrCreate("VIEW_PULL_OUT_RECEIPT",          "Sales - Pull-out Receipt View");
+        Permission createPullOutReceiptPermission        = findOrCreate("CREATE_PULL_OUT_RECEIPT",        "Sales - Pull-out Receipt Create");
+        Permission voidPullOutReceiptPermission          = findOrCreate("VOID_PULL_OUT_RECEIPT",          "Sales - Pull-out Receipt Void");
         Permission viewAssemblyPermission                = findOrCreate("VIEW_ASSEMBLY",                  "Inventory - Assembly View");
         Permission createAssemblyPermission              = findOrCreate("CREATE_ASSEMBLY",                "Inventory - Assembly Create");
         Permission voidAssemblyPermission                = findOrCreate("VOID_ASSEMBLY",                  "Inventory - Assembly Void");
-        Permission viewPullOutReasonPermission           = findOrCreate("VIEW_PULL_OUT_REASON",           "Maintenance - Pull Out Reason View");
-        Permission createPullOutReasonPermission         = findOrCreate("CREATE_PULL_OUT_REASON",         "Maintenance - Pull Out Reason Create");
-        Permission updatePullOutReasonPermission         = findOrCreate("UPDATE_PULL_OUT_REASON",         "Maintenance - Pull Out Reason Update");
-        Permission deletePullOutReasonPermission         = findOrCreate("DELETE_PULL_OUT_REASON",         "Maintenance - Pull Out Reason Delete");
+        Permission viewPullOutReasonPermission           = findOrCreate("VIEW_PULL_OUT_REASON",           "Maintenance - Pull-out Reason View");
+        Permission createPullOutReasonPermission         = findOrCreate("CREATE_PULL_OUT_REASON",         "Maintenance - Pull-out Reason Create");
+        Permission updatePullOutReasonPermission         = findOrCreate("UPDATE_PULL_OUT_REASON",         "Maintenance - Pull-out Reason Update");
+        Permission deletePullOutReasonPermission         = findOrCreate("DELETE_PULL_OUT_REASON",         "Maintenance - Pull-out Reason Delete");
         Permission viewBillOfMaterialPermission          = findOrCreate("VIEW_BILL_OF_MATERIAL",          "Maintenance - Bill of Materials View");
         Permission createBillOfMaterialPermission        = findOrCreate("CREATE_BILL_OF_MATERIAL",        "Maintenance - Bill of Materials Create");
         Permission updateBillOfMaterialPermission        = findOrCreate("UPDATE_BILL_OF_MATERIAL",        "Maintenance - Bill of Materials Update");
@@ -169,14 +169,14 @@ public class DataInitializer implements CommandLineRunner {
                 viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission, voidInventoryAdjustmentPermission,
                 viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
                 viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
-                viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
+                viewPurchaseReceiptPermission, createPurchaseReceiptPermission, voidPurchaseReceiptPermission,
                 viewDeliveryReceiptPermission, createDeliveryReceiptPermission, voidDeliveryReceiptPermission,
-                viewOutletReceivePermission, createOutletReceivePermission, voidOutletReceivePermission,
+                viewOutletReceiptPermission, createOutletReceiptPermission, voidOutletReceiptPermission,
                 viewOutletDeliveryReceiptPermission, createOutletDeliveryReceiptPermission, voidOutletDeliveryReceiptPermission,
                 viewOutletDeliveryReturnPermission, createOutletDeliveryReturnPermission, voidOutletDeliveryReturnPermission,
                 viewStockTransferPermission, createStockTransferPermission, voidStockTransferPermission,
                 viewOutletPullOutPermission, createOutletPullOutPermission, voidOutletPullOutPermission,
-                viewPullOutReceivePermission, createPullOutReceivePermission, voidPullOutReceivePermission,
+                viewPullOutReceiptPermission, createPullOutReceiptPermission, voidPullOutReceiptPermission,
                 viewAssemblyPermission, createAssemblyPermission, voidAssemblyPermission,
                 viewPullOutReasonPermission, createPullOutReasonPermission, updatePullOutReasonPermission,
                 viewBillOfMaterialPermission, createBillOfMaterialPermission, updateBillOfMaterialPermission,
@@ -204,14 +204,14 @@ public class DataInitializer implements CommandLineRunner {
                 viewInventoryAdjustmentPermission, createInventoryAdjustmentPermission, voidInventoryAdjustmentPermission,
                 viewPurchaseOrderPermission, createPurchaseOrderPermission, voidPurchaseOrderPermission,
                 viewPurchaseInvoicePermission, createPurchaseInvoicePermission, voidPurchaseInvoicePermission,
-                viewPurchaseReceivePermission, createPurchaseReceivePermission, voidPurchaseReceivePermission,
+                viewPurchaseReceiptPermission, createPurchaseReceiptPermission, voidPurchaseReceiptPermission,
                 viewDeliveryReceiptPermission, createDeliveryReceiptPermission, voidDeliveryReceiptPermission,
-                viewOutletReceivePermission, createOutletReceivePermission, voidOutletReceivePermission,
+                viewOutletReceiptPermission, createOutletReceiptPermission, voidOutletReceiptPermission,
                 viewOutletDeliveryReceiptPermission, createOutletDeliveryReceiptPermission, voidOutletDeliveryReceiptPermission,
                 viewOutletDeliveryReturnPermission, createOutletDeliveryReturnPermission, voidOutletDeliveryReturnPermission,
                 viewStockTransferPermission, createStockTransferPermission, voidStockTransferPermission,
                 viewOutletPullOutPermission, createOutletPullOutPermission, voidOutletPullOutPermission,
-                viewPullOutReceivePermission, createPullOutReceivePermission, voidPullOutReceivePermission,
+                viewPullOutReceiptPermission, createPullOutReceiptPermission, voidPullOutReceiptPermission,
                 viewAssemblyPermission, createAssemblyPermission, voidAssemblyPermission,
                 viewPullOutReasonPermission, createPullOutReasonPermission, updatePullOutReasonPermission, deletePullOutReasonPermission,
                 viewBillOfMaterialPermission, createBillOfMaterialPermission, updateBillOfMaterialPermission, deleteBillOfMaterialPermission,

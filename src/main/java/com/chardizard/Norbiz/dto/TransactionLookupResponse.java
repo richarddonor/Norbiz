@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
-// Dropdown option for picking a source transaction (e.g. the Purchase Order a Receive loads from).
+// Dropdown option for picking a source transaction (e.g. the Purchase Order a Receipt loads from).
 // Carries supplier/customer/warehouse so the form can pre-fill them, and the lines the consuming form copies
 // or receives against. Line costPrice is null unless the caller holds VIEW_COST_PRICE.
 @Getter

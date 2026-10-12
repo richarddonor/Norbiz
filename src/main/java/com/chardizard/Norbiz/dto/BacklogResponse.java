@@ -5,8 +5,8 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Shared shape of the "documents still waiting on something" dashboard widgets: Pending Outlet Receives,
- * Pending Purchase Orders, Pull-outs Awaiting Receive and Unpaid Purchase Invoices. A field a widget doesn't
+ * Shared shape of the "documents still waiting on something" dashboard widgets: Pending Outlet Receipts,
+ * Pending Purchase Orders, Pull-outs Awaiting Receipt and Unpaid Purchase Invoices. A field a widget doesn't
  * have (e.g. quantity on invoices) is null, and so are cost-based amounts without VIEW_COST_PRICE.
  */
 public record BacklogResponse(

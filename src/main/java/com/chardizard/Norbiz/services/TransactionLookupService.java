@@ -7,11 +7,11 @@ import com.chardizard.Norbiz.repositories.InventoryAdjustmentRepository;
 import com.chardizard.Norbiz.repositories.OutletDeliveryReceiptRepository;
 import com.chardizard.Norbiz.repositories.OutletDeliveryReturnRepository;
 import com.chardizard.Norbiz.repositories.OutletPullOutRepository;
-import com.chardizard.Norbiz.repositories.OutletReceiveRepository;
-import com.chardizard.Norbiz.repositories.PullOutReceiveRepository;
+import com.chardizard.Norbiz.repositories.OutletReceiptRepository;
+import com.chardizard.Norbiz.repositories.PullOutReceiptRepository;
 import com.chardizard.Norbiz.repositories.PurchaseInvoiceRepository;
 import com.chardizard.Norbiz.repositories.PurchaseOrderRepository;
-import com.chardizard.Norbiz.repositories.PurchaseReceiveRepository;
+import com.chardizard.Norbiz.repositories.PurchaseReceiptRepository;
 import com.chardizard.Norbiz.repositories.StockTransferRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,14 +27,14 @@ public class TransactionLookupService {
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
-    private final PurchaseReceiveRepository purchaseReceiveRepository;
+    private final PurchaseReceiptRepository purchaseReceiptRepository;
     private final DeliveryReceiptRepository deliveryReceiptRepository;
-    private final OutletReceiveRepository outletReceiveRepository;
+    private final OutletReceiptRepository outletReceiptRepository;
     private final OutletDeliveryReceiptRepository outletDeliveryReceiptRepository;
     private final OutletDeliveryReturnRepository outletDeliveryReturnRepository;
     private final StockTransferRepository stockTransferRepository;
     private final OutletPullOutRepository outletPullOutRepository;
-    private final PullOutReceiveRepository pullOutReceiveRepository;
+    private final PullOutReceiptRepository pullOutReceiptRepository;
     private final AssemblyRepository assemblyRepository;
 
     public TransactionHeader resolve(TransactionType type, Long id) {
@@ -48,13 +48,13 @@ public class TransactionLookupService {
             case PURCHASE_INVOICE -> purchaseInvoiceRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
-            case PURCHASE_RECEIVE -> purchaseReceiveRepository.findById(id)
+            case PURCHASE_RECEIPT -> purchaseReceiptRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case DELIVERY_RECEIPT -> deliveryReceiptRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
-            case OUTLET_RECEIVE -> outletReceiveRepository.findById(id)
+            case OUTLET_RECEIPT -> outletReceiptRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case OUTLET_DELIVERY_RECEIPT -> outletDeliveryReceiptRepository.findById(id)
@@ -69,7 +69,7 @@ public class TransactionLookupService {
             case OUTLET_PULL_OUT -> outletPullOutRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
-            case PULL_OUT_RECEIVE -> pullOutReceiveRepository.findById(id)
+            case PULL_OUT_RECEIPT -> pullOutReceiptRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case ASSEMBLY -> assemblyRepository.findById(id)

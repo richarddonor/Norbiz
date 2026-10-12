@@ -9,16 +9,16 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-// Not Auditable: purchase receives are immutable once posted (no update endpoint, only void),
+// Not Auditable: purchase receipts are immutable once posted (no update endpoint, only void),
 // same reasoning as PurchaseOrder/PurchaseInvoice.
 @Getter
 @Setter
 @Entity
 @Table(
-    name = "purchase_receives",
-    uniqueConstraints = @UniqueConstraint(name = "PURCHASE_RECEIVES_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
+    name = "purchase_receipts",
+    uniqueConstraints = @UniqueConstraint(name = "PURCHASE_RECEIPTS_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
 )
-public class PurchaseReceive {
+public class PurchaseReceipt {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,35 +26,35 @@ public class PurchaseReceive {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false,
-        foreignKey = @ForeignKey(name = "PURCHASE_RECEIVES_COMPANY_ID_FK"))
+        foreignKey = @ForeignKey(name = "PURCHASE_RECEIPTS_COMPANY_ID_FK"))
     private Company company;
 
     // Destination warehouse — must match the source (PO or Direct invoice)'s own warehouse.
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "warehouse_id", nullable = false,
-        foreignKey = @ForeignKey(name = "PURCHASE_RECEIVES_WAREHOUSE_ID_FK"))
+        foreignKey = @ForeignKey(name = "PURCHASE_RECEIPTS_WAREHOUSE_ID_FK"))
     private Warehouse warehouse;
 
     // Counterparty for this transaction type — see docs/TRANSACTIONS.md "Standard transaction document layout".
     // Must match the source's own supplier.
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "supplier_id", nullable = false,
-        foreignKey = @ForeignKey(name = "PURCHASE_RECEIVES_SUPPLIER_ID_FK"))
+        foreignKey = @ForeignKey(name = "PURCHASE_RECEIPTS_SUPPLIER_ID_FK"))
     private Supplier supplier;
 
-    // Exactly one of purchaseOrder / purchaseInvoice is set — see docs/TRANSACTIONS.md "Purchase Receive".
+    // Exactly one of purchaseOrder / purchaseInvoice is set — see docs/TRANSACTIONS.md "Purchase Receipt".
     // No unique constraint here (unlike PurchaseInvoice's PO link): a PO or Direct invoice can be
-    // received across multiple partial Purchase Receives.
+    // received across multiple partial Purchase Receipts.
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "purchase_order_id",
-        foreignKey = @ForeignKey(name = "PURCHASE_RECEIVES_PURCHASE_ORDER_ID_FK"))
+        foreignKey = @ForeignKey(name = "PURCHASE_RECEIPTS_PURCHASE_ORDER_ID_FK"))
     private PurchaseOrder purchaseOrder;
 
     // Set only for a Direct-mode invoice (PO-based invoices have nothing of their own to receive —
     // receive against the originating PurchaseOrder instead).
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "purchase_invoice_id",
-        foreignKey = @ForeignKey(name = "PURCHASE_RECEIVES_PURCHASE_INVOICE_ID_FK"))
+        foreignKey = @ForeignKey(name = "PURCHASE_RECEIPTS_PURCHASE_INVOICE_ID_FK"))
     private PurchaseInvoice purchaseInvoice;
 
     // Auto-generated per CLAUDE.md's Transactions rule — see TransactionReferenceService.
@@ -88,7 +88,7 @@ public class PurchaseReceive {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // Inert: nothing currently loads from a Purchase Receive, same as InventoryAdjustment.
+    // Inert: nothing currently loads from a Purchase Receipt, same as InventoryAdjustment.
     @Column(nullable = false)
     private boolean loaded = false;
 
@@ -99,7 +99,7 @@ public class PurchaseReceive {
     @Column(nullable = false, length = 20)
     private TransactionOrigin origin = TransactionOrigin.NATIVE;
 
-    @OneToMany(mappedBy = "purchaseReceive", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "purchaseReceipt", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
-    private List<PurchaseReceiveLine> lines = new ArrayList<>();
+    private List<PurchaseReceiptLine> lines = new ArrayList<>();
 }

@@ -30,7 +30,7 @@ Hibernate write ─▶ CacheInvalidationListener ─▶ (entity, companyId) coll
   - `global()` for SUPER_ADMIN and for system-wide data.
 - **Generation counters (`GenerationStore`)**: a key embeds the current counter value of every entity in the region's dependency list, for every company in scope. A write INCRs the counter, so all older keys become unreachable and expire via TTL. Nothing ever SCANs or deletes keys.
   - `User`, `Role` and `Permission` have only an `:all` counter. A SUPER_ADMIN (global) scope reads the `:all` counters.
-- **Invalidation hooks into Hibernate** (post insert/update/delete plus collection events), registered in `CacheConfig`. That way it also catches side-effect writes, such as a Purchase Receive flipping `PurchaseOrder.loaded`, and join-table-only changes such as item tags, user companies and role permissions.
+- **Invalidation hooks into Hibernate** (post insert/update/delete plus collection events), registered in `CacheConfig`. That way it also catches side-effect writes, such as a Purchase Receipt flipping `PurchaseOrder.loaded`, and join-table-only changes such as item tags, user companies and role permissions.
   - Bumps happen only after commit, so a rollback invalidates nothing.
   - A reader that loaded pre-commit data stores it under the old generation, which nobody reads once the bump lands.
 

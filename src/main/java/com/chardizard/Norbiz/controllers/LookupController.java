@@ -321,7 +321,7 @@ public class LookupController {
     // ---- delivery receipts ----
 
     @Operation(summary = "Delivery receipt dropdown",
-            description = "Source delivery receipts for Outlet Receive. openOnly (default) returns only outlet receipts that are neither voided "
+            description = "Source delivery receipts for Outlet Receipt. openOnly (default) returns only outlet receipts that are neither voided "
                     + "nor fully received; warehouse fields are the outlet warehouse.")
     @ApiResponse(responseCode = "200", description = "Delivery receipt options returned")
     @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
@@ -407,12 +407,12 @@ public class LookupController {
         return ResponseEntity.ok(AppResponse.of(lookupService.stockTransfer(id, userDetails.getUsername())));
     }
 
-    // ---- outlet pull outs ----
+    // ---- outlet pull-outs ----
 
-    @Operation(summary = "Outlet pull out dropdown",
-            description = "Source outlet pull outs for Pull Out Receive. openOnly (default) returns only pull outs that are neither "
+    @Operation(summary = "Outlet pull-out dropdown",
+            description = "Source outlet pull-outs for Pull-out Receipt. openOnly (default) returns only pull-outs that are neither "
                     + "voided nor fully received; warehouse fields are the main warehouse they are in transit to.")
-    @ApiResponse(responseCode = "200", description = "Outlet pull out options returned")
+    @ApiResponse(responseCode = "200", description = "Outlet pull-out options returned")
     @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
     @GetMapping("/outlet-pull-outs")
     @PreAuthorize("@lookupAccess.can(authentication, 'OUTLET_PULL_OUT')")
@@ -422,13 +422,13 @@ public class LookupController {
             @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
             @Parameter(description = "Search text (contains, case-insensitive) over reference and sheet number") @RequestParam(required = false) @Size(max = 255) String q,
             @Parameter(description = "Filter by outlet customer ID") @RequestParam(required = false) Long customerId,
-            @Parameter(description = "Only receivable pull outs: not voided, not fully received (default true)") @RequestParam(defaultValue = "true") boolean openOnly,
+            @Parameter(description = "Only receivable pull-outs: not voided, not fully received (default true)") @RequestParam(defaultValue = "true") boolean openOnly,
             Pageable pageable) {
         return ok(lookupService.outletPullOuts(userDetails.getUsername(), company(companyId, headerCompanyId), q, customerId, openOnly, pageable));
     }
 
-    @Operation(summary = "Outlet pull out option by ID")
-    @ApiResponse(responseCode = "200", description = "Outlet pull out option returned")
+    @Operation(summary = "Outlet pull-out option by ID")
+    @ApiResponse(responseCode = "200", description = "Outlet pull-out option returned")
     @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
     @GetMapping("/outlet-pull-outs/{id}")
     @PreAuthorize("@lookupAccess.can(authentication, 'OUTLET_PULL_OUT')")
@@ -436,10 +436,10 @@ public class LookupController {
         return ResponseEntity.ok(AppResponse.of(lookupService.outletPullOut(id, userDetails.getUsername())));
     }
 
-    // ---- pull out reasons ----
+    // ---- pull-out reasons ----
 
-    @Operation(summary = "Pull out reason dropdown")
-    @ApiResponse(responseCode = "200", description = "Pull out reason options returned")
+    @Operation(summary = "Pull-out reason dropdown")
+    @ApiResponse(responseCode = "200", description = "Pull-out reason options returned")
     @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
     @GetMapping("/pull-out-reasons")
     @PreAuthorize("@lookupAccess.can(authentication, 'PULL_OUT_REASON')")
@@ -453,8 +453,8 @@ public class LookupController {
         return ok(lookupService.pullOutReasons(userDetails.getUsername(), company(companyId, headerCompanyId), q, activeOnly, pageable));
     }
 
-    @Operation(summary = "Pull out reason option by ID")
-    @ApiResponse(responseCode = "200", description = "Pull out reason option returned")
+    @Operation(summary = "Pull-out reason option by ID")
+    @ApiResponse(responseCode = "200", description = "Pull-out reason option returned")
     @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
     @GetMapping("/pull-out-reasons/{id}")
     @PreAuthorize("@lookupAccess.can(authentication, 'PULL_OUT_REASON')")

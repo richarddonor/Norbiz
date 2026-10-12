@@ -25,9 +25,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "Outlet Pull Outs", description = "Outlet pull out transactions — requires VIEW_OUTLET_PULL_OUT / CREATE_OUTLET_PULL_OUT / VOID_OUTLET_PULL_OUT permissions. " +
+@Tag(name = "Outlet Pull-outs", description = "Outlet pull-out transactions — requires VIEW_OUTLET_PULL_OUT / CREATE_OUTLET_PULL_OUT / VOID_OUTLET_PULL_OUT permissions. " +
         "Pulls stock out of an outlet: deducts on-hand in the outlet's warehouse and posts it in transit in the main warehouse, " +
-        "to be received by Pull Out Receive. Immutable once posted: only create, view, and void.")
+        "to be received by Pull-out Receipt. Immutable once posted: only create, view, and void.")
 @RestController
 @RequestMapping("/outlet-pull-outs")
 @RequiredArgsConstructor
@@ -35,7 +35,7 @@ public class OutletPullOutController {
 
     private final OutletPullOutService outletPullOutService;
 
-    @Operation(summary = "List outlet pull outs", description = "Returns outlet pull outs belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
+    @Operation(summary = "List outlet pull-outs", description = "Returns outlet pull-outs belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "List returned")
     @ApiResponse(responseCode = "403", description = "Missing VIEW_OUTLET_PULL_OUT permission")
     @GetMapping
@@ -43,11 +43,11 @@ public class OutletPullOutController {
     public ResponseEntity<AppResponse<PageResponse<OutletPullOutResponse>>> getAll(
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "Filter by customer ID") @RequestParam(required = false) Long customerId,
-            @Parameter(description = "Filter by pull out reason ID") @RequestParam(required = false) Long pullOutReasonId,
+            @Parameter(description = "Filter by pull-out reason ID") @RequestParam(required = false) Long pullOutReasonId,
             @Parameter(description = "Filter by reference number (contains)") @RequestParam(required = false) String referenceNumber,
             @Parameter(description = "Filter by sheet number (contains)") @RequestParam(required = false) String sheetNumber,
-            @Parameter(description = "Filter by pull out date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
-            @Parameter(description = "Filter by pull out date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
+            @Parameter(description = "Filter by pull-out date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
+            @Parameter(description = "Filter by pull-out date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
             @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
         Map<String, String> filters = new LinkedHashMap<>();
@@ -63,19 +63,19 @@ public class OutletPullOutController {
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(page)));
     }
 
-    @Operation(summary = "Get Outlet pull out by ID")
+    @Operation(summary = "Get Outlet pull-out by ID")
     @ApiResponse(responseCode = "200", description = "Returned")
     @ApiResponse(responseCode = "403", description = "Missing VIEW_OUTLET_PULL_OUT permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Not found")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('VIEW_OUTLET_PULL_OUT')")
-    public ResponseEntity<AppResponse<OutletPullOutResponse>> getById(@Parameter(description = "Outlet pull out ID") @PathVariable Long id,
+    public ResponseEntity<AppResponse<OutletPullOutResponse>> getById(@Parameter(description = "Outlet pull-out ID") @PathVariable Long id,
                                                              @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(AppResponse.of(toResponse(outletPullOutService.findById(id, userDetails.getUsername()))));
     }
 
-    @Operation(summary = "Post Outlet pull out", description = "Pulls stock out of an outlet: each line must reference an active INVENTORY item with a quantity > 0 that is on hand " +
-            "in the outlet's warehouse. A pull out reason is required. Unit price defaults to the item's UNIT_PRICE.")
+    @Operation(summary = "Post Outlet pull-out", description = "Pulls stock out of an outlet: each line must reference an active INVENTORY item with a quantity > 0 that is on hand " +
+            "in the outlet's warehouse. A pull-out reason is required. Unit price defaults to the item's UNIT_PRICE.")
     @ApiResponse(responseCode = "201", description = "Posted")
     @ApiResponse(responseCode = "400", description = "Validation error (e.g. non-outlet or inactive customer, inactive reason/item, no main warehouse)")
     @ApiResponse(responseCode = "403", description = "Missing CREATE_OUTLET_PULL_OUT permission or no access to company")
@@ -88,14 +88,14 @@ public class OutletPullOutController {
                 .body(AppResponse.of(toResponse(outletPullOutService.create(request, userDetails.getUsername()))));
     }
 
-    @Operation(summary = "Void Outlet pull out", description = "Cancels a pull out by reversing both ledger entries. Fails if already voided or if a Pull Out Receive has received any of it (void those first).")
+    @Operation(summary = "Void Outlet pull-out", description = "Cancels a pull-out by reversing both ledger entries. Fails if already voided or if a Pull-out Receipt has received any of it (void those first).")
     @ApiResponse(responseCode = "200", description = "Voided")
     @ApiResponse(responseCode = "400", description = "Already voided or already received")
     @ApiResponse(responseCode = "403", description = "Missing VOID_OUTLET_PULL_OUT permission or no access to company")
     @ApiResponse(responseCode = "409", description = "Insufficient stock (code INSUFFICIENT_STOCK)")
     @PostMapping("/{id}/void")
     @PreAuthorize("hasAuthority('VOID_OUTLET_PULL_OUT')")
-    public ResponseEntity<AppResponse<OutletPullOutResponse>> voidOutletPullOut(@Parameter(description = "Outlet pull out ID") @PathVariable Long id,
+    public ResponseEntity<AppResponse<OutletPullOutResponse>> voidOutletPullOut(@Parameter(description = "Outlet pull-out ID") @PathVariable Long id,
                                                              @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(AppResponse.of(toResponse(outletPullOutService.voidOutletPullOut(id, userDetails.getUsername()))));
     }

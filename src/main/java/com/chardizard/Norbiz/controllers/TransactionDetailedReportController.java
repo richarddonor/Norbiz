@@ -47,14 +47,14 @@ public class TransactionDetailedReportController {
         return report(DetailedReportType.INVENTORY_ADJUSTMENT, userDetails, filter, pageable);
     }
 
-    @Operation(summary = "Outlet Receive - Detailed", description = DESCRIPTION)
+    @Operation(summary = "Outlet Receipt - Detailed", description = DESCRIPTION)
     @ApiResponse(responseCode = "200", description = "Report rows returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_OUTLET_RECEIVE_DETAILED_REPORT permission")
-    @GetMapping("/outlet-receives")
-    @PreAuthorize("hasAuthority('VIEW_OUTLET_RECEIVE_DETAILED_REPORT')")
-    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletReceives(
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_OUTLET_RECEIPT_DETAILED_REPORT permission")
+    @GetMapping("/outlet-receipts")
+    @PreAuthorize("hasAuthority('VIEW_OUTLET_RECEIPT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletReceipts(
             @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.OUTLET_RECEIVE, userDetails, filter, pageable);
+        return report(DetailedReportType.OUTLET_RECEIPT, userDetails, filter, pageable);
     }
 
     @Operation(summary = "Purchase Order - Detailed", description = DESCRIPTION)
@@ -77,14 +77,14 @@ public class TransactionDetailedReportController {
         return report(DetailedReportType.PURCHASE_INVOICE, userDetails, filter, pageable);
     }
 
-    @Operation(summary = "Purchase Receive - Detailed", description = DESCRIPTION)
+    @Operation(summary = "Purchase Receipt - Detailed", description = DESCRIPTION)
     @ApiResponse(responseCode = "200", description = "Report rows returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_PURCHASE_RECEIVE_DETAILED_REPORT permission")
-    @GetMapping("/purchase-receives")
-    @PreAuthorize("hasAuthority('VIEW_PURCHASE_RECEIVE_DETAILED_REPORT')")
-    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> purchaseReceives(
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_PURCHASE_RECEIPT_DETAILED_REPORT permission")
+    @GetMapping("/purchase-receipts")
+    @PreAuthorize("hasAuthority('VIEW_PURCHASE_RECEIPT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> purchaseReceipts(
             @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.PURCHASE_RECEIVE, userDetails, filter, pageable);
+        return report(DetailedReportType.PURCHASE_RECEIPT, userDetails, filter, pageable);
     }
 
     @Operation(summary = "Delivery Receipt - Detailed", description = DESCRIPTION)
@@ -127,7 +127,7 @@ public class TransactionDetailedReportController {
         return report(DetailedReportType.STOCK_TRANSFER, userDetails, filter, pageable);
     }
 
-    @Operation(summary = "Outlet Pull Out - Detailed", description = DESCRIPTION)
+    @Operation(summary = "Outlet Pull-out - Detailed", description = DESCRIPTION)
     @ApiResponse(responseCode = "200", description = "Report rows returned")
     @ApiResponse(responseCode = "403", description = "Missing VIEW_OUTLET_PULL_OUT_DETAILED_REPORT permission")
     @GetMapping("/outlet-pull-outs")
@@ -137,14 +137,14 @@ public class TransactionDetailedReportController {
         return report(DetailedReportType.OUTLET_PULL_OUT, userDetails, filter, pageable);
     }
 
-    @Operation(summary = "Pull Out Receive - Detailed", description = DESCRIPTION)
+    @Operation(summary = "Pull-out Receipt - Detailed", description = DESCRIPTION)
     @ApiResponse(responseCode = "200", description = "Report rows returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_PULL_OUT_RECEIVE_DETAILED_REPORT permission")
-    @GetMapping("/pull-out-receives")
-    @PreAuthorize("hasAuthority('VIEW_PULL_OUT_RECEIVE_DETAILED_REPORT')")
-    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> pullOutReceives(
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_PULL_OUT_RECEIPT_DETAILED_REPORT permission")
+    @GetMapping("/pull-out-receipts")
+    @PreAuthorize("hasAuthority('VIEW_PULL_OUT_RECEIPT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> pullOutReceipts(
             @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.PULL_OUT_RECEIVE, userDetails, filter, pageable);
+        return report(DetailedReportType.PULL_OUT_RECEIPT, userDetails, filter, pageable);
     }
 
     @Operation(summary = "Assembly - Detailed", description = DESCRIPTION)

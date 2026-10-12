@@ -113,7 +113,7 @@ public class OutletDeliveryReturnService {
         ret.setCreatedAt(now);
         ret.setCreatedBy(username);
 
-        // Same allocation as OutletReceiveService: an ODR may carry more than one line for the same item,
+        // Same allocation as OutletReceiptService: an ODR may carry more than one line for the same item,
         // so the requested quantity is spread across that item's lines oldest-first (by id), splitting into
         // several return lines (sharing the request's lineNumber) when it spans more than one.
         Map<Long, List<OutletDeliveryReceiptLine>> linesByItemId = source.getLines().stream()

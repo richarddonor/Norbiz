@@ -13,14 +13,14 @@ BEGIN
         ('inventory_adjustments', 'INVENTORY_ADJUSTMENT'),
         ('purchase_orders',       'PURCHASE_ORDER'),
         ('purchase_invoices',     'PURCHASE_INVOICE'),
-        ('purchase_receives',     'PURCHASE_RECEIVE'),
+        ('purchase_receipts',     'PURCHASE_RECEIPT'),
         ('delivery_receipts',     'DELIVERY_RECEIPT'),
-        ('outlet_receives',       'OUTLET_RECEIVE'),
+        ('outlet_receipts',       'OUTLET_RECEIPT'),
         ('outlet_delivery_receipts', 'OUTLET_DELIVERY_RECEIPT'),
         ('outlet_delivery_returns',  'OUTLET_DELIVERY_RETURN'),
         ('stock_transfers',          'STOCK_TRANSFER'),
         ('outlet_pull_outs',         'OUTLET_PULL_OUT'),
-        ('pull_out_receives',        'PULL_OUT_RECEIVE'),
+        ('pull_out_receipts',        'PULL_OUT_RECEIPT'),
         ('assemblies',               'ASSEMBLY')
     ) AS v(table_name, transaction_type)
     LOOP

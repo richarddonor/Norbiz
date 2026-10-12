@@ -11,7 +11,7 @@ import java.util.List;
 
 // Not Auditable: immutable once posted (only create/view/void) — the inventory ledger is the audit trail.
 // Delivers items to a Customer out of the company's main warehouse; for an OUTLET customer the same
-// quantity is also posted as in-transit in the outlet's own warehouse, later received by Outlet Receive.
+// quantity is also posted as in-transit in the outlet's own warehouse, later received by Outlet Receipt.
 @Getter
 @Setter
 @Entity
@@ -83,7 +83,7 @@ public class DeliveryReceipt {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
-    // True once Outlet Receive(s) have received every line in full. Always false for a plain-customer DR.
+    // True once Outlet Receipt(s) have received every line in full. Always false for a plain-customer DR.
     @Column(nullable = false)
     private boolean loaded = false;
 

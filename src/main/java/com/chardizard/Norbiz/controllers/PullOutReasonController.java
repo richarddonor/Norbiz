@@ -29,7 +29,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-@Tag(name = "Pull Out Reasons", description = "Pull out reason management — requires VIEW_PULL_OUT_REASON / CREATE_PULL_OUT_REASON / UPDATE_PULL_OUT_REASON / DELETE_PULL_OUT_REASON permissions.")
+@Tag(name = "Pull-out Reasons", description = "Pull-out reason management — requires VIEW_PULL_OUT_REASON / CREATE_PULL_OUT_REASON / UPDATE_PULL_OUT_REASON / DELETE_PULL_OUT_REASON permissions.")
 @RestController
 @RequestMapping("/pull-out-reasons")
 @RequiredArgsConstructor
@@ -39,7 +39,7 @@ public class PullOutReasonController {
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
 
-    @Operation(summary = "List pull out reasons", description = "Returns pull out reasons belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
+    @Operation(summary = "List pull-out reasons", description = "Returns pull-out reasons belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
     @ApiResponse(responseCode = "200", description = "List returned")
     @ApiResponse(responseCode = "403", description = "Missing VIEW_PULL_OUT_REASON permission")
     @GetMapping
@@ -68,18 +68,18 @@ public class PullOutReasonController {
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(page)));
     }
 
-    @Operation(summary = "Get pull out reason by ID")
+    @Operation(summary = "Get pull-out reason by ID")
     @ApiResponse(responseCode = "200", description = "Returned")
     @ApiResponse(responseCode = "403", description = "Missing VIEW_PULL_OUT_REASON permission or no access to company")
     @ApiResponse(responseCode = "404", description = "Not found")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('VIEW_PULL_OUT_REASON')")
-    public ResponseEntity<AppResponse<PullOutReasonResponse>> getById(@Parameter(description = "pull out reason ID") @PathVariable Long id,
+    public ResponseEntity<AppResponse<PullOutReasonResponse>> getById(@Parameter(description = "pull-out reason ID") @PathVariable Long id,
                                                              @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(AppResponse.of(toResponse(pullOutReasonService.findById(id, userDetails.getUsername()))));
     }
 
-    @Operation(summary = "Create pull out reason", description = "Name must be unique within the company.")
+    @Operation(summary = "Create pull-out reason", description = "Name must be unique within the company.")
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiResponse(responseCode = "400", description = "Validation failed or duplicate within the company")
     @ApiResponse(responseCode = "403", description = "Missing CREATE_PULL_OUT_REASON permission")
@@ -91,27 +91,27 @@ public class PullOutReasonController {
                 .body(AppResponse.of(toResponse(pullOutReasonService.create(request, userDetails.getUsername()))));
     }
 
-    @Operation(summary = "Update pull out reason")
+    @Operation(summary = "Update pull-out reason")
     @ApiResponse(responseCode = "200", description = "Updated")
     @ApiResponse(responseCode = "400", description = "Validation failed or duplicate within the company")
     @ApiResponse(responseCode = "403", description = "Missing UPDATE_PULL_OUT_REASON permission")
     @ApiResponse(responseCode = "404", description = "Not found")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('UPDATE_PULL_OUT_REASON')")
-    public ResponseEntity<AppResponse<PullOutReasonResponse>> update(@Parameter(description = "pull out reason ID") @PathVariable Long id,
+    public ResponseEntity<AppResponse<PullOutReasonResponse>> update(@Parameter(description = "pull-out reason ID") @PathVariable Long id,
                                                             @Valid @RequestBody PullOutReasonRequest request,
                                                             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(AppResponse.of(toResponse(pullOutReasonService.update(id, request, userDetails.getUsername()))));
     }
 
-    @Operation(summary = "Delete pull out reason", description = "Rejected while any Outlet Pull Out uses it; deactivate it instead.")
+    @Operation(summary = "Delete pull-out reason", description = "Rejected while any Outlet Pull-out uses it; deactivate it instead.")
     @ApiResponse(responseCode = "204", description = "Deleted")
     @ApiResponse(responseCode = "403", description = "Missing DELETE_PULL_OUT_REASON permission")
     @ApiResponse(responseCode = "404", description = "Not found")
     @ApiResponse(responseCode = "409", description = "Still used by other records (code ENTITY_IN_USE)")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('DELETE_PULL_OUT_REASON')")
-    public ResponseEntity<Void> delete(@Parameter(description = "pull out reason ID") @PathVariable Long id,
+    public ResponseEntity<Void> delete(@Parameter(description = "pull-out reason ID") @PathVariable Long id,
                                        @AuthenticationPrincipal UserDetails userDetails) {
         pullOutReasonService.delete(id, userDetails.getUsername());
         return ResponseEntity.noContent().build();

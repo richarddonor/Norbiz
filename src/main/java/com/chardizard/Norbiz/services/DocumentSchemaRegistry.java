@@ -122,9 +122,9 @@ public class DocumentSchemaRegistry {
                                             new DefaultDocumentLayout.Column("amount", 120))))
                     )
             )),
-            Map.entry("PURCHASE_RECEIVE", new Entry(
+            Map.entry("PURCHASE_RECEIPT", new Entry(
                     new DocumentSchemaResponse(
-                            "PURCHASE_RECEIVE",
+                            "PURCHASE_RECEIPT",
                             List.of(
                                     new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
                                     new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
@@ -144,7 +144,7 @@ public class DocumentSchemaRegistry {
                             )
                     ),
                     new DefaultDocumentLayout(
-                            "Purchase Receive", "receiptDate", "Supplier:", "supplierName", "remarks",
+                            "Purchase Receipt", "receiptDate", "Supplier:", "supplierName", "remarks",
                             List.of(new DefaultDocumentLayout.Table("lines", "Line Items", 1, List.of(
                                     new DefaultDocumentLayout.Column("itemCode", 130),
                                     new DefaultDocumentLayout.Column("itemName", 410),
@@ -187,9 +187,9 @@ public class DocumentSchemaRegistry {
                                     new DefaultDocumentLayout.Column("amount", 120))))
                     )
             )),
-            Map.entry("OUTLET_RECEIVE", new Entry(
+            Map.entry("OUTLET_RECEIPT", new Entry(
                     new DocumentSchemaResponse(
-                            "OUTLET_RECEIVE",
+                            "OUTLET_RECEIPT",
                             List.of(
                                     new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
                                     new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
@@ -210,7 +210,7 @@ public class DocumentSchemaRegistry {
                             )
                     ),
                     new DefaultDocumentLayout(
-                            "Outlet Receive", "receiptDate", "Outlet:", "customerName", "remarks",
+                            "Outlet Receipt", "receiptDate", "Outlet:", "customerName", "remarks",
                             List.of(new DefaultDocumentLayout.Table("lines", "Line Items", 1, List.of(
                                     new DefaultDocumentLayout.Column("itemCode", 130),
                                     new DefaultDocumentLayout.Column("itemName", 410),
@@ -335,7 +335,7 @@ public class DocumentSchemaRegistry {
                                     new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
                                     new DocumentFieldSchema("destinationWarehouseName", "Destination Warehouse", "string"),
                                     new DocumentFieldSchema("pullOutReasonName", "Reason", "string"),
-                                    new DocumentFieldSchema("pullOutDate", "Pull Out Date", "date"),
+                                    new DocumentFieldSchema("pullOutDate", "Pull-out Date", "date"),
                                     new DocumentFieldSchema("totalAmount", "Total Amount", "currency"),
                                     new DocumentFieldSchema("remarks", "Remarks", "string"),
                                     new DocumentFieldSchema("createdBy", "Posted By", "user")
@@ -351,7 +351,7 @@ public class DocumentSchemaRegistry {
                             )
                     ),
                     new DefaultDocumentLayout(
-                            "Outlet Pull Out", "pullOutDate", "Outlet:", "customerName", "remarks",
+                            "Outlet Pull-out", "pullOutDate", "Outlet:", "customerName", "remarks",
                             List.of(new DefaultDocumentLayout.Table("lines", "Line Items", 1, List.of(
                                     new DefaultDocumentLayout.Column("itemCode", 120),
                                     new DefaultDocumentLayout.Column("itemName", 300),
@@ -360,16 +360,16 @@ public class DocumentSchemaRegistry {
                                     new DefaultDocumentLayout.Column("amount", 120))))
                     )
             )),
-            Map.entry("PULL_OUT_RECEIVE", new Entry(
+            Map.entry("PULL_OUT_RECEIPT", new Entry(
                     new DocumentSchemaResponse(
-                            "PULL_OUT_RECEIVE",
+                            "PULL_OUT_RECEIPT",
                             List.of(
                                     new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
                                     new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
                                     new DocumentFieldSchema("companyName", "Company", "string"),
                                     new DocumentFieldSchema("customerName", "Outlet", "string"),
                                     new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
-                                    new DocumentFieldSchema("outletPullOutReferenceNumber", "Outlet Pull Out #", "string"),
+                                    new DocumentFieldSchema("outletPullOutReferenceNumber", "Outlet Pull-out #", "string"),
                                     new DocumentFieldSchema("receiptDate", "Receipt Date", "date"),
                                     new DocumentFieldSchema("remarks", "Remarks", "string"),
                                     new DocumentFieldSchema("createdBy", "Posted By", "user")
@@ -383,7 +383,7 @@ public class DocumentSchemaRegistry {
                             )
                     ),
                     new DefaultDocumentLayout(
-                            "Pull Out Receive", "receiptDate", "Outlet:", "customerName", "remarks",
+                            "Pull-out Receipt", "receiptDate", "Outlet:", "customerName", "remarks",
                             List.of(new DefaultDocumentLayout.Table("lines", "Line Items", 1, List.of(
                                     new DefaultDocumentLayout.Column("itemCode", 130),
                                     new DefaultDocumentLayout.Column("itemName", 410),

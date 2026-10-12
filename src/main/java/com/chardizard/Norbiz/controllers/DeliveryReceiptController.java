@@ -33,7 +33,7 @@ import java.util.Map;
 
 @Tag(name = "Delivery Receipts", description = "Delivery receipt transactions — requires VIEW_DELIVERY_RECEIPT / CREATE_DELIVERY_RECEIPT / VOID_DELIVERY_RECEIPT " +
         "permissions. Receipts are immutable once posted: only create, view, and void are supported. Stock always leaves the company's main warehouse; " +
-        "for an OUTLET customer the same quantity is posted as in-transit in the outlet's own warehouse, to be received by an Outlet Receive.")
+        "for an OUTLET customer the same quantity is posted as in-transit in the outlet's own warehouse, to be received by an Outlet Receipt.")
 @RestController
 @RequestMapping("/delivery-receipts")
 @RequiredArgsConstructor
@@ -95,7 +95,7 @@ public class DeliveryReceiptController {
     }
 
     @Operation(summary = "Void delivery receipt", description = "Cancels a receipt by reversing every ledger entry it posted. " +
-            "Fails if already voided or if an Outlet Receive has received any of it (void those first).")
+            "Fails if already voided or if an Outlet Receipt has received any of it (void those first).")
     @ApiResponse(responseCode = "200", description = "Receipt voided")
     @ApiResponse(responseCode = "400", description = "Already voided, or already received by an outlet")
     @ApiResponse(responseCode = "403", description = "Missing VOID_DELIVERY_RECEIPT permission or no access to company")

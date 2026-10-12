@@ -46,7 +46,7 @@ public class Customer extends Auditable {
     private boolean active = true;
 
     // OUTLET only: the outlet's own warehouse, auto-created by CustomerService (own identity id, not the
-    // customer id). Delivery Receipts post in-transit stock here; Outlet Receives move it to on-hand.
+    // customer id). Delivery Receipts post in-transit stock here; Outlet Receipts move it to on-hand.
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "warehouse_id",
         foreignKey = @ForeignKey(name = "CUSTOMERS_WAREHOUSE_ID_FK"))

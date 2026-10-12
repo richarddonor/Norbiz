@@ -49,9 +49,9 @@ Data in Norbiz is divided into two main categories: Master and Transactional (se
 - Each company has at most one **main** warehouse (`Warehouse.main`). Delivery Receipts always deduct stock from it.
 - Set it with `main: true` on warehouse create/update. This clears the flag on the company's previous main warehouse (through JPA, so cache invalidation fires). An inactive or outlet warehouse can't be main. The partial unique index `WAREHOUSES_COMPANY_MAIN_UQ` (in `db/init.sql`) backstops "one per company".
 
-## Pull Out Reasons
+## Pull-out Reasons
 - Why stock was pulled out of an outlet (e.g. damaged, slow-moving). Company-scoped, `Auditable`, name unique per company, `active` flag.
-- Every Outlet Pull Out must pick an active reason. A reason used by any pull out can't be deleted (`ENTITY_IN_USE`); deactivate it instead.
+- Every Outlet Pull-out must pick an active reason. A reason used by any pull-out can't be deleted (`ENTITY_IN_USE`); deactivate it instead.
 - Endpoints `/pull-out-reasons` (VIEW_/CREATE_/UPDATE_/DELETE_PULL_OUT_REASON), dropdown `/lookups/pull-out-reasons`.
 
 ## Bills of Materials

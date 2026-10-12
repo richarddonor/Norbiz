@@ -9,15 +9,14 @@ import java.util.List;
 
 @Getter
 @Setter
-public class PullOutReceiveResponse {
+public class OutletReceiptResponse {
     private Long id;
     private Long companyId;
     private String companyName;
-    private Long outletPullOutId;
-    private String outletPullOutReferenceNumber;
+    private Long deliveryReceiptId;
+    private String deliveryReceiptReferenceNumber;
     private Long customerId;
     private String customerName;
-    // The main warehouse receiving the stock.
     private Long warehouseId;
     private String warehouseName;
     private String referenceNumber;
@@ -31,5 +30,5 @@ public class PullOutReceiveResponse {
     private String voidedBy;
     private boolean loaded;
     private TransactionOrigin origin;
-    private List<PullOutReceiveLineResponse> lines;
+    private List<OutletReceiptLineResponse> lines;
 }

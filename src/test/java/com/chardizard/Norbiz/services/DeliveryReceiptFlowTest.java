@@ -24,14 +24,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// Delivery Receipt + Outlet Receive ledger effects. Runs against the configured Postgres; every test rolls back.
+// Delivery Receipt + Outlet Receipt ledger effects. Runs against the configured Postgres; every test rolls back.
 // TransactionReferenceService is mocked for the same reason as in TransactionEventServiceTest.
 @SpringBootTest
 @Transactional
 class DeliveryReceiptFlowTest {
 
     @Autowired DeliveryReceiptService deliveryReceiptService;
-    @Autowired OutletReceiveService outletReceiveService;
+    @Autowired OutletReceiptService outletReceiptService;
     @Autowired CustomerService customerService;
     @Autowired CompanyRepository companyRepository;
     @Autowired WarehouseRepository warehouseRepository;
@@ -116,7 +116,7 @@ class DeliveryReceiptFlowTest {
     @Test
     void transactionsPostedThroughTheApiAreNative() {
         DeliveryReceipt dr = deliveryReceiptService.create(drRequest(outlet, "10"), user);
-        OutletReceive or = outletReceiveService.create(orRequest(dr, "10"), user);
+        OutletReceipt or = outletReceiptService.create(orRequest(dr, "10"), user);
 
         assertThat(dr.getOrigin()).isEqualTo(TransactionOrigin.NATIVE);
         assertThat(or.getOrigin()).isEqualTo(TransactionOrigin.NATIVE);
@@ -162,45 +162,45 @@ class DeliveryReceiptFlowTest {
     }
 
     @Test
-    void partialThenFullOutletReceiveLoadsTheDeliveryReceipt() {
+    void partialThenFullOutletReceiptLoadsTheDeliveryReceipt() {
         DeliveryReceipt dr = deliveryReceiptService.create(drRequest(outlet, "10"), user);
 
-        outletReceiveService.create(orRequest(dr, "4"), user);
+        outletReceiptService.create(orRequest(dr, "4"), user);
         assertThat(dr.isLoaded()).isFalse();
         assertThat(dr.getLines().getFirst().getQuantityLoaded()).isEqualByComparingTo("4");
         assertBalance(outlet.getWarehouse(), "4", "6");
 
-        outletReceiveService.create(orRequest(dr, "6"), user);
+        outletReceiptService.create(orRequest(dr, "6"), user);
         assertThat(dr.isLoaded()).isTrue();
         assertBalance(outlet.getWarehouse(), "10", "0");
 
-        assertThatThrownBy(() -> outletReceiveService.create(orRequest(dr, "1"), user))
+        assertThatThrownBy(() -> outletReceiptService.create(orRequest(dr, "1"), user))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already fully received");
     }
 
     @Test
     void overReceiveIsRejected() {
         DeliveryReceipt dr = deliveryReceiptService.create(drRequest(outlet, "5"), user);
-        assertThatThrownBy(() -> outletReceiveService.create(orRequest(dr, "6"), user))
+        assertThatThrownBy(() -> outletReceiptService.create(orRequest(dr, "6"), user))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("exceeds outstanding");
     }
 
     @Test
     void nonOutletDeliveryCannotBeReceived() {
         DeliveryReceipt dr = deliveryReceiptService.create(drRequest(customer, "5"), user);
-        assertThatThrownBy(() -> outletReceiveService.create(orRequest(dr, "1"), user))
+        assertThatThrownBy(() -> outletReceiptService.create(orRequest(dr, "1"), user))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("non-outlet");
     }
 
     @Test
     void receivedDeliveryCannotBeVoidedUntilTheReceiveIsVoided() {
         DeliveryReceipt dr = deliveryReceiptService.create(drRequest(outlet, "10"), user);
-        OutletReceive or = outletReceiveService.create(orRequest(dr, "10"), user);
+        OutletReceipt or = outletReceiptService.create(orRequest(dr, "10"), user);
 
         assertThatThrownBy(() -> deliveryReceiptService.voidDeliveryReceipt(dr.getId(), user))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("received by an outlet");
 
-        outletReceiveService.voidOutletReceive(or.getId(), user);
+        outletReceiptService.voidOutletReceipt(or.getId(), user);
         assertThat(dr.isLoaded()).isFalse();
         assertThat(dr.getLines().getFirst().getQuantityLoaded()).isEqualByComparingTo("0");
         assertBalance(outlet.getWarehouse(), "0", "10");
@@ -211,17 +211,17 @@ class DeliveryReceiptFlowTest {
     }
 
     @Test
-    void pendingOutletReceivesWidgetCountsOnlyOutstandingOutletDeliveries() {
+    void pendingOutletReceiptsWidgetCountsOnlyOutstandingOutletDeliveries() {
         DeliveryReceipt partial = deliveryReceiptService.create(drRequest(outlet, "10"), user);   // 6 left after receiving 4
-        outletReceiveService.create(orRequest(partial, "4"), user);
+        outletReceiptService.create(orRequest(partial, "4"), user);
         DeliveryReceipt full = deliveryReceiptService.create(drRequest(outlet, "3"), user);       // fully received: excluded
-        outletReceiveService.create(orRequest(full, "3"), user);
+        outletReceiptService.create(orRequest(full, "3"), user);
         DeliveryReceipt voided = deliveryReceiptService.create(drRequest(outlet, "2"), user);     // voided: excluded
         deliveryReceiptService.voidDeliveryReceipt(voided.getId(), user);
         deliveryReceiptService.create(drRequest(customer, "5"), user);                            // plain customer: excluded
         deliveryReceiptLineRepository.flush();
 
-        BacklogResponse widget = dashboardService.pendingOutletReceives(user, company.getId(), java.time.LocalDate.parse("2026-10-14"));
+        BacklogResponse widget = dashboardService.pendingOutletReceipts(user, company.getId(), java.time.LocalDate.parse("2026-10-14"));
 
         assertThat(widget.documentCount()).isEqualTo(1);
         assertThat(widget.counterpartyCount()).isEqualTo(1);
@@ -238,7 +238,7 @@ class DeliveryReceiptFlowTest {
     @Test
     void stockInTransitWidgetSplitsTransitByWarehouseKind() {
         DeliveryReceipt dr = deliveryReceiptService.create(drRequest(outlet, "10"), user);
-        outletReceiveService.create(orRequest(dr, "4"), user);
+        outletReceiptService.create(orRequest(dr, "4"), user);
 
         StockInTransitResponse widget = dashboardService.stockInTransit(user, company.getId());
 
@@ -254,11 +254,11 @@ class DeliveryReceiptFlowTest {
     }
 
     @Test
-    void pendingOutletReceivesWidgetRejectsOtherCompanies() {
+    void pendingOutletReceiptsWidgetRejectsOtherCompanies() {
         Company other = new Company();
         other.setName("Other DR Co " + suffix);
         Long otherId = companyRepository.save(other).getId();
-        assertThatThrownBy(() -> dashboardService.pendingOutletReceives(user, otherId, null))
+        assertThatThrownBy(() -> dashboardService.pendingOutletReceipts(user, otherId, null))
                 .isInstanceOf(SecurityException.class);
     }
 
@@ -350,11 +350,11 @@ class DeliveryReceiptFlowTest {
         return req;
     }
 
-    private OutletReceiveRequest orRequest(DeliveryReceipt dr, String quantity) {
-        OutletReceiveLineRequest line = new OutletReceiveLineRequest();
+    private OutletReceiptRequest orRequest(DeliveryReceipt dr, String quantity) {
+        OutletReceiptLineRequest line = new OutletReceiptLineRequest();
         line.setItemId(item.getId());
         line.setQuantity(new BigDecimal(quantity));
-        OutletReceiveRequest req = new OutletReceiveRequest();
+        OutletReceiptRequest req = new OutletReceiptRequest();
         req.setCompanyId(company.getId());
         req.setDeliveryReceiptId(dr.getId());
         req.setReceiptDate("2026-10-05");

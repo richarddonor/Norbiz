@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 
 @Getter
 @Setter
-public class PullOutReceiveLineResponse {
+public class PullOutReceiptLineResponse {
     private Long id;
     private Long itemId;
     private String itemCode;

@@ -89,7 +89,7 @@ public class LookupService {
         return toLookup(s);
     }
 
-    // type narrows to CUSTOMER or OUTLET (e.g. the Outlet Receive form lists outlets only); null = both.
+    // type narrows to CUSTOMER or OUTLET (e.g. the Outlet Receipt form lists outlets only); null = both.
     public Page<CustomerLookupResponse> customers(String username, Long companyId, String q, CustomerType type, boolean activeOnly, Pageable pageable) {
         return search(CacheRegion.LOOKUP_CUSTOMER, params("q", q, "type", type, "activeOnly", activeOnly), CustomerLookupResponse.class,
                 customerRepository, username, companyId, Customer.class,
@@ -247,7 +247,7 @@ public class LookupService {
 
     // ---- source transactions ----
 
-    // openOnly = not voided and not fully loaded, i.e. still a valid source for an invoice/receive.
+    // openOnly = not voided and not fully loaded, i.e. still a valid source for an invoice/receipt.
     // The consuming service still enforces its own finer rules (e.g. a partially received PO can't
     // be invoiced) — this only trims the obvious non-candidates from the dropdown.
     public Page<TransactionLookupResponse> purchaseOrders(String username, Long companyId, String q, Long supplierId,
@@ -274,7 +274,7 @@ public class LookupService {
     }
 
     // openOnly additionally restricts to Direct-mode invoices: a PO-based invoice has nothing of its
-    // own to receive (see PurchaseReceiveService), so it's never a valid Receive source.
+    // own to receive (see PurchaseReceiptService), so it's never a valid Receive source.
     public Page<TransactionLookupResponse> purchaseInvoices(String username, Long companyId, String q, Long supplierId,
                                                             Long warehouseId, boolean openOnly, boolean canViewCostPrice,
                                                             Pageable pageable) {
@@ -300,7 +300,7 @@ public class LookupService {
         return toLookup(pi, canViewCostPrice);
     }
 
-    // openOnly = outlet DRs that are not voided and not fully received, i.e. still a valid Outlet Receive source.
+    // openOnly = outlet DRs that are not voided and not fully received, i.e. still a valid Outlet Receipt source.
     public Page<TransactionLookupResponse> deliveryReceipts(String username, Long companyId, String q, Long customerId,
                                                             boolean openOnly, Pageable pageable) {
         Specification<DeliveryReceipt> outletOnly = openOnly ? (root, query, cb) -> cb.isNotNull(root.get("destinationWarehouse")) : null;
@@ -366,7 +366,7 @@ public class LookupService {
         return toLookup(st);
     }
 
-    // openOnly = pull outs that are neither voided nor fully received, i.e. still a valid Pull Out Receive source.
+    // openOnly = pull-outs that are neither voided nor fully received, i.e. still a valid Pull-out Receipt source.
     public Page<TransactionLookupResponse> outletPullOuts(String username, Long companyId, String q, Long customerId,
                                                           boolean openOnly, Pageable pageable) {
         return search(CacheRegion.LOOKUP_OUTLET_PULL_OUT,
@@ -382,7 +382,7 @@ public class LookupService {
 
     public TransactionLookupResponse outletPullOut(Long id, String username) {
         OutletPullOut opo = outletPullOutRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Outlet pull out not found: " + id));
+                .orElseThrow(() -> new IllegalArgumentException("Outlet pull-out not found: " + id));
         assertCompanyAccess(username, opo.getCompany().getId());
         return toLookup(opo);
     }
@@ -398,7 +398,7 @@ public class LookupService {
 
     public LookupResponse pullOutReason(Long id, String username) {
         PullOutReason r = pullOutReasonRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Pull out reason not found: " + id));
+                .orElseThrow(() -> new IllegalArgumentException("Pull-out reason not found: " + id));
         assertCompanyAccess(username, r.getCompany().getId());
         return toLookup(r);
     }
@@ -525,7 +525,7 @@ public class LookupService {
                 pi.isVoided(), pi.isLoaded(), lines);
     }
 
-    // warehouse = the outlet warehouse (where the Outlet Receive posts); outlet DRs are the only receivable ones.
+    // warehouse = the outlet warehouse (where the Outlet Receipt posts); outlet DRs are the only receivable ones.
     private TransactionLookupResponse toLookup(DeliveryReceipt dr) {
         List<TransactionLookupResponse.Line> lines = dr.getLines().stream()
                 .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
@@ -562,7 +562,7 @@ public class LookupService {
                 null, null, null, st.isVoided(), st.isLoaded(), lines);
     }
 
-    // warehouse = the main warehouse the pull out is in transit to (where the Pull Out Receive posts).
+    // warehouse = the main warehouse the pull-out is in transit to (where the Pull-out Receipt posts).
     private TransactionLookupResponse toLookup(OutletPullOut opo) {
         List<TransactionLookupResponse.Line> lines = opo.getLines().stream()
                 .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
