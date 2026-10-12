@@ -49,19 +49,57 @@ the images don't contain it.
 - `deploy.sh` refuses to release (before stopping anything) if either file is missing, sets the
   directory and key to owner-only, and reloads nginx after the stack is up.
 
+### Issuing the certificate (internal CA)
+
+The server is on a private IP, so no public CA can issue for it. Instead, an internal CA signs the server
+certificate and each client machine trusts that CA once. Run this on your machine, not the server,
+from `~/norbiz-pki/` — never inside the repo: anything under `src/main/resources` is packaged into the WAR.
+
+1. Create the CA (once). `ca.key` signs every future certificate — keep it off the server and out of git:
+
+   ```bash
+   openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+     -keyout ca.key -out ca.crt -subj "/CN=Norbiz Internal CA"
+   ```
+
+2. Create the server key and a signing request:
+
+   ```bash
+   openssl req -newkey rsa:2048 -nodes -keyout tls.key -out tls.csr -subj "/CN=10.16.32.64"
+   ```
+
+3. Sign it with the CA. The `subjectAltName` must match `PUBLIC_HOST` — browsers ignore the CN. Use
+   `DNS:<name>` instead of `IP:<addr>` for a hostname:
+
+   ```bash
+   printf "subjectAltName=IP:10.16.32.64\nextendedKeyUsage=serverAuth\n" > san.ext
+   openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+     -days 825 -sha256 -extfile san.ext -out tls.crt
+   openssl x509 -in tls.crt -noout -text | grep -A1 "Subject Alternative Name"   # verify
+   ```
+
+   Keep the validity at 825 days or less; macOS and iOS reject longer-lived server certificates.
+
+4. Trust `ca.crt` as a root on every client machine (macOS: Keychain Access → System → import, then
+   set "Always Trust"; Windows: `certutil -addstore Root ca.crt`). Until then browsers warn.
+
+To renew, or after `PUBLIC_HOST` changes, repeat steps 2–3 with the same CA — clients need no change.
+
+### Installing
+
 Install or replace the certificate from your machine, then release:
 
 ```bash
+cd ~/norbiz-pki
 scp tls.crt tls.key vboxuser@10.16.32.64:~/norbiz/certs/
 ssh vboxuser@10.16.32.64 'SKIP_FETCH=1 ~/norbiz/deploy.sh'
 ```
 
-From a PKCS12 keystore (`keytool`'s default format):
-`openssl pkcs12 -in keystore.p12 -nokeys -out tls.crt` and
-`openssl pkcs12 -in keystore.p12 -nocerts -nodes -out tls.key`.
+Verify the server presents it and it chains to the CA (want `Verify return code: 0 (ok)`):
 
-The certificate must be issued for `PUBLIC_HOST`; a self-signed one makes browsers warn until it is
-trusted on each client machine.
+```bash
+openssl s_client -connect 10.16.32.64:443 -CAfile ~/norbiz-pki/ca.crt </dev/null 2>/dev/null | grep "Verify return code"
+```
 
 ## First-time server setup
 
