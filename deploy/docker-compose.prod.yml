@@ -41,7 +41,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/norbiz
       SPRING_DATASOURCE_USERNAME: ${DB_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
       SERVER_PORT: 8080
       # nginx forwards Host/X-Forwarded-*, so browser calls through /api are seen as same-origin.
       SERVER_FORWARD_HEADERS_STRATEGY: framework

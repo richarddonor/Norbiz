@@ -5,7 +5,7 @@ All runtime config is environment-driven via `src/main/resources/application.pro
 | Property | Default | Purpose |
 |---|---|---|
 | `spring.datasource.url` | `jdbc:postgresql://localhost:5432/norbiz` | DB connection |
-| `spring.jpa.hibernate.ddl-auto` | `update` | Schema management |
+| `spring.jpa.hibernate.ddl-auto` | `update` | Schema management. Prod sets `validate` — schema changes there only come from `db/migrations/` (see `docs/DEPLOYMENT.md`) |
 | `jwt.secret` | (required) | HMAC-SHA256 key, Base64-encoded |
 | `jwt.expiration` | `86400000` | JWT TTL in ms (24 h) |
 | `cors.allowed-origins` | `http://localhost:5173` | Frontend origin |

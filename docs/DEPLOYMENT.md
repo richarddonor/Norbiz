@@ -156,7 +156,14 @@ What `deploy.sh` does, in order:
 ## Database changes
 
 Write them as `db/migrations/NNN_description.sql` — rules in `db/migrations/README.md` (idempotent,
-also folded into `init.sql`, no `BEGIN`/`COMMIT`). Check state on the server:
+also folded into `init.sql`, no `BEGIN`/`COMMIT`). The prod app runs with `ddl-auto=validate`, so every
+entity change needs a migration: a missing table or column stops the new app at startup (step 6 above
+prints the Hibernate error).
+
+When pointing a local backend at the prod database, start it with `SPRING_JPA_HIBERNATE_DDL_AUTO=validate`
+so it can't change the prod schema. Migrations are written to cope if it ran with `update` anyway
+(`db/migrations/README.md`), but a branch that doesn't match prod then fails at startup instead of
+creating tables there. Check state on the server:
 
 ```bash
 ssh vboxuser@10.16.32.64 '~/norbiz/src/Norbiz/deploy/migrate.sh --status'

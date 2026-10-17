@@ -13,11 +13,36 @@
 -- init.sql never has.
 --
 -- Also safe when the new version already started once against this database before the migration
--- (Hibernate ddl-auto then created empty new-name tables, DataInitializer the new permission codes and
+-- (a release that ran the app first, or a local backend pointed at prod — Hibernate ddl-auto then
+-- created empty new-name tables, DataInitializer the new permission codes and
 -- DefaultDocumentTemplateProvisioner new-type default templates): empty new-name tables are dropped,
 -- duplicate permissions are merged (role assignments kept), and the auto-provisioned templates are
 -- dropped in favour of the company's existing ones. A new-name table that already holds rows stops the
 -- migration — those transactions would need merging by hand.
+--
+-- Also drops the enum CHECK constraints Hibernate's ddl-auto added when it created a table
+-- (CHECK (col IN (<enum values at that time>)), never updated afterwards): they reject the new type
+-- names. init.sql declares none.
+
+-- ---- Hibernate enum CHECK constraints ------------------------------------------------------------
+
+-- Postgres names an inline column CHECK <table>_<column>_check; Hibernate's enum ones render as
+-- CHECK (((col)::text = ANY ((ARRAY['A'::character varying, ...])::text[]))) — or, once the table
+-- went through pg_dump/restore, CHECK (((col)::text = ANY (ARRAY[('A'::character varying)::text, ...]))) —
+-- and for a one-value enum (ItemTag, EmployeeTag) CHECK (((col)::text = 'A'::text)).
+DO $$
+DECLARE
+    r record;
+BEGIN
+    FOR r IN SELECT con.conrelid::regclass AS tbl, con.conname FROM pg_constraint con
+             WHERE con.contype = 'c' AND con.connamespace = current_schema()::regnamespace
+               AND con.conname LIKE '%\_check'
+               AND pg_get_constraintdef(con.oid)
+                   ~ '^CHECK \(\(\(\w+\)::text = (ANY \(+ARRAY\[|''[^'']*''::text\)\)$)'
+    LOOP
+        EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', r.tbl, r.conname);
+    END LOOP;
+END $$;
 
 -- ---- schema --------------------------------------------------------------------------------------
 
@@ -116,6 +141,21 @@ WHERE pg_temp.receipt_permission(name) <> name;
 UPDATE inventory_movements
 SET source_type = regexp_replace(source_type, '^(PURCHASE|OUTLET|PULL_OUT)_RECEIVE(_|$)', '\1_RECEIPT\2')
 WHERE source_type ~ '^(PURCHASE|OUTLET|PULL_OUT)_RECEIVE(_|$)';
+
+-- Both names have a sequence row (the new version already numbered a document): keep the higher
+-- number under the new name so no reference number is reused.
+UPDATE transaction_sequences n
+SET last_number = GREATEST(n.last_number, o.last_number)
+FROM transaction_sequences o
+WHERE n.transaction_type ~ '^(PURCHASE|OUTLET|PULL_OUT)_RECEIPT$'
+  AND o.company_id = n.company_id
+  AND o.transaction_type = regexp_replace(n.transaction_type, '_RECEIPT$', '_RECEIVE');
+
+DELETE FROM transaction_sequences o
+USING transaction_sequences n
+WHERE o.transaction_type ~ '^(PURCHASE|OUTLET|PULL_OUT)_RECEIVE$'
+  AND n.company_id = o.company_id
+  AND n.transaction_type = regexp_replace(o.transaction_type, '_RECEIVE$', '_RECEIPT');
 
 UPDATE transaction_sequences
 SET transaction_type = regexp_replace(transaction_type, '^(PURCHASE|OUTLET|PULL_OUT)_RECEIVE$', '\1_RECEIPT')
