@@ -11,13 +11,37 @@
 --
 -- Idempotent: every step matches only the old names, which a database built from the current
 -- init.sql never has.
+--
+-- Also safe when the new version already started once against this database before the migration
+-- (Hibernate ddl-auto then created empty new-name tables, DataInitializer the new permission codes and
+-- DefaultDocumentTemplateProvisioner new-type default templates): empty new-name tables are dropped,
+-- duplicate permissions are merged (role assignments kept), and the auto-provisioned templates are
+-- dropped in favour of the company's existing ones. A new-name table that already holds rows stops the
+-- migration — those transactions would need merging by hand.
 
 -- ---- schema --------------------------------------------------------------------------------------
 
 DO $$
 DECLARE
-    r record;
+    r     record;
+    found boolean;
 BEGIN
+    -- New-name tables already created by Hibernate (app started before this migration): drop them if
+    -- empty, so the rename below can take their place.
+    FOR r IN SELECT c.relname AS old_name, regexp_replace(c.relname, '_receive(s?)', '_receipt\1') AS new_name
+             FROM pg_class c
+             WHERE c.relnamespace = current_schema()::regnamespace AND c.relkind = 'r'
+               AND c.relname ~ '^(purchase|outlet|pull_out)_receive(s|_lines)$'
+               AND to_regclass(regexp_replace(c.relname, '_receive(s?)', '_receipt\1')) IS NOT NULL
+    LOOP
+        EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I)', r.new_name) INTO found;
+        IF found THEN
+            RAISE EXCEPTION 'Both % and % exist and % has rows; merge them by hand before renaming',
+                r.old_name, r.new_name, r.new_name;
+        END IF;
+        EXECUTE format('DROP TABLE %I CASCADE', r.new_name);
+    END LOOP;
+
     -- Tables: purchase_receives -> purchase_receipts, purchase_receive_lines -> purchase_receipt_lines, ...
     FOR r IN SELECT c.relname FROM pg_class c
              WHERE c.relnamespace = current_schema()::regnamespace AND c.relkind = 'r'
@@ -60,18 +84,31 @@ END $$;
 
 -- ---- permissions ---------------------------------------------------------------------------------
 
-UPDATE permissions p SET name = v.new_name
-FROM (VALUES ('VIEW_DASHBOARD_PENDING_OUTLET_RECEIVES',    'VIEW_DASHBOARD_PENDING_OUTLET_RECEIPTS'),
-             ('VIEW_DASHBOARD_PULL_OUTS_AWAITING_RECEIVE', 'VIEW_DASHBOARD_PULL_OUTS_AWAITING_RECEIPT')) v(old_name, new_name)
-WHERE p.name = v.old_name
-  AND NOT EXISTS (SELECT 1 FROM permissions x WHERE x.name = v.new_name);
+CREATE FUNCTION pg_temp.receipt_permission(p_name text) RETURNS text LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE p_name
+        WHEN 'VIEW_DASHBOARD_PENDING_OUTLET_RECEIVES'    THEN 'VIEW_DASHBOARD_PENDING_OUTLET_RECEIPTS'
+        WHEN 'VIEW_DASHBOARD_PULL_OUTS_AWAITING_RECEIVE' THEN 'VIEW_DASHBOARD_PULL_OUTS_AWAITING_RECEIPT'
+        -- VIEW_PURCHASE_RECEIVE -> VIEW_PURCHASE_RECEIPT, VIEW_OUTLET_RECEIVE_DETAILED_REPORT -> VIEW_OUTLET_RECEIPT_DETAILED_REPORT, ...
+        ELSE regexp_replace(p_name, '(PURCHASE|OUTLET|PULL_OUT)_RECEIVE(_|$)', '\1_RECEIPT\2')
+    END
+$$;
 
--- VIEW_PURCHASE_RECEIVE -> VIEW_PURCHASE_RECEIPT, VIEW_OUTLET_RECEIVE_DETAILED_REPORT -> VIEW_OUTLET_RECEIPT_DETAILED_REPORT, ...
-UPDATE permissions p
-SET name = regexp_replace(p.name, '(PURCHASE|OUTLET|PULL_OUT)_RECEIVE(_|$)', '\1_RECEIPT\2')
-WHERE p.name ~ '(PURCHASE|OUTLET|PULL_OUT)_RECEIVE(_|$)'
-  AND NOT EXISTS (SELECT 1 FROM permissions x
-                  WHERE x.name = regexp_replace(p.name, '(PURCHASE|OUTLET|PULL_OUT)_RECEIVE(_|$)', '\1_RECEIPT\2'));
+-- Both codes exist (DataInitializer already seeded the new one): give the new code every role that had
+-- the old one, then drop the old one (its role_permissions rows cascade).
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT rp.role_id, n.id
+FROM permissions o
+JOIN permissions n ON n.name = pg_temp.receipt_permission(o.name) AND n.id <> o.id
+JOIN role_permissions rp ON rp.permission_id = o.id
+ON CONFLICT DO NOTHING;
+
+DELETE FROM permissions o
+USING permissions n
+WHERE n.name = pg_temp.receipt_permission(o.name) AND n.id <> o.id;
+
+-- Only the old code exists: rename it in place (role assignments follow the row).
+UPDATE permissions SET name = pg_temp.receipt_permission(name)
+WHERE pg_temp.receipt_permission(name) <> name;
 
 -- ---- stored transaction types / entity names -----------------------------------------------------
 
@@ -91,6 +128,14 @@ WHERE transaction_type ~ '^(PURCHASE|OUTLET|PULL_OUT)_RECEIVE$';
 UPDATE transaction_action_definitions
 SET transaction_type = regexp_replace(transaction_type, '^(PURCHASE|OUTLET|PULL_OUT)_RECEIVE$', '\1_RECEIPT')
 WHERE transaction_type ~ '^(PURCHASE|OUTLET|PULL_OUT)_RECEIVE$';
+
+-- Default templates DefaultDocumentTemplateProvisioner created for the new type names: drop them where
+-- the company already has templates under the old name (which may have been customised).
+DELETE FROM document_templates n
+WHERE n.document_type ~ '^(PURCHASE|OUTLET|PULL_OUT)_RECEIPT$'
+  AND EXISTS (SELECT 1 FROM document_templates o
+              WHERE o.company_id = n.company_id
+                AND o.document_type = regexp_replace(n.document_type, '_RECEIPT$', '_RECEIVE'));
 
 UPDATE document_templates
 SET document_type = regexp_replace(document_type, '^(PURCHASE|OUTLET|PULL_OUT)_RECEIVE$', '\1_RECEIPT')
