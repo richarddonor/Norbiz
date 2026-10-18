@@ -35,6 +35,14 @@ Each entry in the response is one change set: the record's own logs plus its `@A
 
 Adding a new part type means annotating its parent field `@AuditParent` and adding a `PartSpec` in `MasterDataHistoryService`.
 
+### Deleted records
+
+`GET /master-data/{type}/deleted` lists a type's deleted records, newest deletion first, straight from their DELETE logs: `id`, `companyId`, `companyName`, `code`, `name`, `deletedBy`, `deletedAt`. Code and name are read from the snapshot (`code`/`skuCode`/`employeeCode`/`username`, and `displayName`/`name`/first + last name). Filters are `code`, `name` and `deletedBy` (contains), plus `deletedAtFrom`/`deletedAtTo`. It's paginated at 50 and not cached.
+- **Access**: the type's `VIEW_` permission. Results are scoped to `companyId` if given (access-checked), else to every company the caller belongs to (all of them for `SUPER_ADMIN`). Users aren't company-scoped. The company is the snapshot's `company` id, so a company-scoped type has to keep a `company` association.
+- **`ITEM_SKU` is rejected (400)**: every item save deletes and reinserts its SKUs, so the list would be mostly churn. A SKU's removal shows in its item's history instead.
+- **History**: `GET /master-data/{type}/{id}/history` works for deleted records too. When a DELETE log exists for the id (ids are never reused), the company check uses the DELETE snapshot's `company` instead of the entity service's `findById`. A snapshot without a company is `SUPER_ADMIN`-only. Associations show as `#id (deleted)` once the related record is gone too.
+- The query casts `audit_logs.changes` to `jsonb`, so it's Postgres-only.
+
 ### Records written by bulk SQL
 
 Rows inserted with plain SQL (the legacy loader, `init.sql` seeds) never pass through the listener, so they'd have no history at all — the form would show "No changes recorded." `db/migrations/003_backfill_master_data_create_audit.sql` gives each master-data record without a CREATE log one, built in the listener's snapshot shape and dated at the row's `created_at`/`created_by`. A record already edited through the app is rolled back to its created values using each field's earliest `oldValue`. It covers the records themselves only; SKUs, prices and BOM lines (parts) aren't backfilled, so a migrated SKU's own history starts at its first edit. The script is idempotent, and the legacy loader runs it after every load. Any other bulk load of a master-data type should run it too. Adding a master-data type means adding its snapshot there as well.
