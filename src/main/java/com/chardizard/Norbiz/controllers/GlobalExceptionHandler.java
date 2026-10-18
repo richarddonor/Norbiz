@@ -15,6 +15,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -68,6 +69,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<AppErrorResponse> handleAuthentication(AuthenticationException ex) {
         log.warn("Authentication failed: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error("Invalid username or password"));
+    }
+
+    // The user lookup itself failed during authenticate() (e.g. the database is down). Spring wraps
+    // that in this AuthenticationException subclass, so without its own handler it would hit the 401
+    // above and tell the user their password is wrong. It's a server-side failure, so mark the span.
+    @ExceptionHandler(InternalAuthenticationServiceException.class)
+    public ResponseEntity<AppErrorResponse> handleInternalAuthentication(InternalAuthenticationServiceException ex,
+                                                                         HttpServletRequest request) {
+        log.error("Authentication could not be performed", ex);
+        markRequestSpanError(ex, request);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(error("Login is temporarily unavailable. Please try again later."));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -155,9 +168,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<AppErrorResponse> handleGeneric(Exception ex, HttpServletRequest request) {
         log.error("Unexpected error", ex);
-        // An exception handled here never propagates back to the HTTP observation filter, so the
-        // request span would otherwise end looking successful. setError() only feeds the span/metric
-        // "exception" tag; span.error() is what sets ERROR status and records the stack trace event.
+        markRequestSpanError(ex, request);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(error("An unexpected error occurred"));
+    }
+
+    // An exception handled here never propagates back to the HTTP observation filter, so the
+    // request span would otherwise end looking successful. setError() only feeds the span/metric
+    // "exception" tag; span.error() is what sets ERROR status and records the stack trace event.
+    private void markRequestSpanError(Exception ex, HttpServletRequest request) {
         ServerHttpObservationFilter.findObservationContext(request).ifPresent(context -> {
             context.setError(ex);
             TracingObservationHandler.TracingContext tracingContext =
@@ -166,8 +185,6 @@ public class GlobalExceptionHandler {
                 tracingContext.getSpan().error(ex);
             }
         });
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(error("An unexpected error occurred"));
     }
 
     private AppErrorResponse error(String message) {

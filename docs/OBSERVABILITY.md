@@ -9,7 +9,7 @@ Norbiz emits all three OpenTelemetry signals — traces, metrics and logs — ov
 | Tracer, OTLP exporters, resource attributes | `spring-boot-starter-opentelemetry` (Micrometer Observation → OTel bridge). **Not** the OTel Java agent — don't add it, it would double-instrument. |
 | HTTP server spans | Spring's `ServerHttpObservationFilter` (order `HIGHEST_PRECEDENCE + 1`) |
 | Spring Security spans | Spring Security's built-in observations |
-| JDBC spans (connection checkout + each query) | `datasource-micrometer-spring-boot`, `jdbc.includes=CONNECTION,QUERY`. Bind values are never captured; query text is sanitized. |
+| JDBC spans (connection checkout + each query) | `datasource-micrometer-spring-boot`, `jdbc.includes=CONNECTION,QUERY` (prod: `CONNECTION` only). Bind values are never captured; query text is sanitized. |
 | Logs → OTel log records | `opentelemetry-logback-appender-1.0`, attached to the root logger programmatically in `ObservabilityConfig` (not via `logback-spring.xml`, so Spring Boot keeps owning the console appender and `logging.structured.format.console`). |
 | Metrics (HTTP, JVM, Hikari, Tomcat) | `micrometer-registry-otlp` |
 
@@ -23,9 +23,15 @@ Version coupling: `opentelemetry-logback-appender.version` in `pom.xml` must tra
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | Base OTLP/HTTP URL; `/v1/traces`, `/v1/logs`, `/v1/metrics` are appended. |
 | `DEPLOYMENT_ENVIRONMENT` | `local` | `deployment.environment.name` resource attribute. |
 | `LOGGING_STRUCTURED_FORMAT_CONSOLE` | unset (human-readable) | Set to `ecs` in containers for JSON console logs with `traceId`/`spanId` fields. |
+| `TRACING_SAMPLING_PROBABILITY` | `1.0` (prod compose: `0.1`) | `management.tracing.sampling.probability`. |
+| `JDBC_SPAN_INCLUDES` | `CONNECTION,QUERY` (prod compose: `CONNECTION`) | `jdbc.includes` — which datasource-micrometer spans are created. |
 | `OTEL_RESOURCE_ATTRIBUTES` | — | Extra resource attributes, e.g. `service.instance.id=...` per replica. |
 
-Sampling is `1.0` in the app on purpose. Reduce volume in the Collector (tail sampling: keep all errors and slow traces), never in the app, or error traces get lost.
+Sampling is `1.0` in the app by default so every transaction is fully visible end-to-end.
+
+### Production sampling
+
+Prod (`deploy/docker-compose.prod.yml`) runs with `TRACING_SAMPLING_PROBABILITY=0.1` and `JDBC_SPAN_INCLUDES=CONNECTION` (no per-query spans): on the VirtualBox VM, full sampling with a span per SQL query made `lgtm` a constant heavy disk writer. Trade-off: head sampling drops ~90% of traces **including error traces** — an `AppErrorResponse.traceId` may have no trace in Tempo. Logs are unaffected (every line still carries `traceId`/`spanId` and is exported to Loki), so search Loki by trace id first. To debug a specific issue, temporarily set `TRACING_SAMPLING_PROBABILITY=1.0` (and `JDBC_SPAN_INCLUDES=CONNECTION,QUERY`) in `~/norbiz/.env` and redeploy.
 
 Use the `management.opentelemetry.*` property names — the `management.otlp.tracing.*` / `management.otlp.logging.*` forms are deprecated in Spring Boot 4.
 
@@ -37,7 +43,8 @@ Use the `management.opentelemetry.*` property names — the `management.otlp.tra
 
 - Every response carries an `X-Trace-Id` header (exposed via CORS); every `AppErrorResponse` carries `traceId`. Searching that id in Grafana gives the full trace and, from it, its logs.
 - `RequestLoggingFilter` runs inside the server span but before Spring Security, so requests rejected by security are logged too. It logs the redacted JSON payload and also attaches it to the server span as `http.request.body`.
-- `JwtAuthFilter` tags the server span with `enduser.id` once the caller is authenticated.
+- `JwtAuthFilter` tags the server span with `enduser.id` once the caller is authenticated, and `RequestLoggingFilter` tags it with `norbiz.company.id` from the `X-Company-Id` header (only if numeric; it's the *requested* company — access is still checked by the services). Both also go on the MDC, so every log line of the request carries them (nested `enduser.id` / `norbiz.company.id` in the ECS console JSON; OTLP log attributes, listed explicitly in `ObservabilityConfig`). `RequestLoggingFilter` clears them after the `<--` line. The first `-->` line is logged before authentication, so it has the company but not the user; unauthenticated calls such as `POST /auth/login` have no `enduser.id` (the username is in the logged payload/message).
+- Find one user's or tenant's activity regardless of trace sampling — Loki (attributes become structured metadata, dots → underscores): `{service_name="norbiz"} | enduser_id="jdoe"`, `{service_name="norbiz"} | norbiz_company_id="42"`. Tempo (sampled traces only): `{ span.enduser.id = "jdoe" }`, `{ span.norbiz.company.id = "42" }`.
 - Exceptions handled by `GlobalExceptionHandler`'s 500 handler are recorded on the server span explicitly (error status + exception event) — a handled exception never reaches the observation filter otherwise.
 
 ## Rules

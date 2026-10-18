@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -45,6 +46,7 @@ public class AuthController {
     @ApiResponse(responseCode = "200", description = "Authentication successful")
     @ApiResponse(responseCode = "401", description = "Invalid credentials")
     @ApiResponse(responseCode = "403", description = "User is not assigned to any company")
+    @ApiResponse(responseCode = "503", description = "Authentication backend (database) unavailable")
     @SecurityRequirements
     @PostMapping("/login")
     public ResponseEntity<AppResponse<AuthResponse>> login(@Valid @RequestBody AuthRequest request) {
@@ -52,6 +54,9 @@ public class AuthController {
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
             );
+        } catch (InternalAuthenticationServiceException ex) {
+            // Not a bad password — the lookup itself failed (e.g. DB down); GlobalExceptionHandler → 503.
+            throw ex;
         } catch (AuthenticationException ex) {
             log.warn("Failed login attempt for user '{}'", request.getUsername());
             throw ex;

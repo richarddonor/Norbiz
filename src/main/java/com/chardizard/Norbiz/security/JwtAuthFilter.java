@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.security;
 
+import com.chardizard.Norbiz.config.RequestLoggingFilter;
 import com.chardizard.Norbiz.services.UserDetailsServiceImpl;
 import io.jsonwebtoken.JwtException;
 import io.micrometer.common.KeyValue;
@@ -10,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -71,8 +73,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
                 // Tag the request span with who made the call (OTel semconv enduser.id) so traces
                 // can be searched per user. High-cardinality: lands on the span, never on metrics.
+                // Also on the MDC so every later log line of this request carries it; cleared by
+                // RequestLoggingFilter at the end of the request.
                 ServerHttpObservationFilter.findObservationContext(request)
-                        .ifPresent(context -> context.addHighCardinalityKeyValue(KeyValue.of("enduser.id", username)));
+                        .ifPresent(context -> context.addHighCardinalityKeyValue(
+                                KeyValue.of(RequestLoggingFilter.MDC_ENDUSER_ID, username)));
+                MDC.put(RequestLoggingFilter.MDC_ENDUSER_ID, username);
             }
         }
 

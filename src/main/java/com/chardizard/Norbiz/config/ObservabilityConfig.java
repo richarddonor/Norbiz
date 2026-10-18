@@ -42,6 +42,10 @@ public class ObservabilityConfig {
             appender.setOpenTelemetry(openTelemetry);
             appender.setCaptureExperimentalAttributes(true);   // thread name/id
             appender.setCaptureKeyValuePairAttributes(true);   // SLF4J fluent addKeyValue(...)
+            // Who/which tenant made the request (set by RequestLoggingFilter/JwtAuthFilter). Listed
+            // explicitly rather than "*" so nothing else that lands on the MDC is exported.
+            appender.setCaptureMdcAttributes(
+                    RequestLoggingFilter.MDC_ENDUSER_ID + "," + RequestLoggingFilter.MDC_COMPANY_ID);
             appender.start();
             rootLogger.addAppender(appender);
         };

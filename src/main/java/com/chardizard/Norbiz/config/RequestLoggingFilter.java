@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -40,6 +41,16 @@ import java.util.regex.Pattern;
 public class RequestLoggingFilter extends OncePerRequestFilter {
 
     public static final String TRACE_ID_HEADER = "X-Trace-Id";
+    public static final String COMPANY_ID_HEADER = "X-Company-Id";
+
+    // MDC keys put on every log line of a request (console JSON and OTLP log attributes — see
+    // ObservabilityConfig), so a user's or tenant's logs can be found without a sampled trace.
+    // This filter owns the MDC lifecycle: JwtAuthFilter adds ENDUSER_ID once the caller is
+    // authenticated, and both keys are cleared here after the "<--" line so a pooled thread
+    // never carries one request's user into the next.
+    public static final String MDC_ENDUSER_ID = "enduser.id";
+    public static final String MDC_COMPANY_ID = "norbiz.company.id";
+    private static final Pattern COMPANY_ID_PATTERN = Pattern.compile("\\d{1,19}");
 
     private static final Logger log = LoggerFactory.getLogger("http.request");
     private static final int MAX_PAYLOAD_LENGTH = 4000;
@@ -65,6 +76,8 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
             response.setHeader(TRACE_ID_HEADER, span.context().traceId());
         }
 
+        tagCompany(request);
+
         long start = System.currentTimeMillis();
         log.info("--> {} {}", request.getMethod(), request.getRequestURI());
         try {
@@ -75,7 +88,22 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
                 logPayload((ContentCachingRequestWrapper) requestToUse);
             }
             log.info("<-- {} {} {} ({} ms)", request.getMethod(), request.getRequestURI(), response.getStatus(), durationMs);
+            MDC.remove(MDC_ENDUSER_ID);
+            MDC.remove(MDC_COMPANY_ID);
         }
+    }
+
+    // The session's active company as the client sent it. It's the *requested* company — whether
+    // the caller may access it is still checked by the services — and only taken if numeric, so a
+    // forged header can't inject arbitrary text into logs or spans.
+    private void tagCompany(HttpServletRequest request) {
+        String companyId = request.getHeader(COMPANY_ID_HEADER);
+        if (companyId == null || !COMPANY_ID_PATTERN.matcher(companyId).matches()) {
+            return;
+        }
+        MDC.put(MDC_COMPANY_ID, companyId);
+        ServerHttpObservationFilter.findObservationContext(request)
+                .ifPresent(context -> context.addHighCardinalityKeyValue(KeyValue.of(MDC_COMPANY_ID, companyId)));
     }
 
     private boolean hasLoggableJsonBody(HttpServletRequest request) {
