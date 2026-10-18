@@ -4,10 +4,13 @@ import com.chardizard.Norbiz.audit.AuditAction;
 import com.chardizard.Norbiz.dto.ChangeHistoryEntryResponse;
 import com.chardizard.Norbiz.dto.ChangeHistoryEntryResponse.FieldChange;
 import com.chardizard.Norbiz.dto.ChangeHistoryEntryResponse.Kind;
+import com.chardizard.Norbiz.dto.DeletedRecordResponse;
 import com.chardizard.Norbiz.models.AuditLog;
 import com.chardizard.Norbiz.models.MasterDataType;
 import com.chardizard.Norbiz.models.User;
+import com.chardizard.Norbiz.models.Company;
 import com.chardizard.Norbiz.repositories.AuditLogRepository;
+import com.chardizard.Norbiz.repositories.CompanyRepository;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,9 +33,11 @@ import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 // Per-record change history for master-data forms, read from audit_logs. Unlike /audit-logs
 // (SUPER_ADMIN only), this is open to anyone who can view the record itself: the type's VIEW_
@@ -66,6 +71,7 @@ public class MasterDataHistoryService {
 
     private final AuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
+    private final CompanyRepository companyRepository;
     private final EntityManager entityManager;
     private final BrandService brandService;
     private final ItemCategoryService itemCategoryService;
@@ -84,7 +90,7 @@ public class MasterDataHistoryService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
         assertCanView(user, type);
-        assertRecordAccess(type, id, username);
+        assertRecordAccess(type, id, user);
         boolean canViewCostPrice = hasPermission(user, "VIEW_COST_PRICE");
 
         // The query orders by change time itself — a client-supplied sort would conflict with the grouping.
@@ -127,16 +133,136 @@ public class MasterDataHistoryService {
     }
 
     private static boolean hasPermission(User user, String permission) {
-        return user.getRoles().stream().anyMatch(r -> r.getName().equals("SUPER_ADMIN"))
+        return isSuperAdmin(user)
                 || user.getRoles().stream()
                         .flatMap(r -> r.getPermissions().stream())
                         .anyMatch(p -> p.getName().equals(permission));
     }
 
+    /**
+     * Deleted records of one type, newest deletion first, scoped to the caller's companies (or the
+     * one {@code companyId} given). Their history stays readable through {@link #findHistory}.
+     */
+    @Transactional(readOnly = true)
+    public Page<DeletedRecordResponse> findDeleted(MasterDataType type, Long companyId, Map<String, String> filters,
+                                                   Instant deletedFrom, Instant deletedTo, String username, Pageable pageable) {
+        // An item rewrites its SKUs (delete + insert) on every save, so deleted SKUs are mostly that
+        // churn; a SKU's removal shows in its item's history instead.
+        if (type == MasterDataType.ITEM_SKU) {
+            throw new IllegalArgumentException("Deleted SKUs are listed in their item's history, not on their own");
+        }
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
+        assertCanView(user, type);
+
+        boolean superAdmin = isSuperAdmin(user);
+        boolean allCompanies;
+        List<String> companyIds;
+        if (type == MasterDataType.USER) {
+            allCompanies = true;
+            companyIds = List.of();
+        } else if (companyId != null) {
+            assertCompanyAccess(user, companyId);
+            allCompanies = false;
+            companyIds = List.of(companyId.toString());
+        } else {
+            allCompanies = superAdmin;
+            companyIds = user.getCompanies().stream().map(c -> c.getId().toString()).toList();
+            if (!allCompanies && companyIds.isEmpty()) return Page.empty(pageable);
+        }
+
+        // The query orders by deletion time itself; a client-supplied sort would name entity columns that aren't there.
+        Page<AuditLog> logs = auditLogRepository.findDeleted(type.getEntityType(), allCompanies,
+                companyIds.isEmpty() ? List.of("") : companyIds,   // never bind an empty IN list
+                filters.get("code"), filters.get("name"), filters.get("deletedBy"), deletedFrom, deletedTo,
+                PageRequest.of(pageable.getPageNumber(), pageable.getPageSize()));
+        log.debug("User '{}' listed deleted {} records (companyId={}, filters={})", username, type, companyId, filters);
+        Page<DeletedRecordResponse> records = logs.map(MasterDataHistoryService::toDeletedRecord);
+        Set<Long> ids = records.stream().map(DeletedRecordResponse::getCompanyId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> names = companyRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Company::getId, Company::getName));
+        records.forEach(r -> r.setCompanyName(names.get(r.getCompanyId())));
+        return records;
+    }
+
+    private static DeletedRecordResponse toDeletedRecord(AuditLog entry) {
+        JsonNode snap = parse(entry);
+        DeletedRecordResponse res = new DeletedRecordResponse();
+        res.setId(entry.getEntityId());
+        res.setDeletedBy(entry.getChangedBy());
+        res.setDeletedAt(entry.getChangedAt());
+        if (snap == null || !snap.isObject()) return res;
+        String company = snap.path("company").asText(null);
+        if (company != null) {
+            try {
+                res.setCompanyId(Long.valueOf(company));
+            } catch (NumberFormatException ignored) {
+                // not an id — leave it out
+            }
+        }
+        res.setCode(firstText(snap, "code", "skuCode", "employeeCode", "username"));
+        String name = firstText(snap, "displayName", "name");
+        if (name == null) {
+            String full = String.join(" ", Stream.of(firstText(snap, "firstName"), firstText(snap, "lastName"))
+                    .filter(Objects::nonNull).toList());
+            name = full.isEmpty() ? null : full;
+        }
+        res.setName(name);
+        return res;
+    }
+
+    private static String firstText(JsonNode snap, String... fields) {
+        for (String field : fields) {
+            String value = snap.path(field).asText(null);
+            if (value != null && !value.isBlank()) return value;
+        }
+        return null;
+    }
+
+    private static boolean isSuperAdmin(User user) {
+        return user.getRoles().stream().anyMatch(r -> r.getName().equals("SUPER_ADMIN"));
+    }
+
+    private void assertCompanyAccess(User user, Long companyId) {
+        if (isSuperAdmin(user)) return;
+        if (user.getCompanies().stream().noneMatch(c -> c.getId().equals(companyId))) {
+            log.warn("User '{}' denied access to company {}", user.getUsername(), companyId);
+            throw new SecurityException("Access denied to company: " + companyId);
+        }
+    }
+
+    // A deleted record can't be loaded any more, so its company comes from its DELETE snapshot.
+    // Ids are never reused, so a DELETE log means the record is gone for good.
+    private boolean assertDeletedRecordAccess(MasterDataType type, Long id, User user) {
+        Optional<AuditLog> deletion = auditLogRepository
+                .findFirstByEntityTypeAndEntityIdAndActionOrderByIdDesc(type.getEntityType(), id, AuditAction.DELETE);
+        if (deletion.isEmpty()) return false;
+        if (type == MasterDataType.USER) return true;
+        JsonNode snap = parse(deletion.get());
+        String company = snap != null ? snap.path("company").asText(null) : null;
+        Long companyId;
+        try {
+            companyId = company != null ? Long.valueOf(company) : null;
+        } catch (NumberFormatException e) {
+            companyId = null;
+        }
+        if (companyId == null) {
+            // Can't tell whose it was — only SUPER_ADMIN may see it.
+            if (isSuperAdmin(user)) return true;
+            log.warn("User '{}' denied history of deleted {} (id={}): no company in its snapshot", user.getUsername(), type, id);
+            throw new SecurityException("Access denied to deleted record: " + id);
+        }
+        assertCompanyAccess(user, companyId);
+        return true;
+    }
+
     // Company-scoped types go through the entity service's findById(id, username), which throws
     // if the record doesn't exist or belongs to a company the user can't access. A User isn't
     // owned by a single company (VIEW_USER lists every user), so existence is all there is to check.
-    private void assertRecordAccess(MasterDataType type, Long id, String username) {
+    // A deleted record is checked against the company in its DELETE snapshot instead.
+    private void assertRecordAccess(MasterDataType type, Long id, User user) {
+        if (assertDeletedRecordAccess(type, id, user)) return;
+        String username = user.getUsername();
         switch (type) {
             case BRAND -> brandService.findById(id, username);
             case ITEM_CATEGORY -> itemCategoryService.findById(id, username);
