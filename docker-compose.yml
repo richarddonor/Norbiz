@@ -41,6 +41,7 @@ services:
       DEPLOYMENT_ENVIRONMENT: dev
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
       REDIS_HOST: redis
+      ITEM_EMBEDDER_URL: http://embedder:8000
     volumes:
       - item_images:/home/appuser/norbiz
     ports:
@@ -54,6 +55,17 @@ services:
         condition: service_healthy
       lgtm:
         condition: service_started
+      embedder:
+        condition: service_started
+
+  # CLIP image embeddings for item photo recognition (docs/ITEM_RECOGNITION.md). Stateless; the app
+  # keeps working without it (recognition answers 503, image uploads just skip indexing).
+  embedder:
+    build: ./embedder
+    ports:
+      - "127.0.0.1:8000:8000"   # also lets a local `mvn spring-boot:run` reach it
+    networks:
+      - backend
 
   # Query cache for lookup/list endpoints (docs/CACHING.md). volatile-lru evicts only cached
   # entries (which carry a TTL), never the TTL-less generation counters — evicting a counter would

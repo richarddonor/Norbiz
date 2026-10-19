@@ -14,4 +14,5 @@ public interface ItemRepository extends JpaRepository<Item, Long>, JpaSpecificat
     Optional<Item> findByCompanyIdAndItemCode(Long companyId, String itemCode);
     boolean existsByCompanyIdAndItemCode(Long companyId, String itemCode);
     boolean existsByItemGroupId(Long itemGroupId);
+    List<Item> findByCompany_IdAndImagePathIsNotNull(Long companyId);
 }

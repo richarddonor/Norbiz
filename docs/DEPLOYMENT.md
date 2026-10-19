@@ -20,7 +20,7 @@ Current target: Ubuntu VirtualBox VM `10.16.32.64`, user `vboxuser`.
 
 | File | Purpose |
 |---|---|
-| `deploy/docker-compose.prod.yml` | db, app, redis, web — `restart: unless-stopped`; `lgtm` only under the opt-in `observability` profile |
+| `deploy/docker-compose.prod.yml` | db, app, redis, embedder, web — `restart: unless-stopped`; `lgtm` only under the opt-in `observability` profile |
 | `deploy/nginx.conf` | Web container config: HTTPS on 443 (80 redirects), serves the SPA, proxies `/api/*` → `app:8080` (one origin, no CORS) |
 | `deploy/deploy.sh` | The release command |
 | `deploy/migrate.sh` | Applies `db/migrations/*.sql` (see `db/migrations/README.md`) |
@@ -143,14 +143,16 @@ openssl s_client -connect 10.16.32.64:443 -CAfile ~/norbiz-pki/ca.crt </dev/null
 What `deploy.sh` does, in order:
 
 1. Pulls both repos to the requested refs, then re-runs the freshly pulled `deploy.sh`.
-2. Builds the `app` and `web` images — the running version keeps serving during the build — and exports
-   checks the TLS certificate is in place.
+2. Builds the `db` (postgres:17-alpine + pgvector, `Dockerfile.db`), `app`, `web` and `embedder` images —
+   the running version keeps serving during the build — and checks the TLS certificate is in place.
 3. `pg_dump`s the database to `~/norbiz/backups/norbiz-<timestamp>-<sha>.sql.gz`.
-4. Starts db/redis and stops the app. The observability container (`lgtm`) is never started by a release.
+4. Stops the app, then starts db/redis (recreating db if its image changed). The observability container
+   (`lgtm`) is never started by a release.
 5. Runs `migrate.sh`. On failure that migration is rolled back, the previous app is restarted, and the
    release stops.
-6. Starts the new app and web and waits (up to 5 min) for `/actuator/health`; prints app logs if it
-   doesn't come up. Reloads nginx so a new certificate takes effect.
+6. Starts the `embedder` without waiting on it (photo recognition is optional — see
+   `docs/ITEM_RECOGNITION.md`), then the new app and web, and waits (up to 5 min) for `/actuator/health`;
+   prints app logs if it doesn't come up. Reloads nginx so a new certificate takes effect.
 7. Prunes dangling images and old build cache.
 
 ## Database changes

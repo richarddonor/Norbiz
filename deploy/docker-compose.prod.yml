@@ -9,7 +9,12 @@ name: norbiz
 
 services:
   db:
-    image: postgres:17-alpine
+    # postgres:17-alpine + pgvector (item photo recognition). Same Alpine/PG17 base as before, so the
+    # existing data directory is reused as-is.
+    build:
+      context: ./src/Norbiz
+      dockerfile: Dockerfile.db
+    image: norbiz-db:latest
     restart: unless-stopped
     environment:
       POSTGRES_DB: norbiz
@@ -60,6 +65,7 @@ services:
       DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-prod}
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
       REDIS_HOST: redis
+      ITEM_EMBEDDER_URL: http://embedder:8000
     volumes:
       - item_images:/home/appuser/norbiz
     ports:
@@ -84,6 +90,25 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # CLIP image embeddings for item photo recognition (docs/ITEM_RECOGNITION.md). Stateless and only
+  # on the internal network. Optional at runtime: without it recognition answers 503 and image
+  # uploads skip indexing, so the app doesn't depend_on it. ~1 GB RAM once the model is loaded.
+  embedder:
+    build:
+      context: ./src/Norbiz/embedder
+    image: norbiz-embedder:latest
+    restart: unless-stopped
+    environment:
+      TORCH_THREADS: ${EMBEDDER_THREADS:-2}
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   # Query cache (docs/CACHING.md) — same settings as the dev compose.
   redis:

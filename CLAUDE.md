@@ -16,6 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/DASHBOARD.md` — Per-user dashboard widgets: `DashboardWidget` catalog, one `VIEW_DASHBOARD_*` permission per widget, layout saved as the user's `dashboard.layout` preference, adding a widget.
 - `docs/LEGACY_MIGRATION.md` — jbsKarutora → Norbiz migration: how to run `tools/legacy-migration/`, legacy→Norbiz mapping, migrated/reconstructed document rules, reconciliation, known limitations.
 - `docs/DEPLOYMENT.md` — Releasing to the Docker-only Ubuntu server: `deploy/` scripts (bootstrap, deploy, migrate), prod compose/nginx, `db/migrations/` rules, backups and rollback.
+- `docs/ITEM_RECOGNITION.md` — Item photo recognition: CLIP `embedder/` sidecar, pgvector `item_image_embeddings` (JDBC, not a JPA entity), recognize/reindex endpoints, model/dimension coupling.
 
 `docs/` is where all non-`CLAUDE.md` project markdown lives — `CLAUDE.md` itself stays at the repo root since Claude Code only auto-discovers it there.
 
@@ -71,6 +72,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - Entities that are scoped strictly to one company. Update this list everytime there is a new entity:
     Brand, Item, ItemSku, ItemCategory, ItemGroup, Employee, Warehouse, Supplier, Customer, InventoryAdjustment, DocumentTemplate, PurchaseOrder, PurchaseInvoice, PurchaseReceipt, DeliveryReceipt, OutletReceipt, OutletDeliveryReceipt, OutletDeliveryReturn, StockTransfer, OutletPullOut, PullOutReceipt, Assembly, PullOutReason, BillOfMaterial, TransactionActionDefinition, TransactionEvent
 - `InventoryMovement` and `InventoryBalance` are not directly created via their own endpoint (only posted internally by transactions like `InventoryAdjustment`), but are still company-scoped transitively through their `Warehouse`.
+- `item_image_embeddings` (photo recognition index) is a plain JDBC table, not an entity, but carries its own `company_id`. Every query against it must filter by company after `assertCompanyAccess` — see `docs/ITEM_RECOGNITION.md`.
 - **Company-membership must be verified on every single-record read, not just on list/create/update/delete.** A `GET /{id}` endpoint's `@PreAuthorize("hasAuthority('VIEW_X')")` only checks the permission, not which company the record belongs to — without an explicit check, any user holding that permission could fetch any other company's record by ID (a cross-tenant IDOR). Every company-scoped entity's `findById(id, username)` must resolve the entity, then call the existing `assertCompanyAccess(username, companyId)` helper before returning it — mirror `ItemSkuService.findById` or `BrandService.findById`. `update`/`delete` should call this same scoped `findById` rather than checking access a second time separately.
 - Entities that belong to one or more companies. Use an intermediary table like `user_companies` to enforce one to many or many to many relationships. Update this list everytime there is a new entity:
     User

@@ -29,7 +29,7 @@ log "Deploying Norbiz $SHA, Norbiz-Web $WEB_SHA"
 
 # --- 2. Build (the running stack keeps serving meanwhile) ------------------------------------
 log "Building images (first build downloads Maven/npm dependencies and takes a while)"
-compose build app web
+compose build db app web embedder
 
 # Checked before anything is stopped, so a missing certificate aborts with nothing changed.
 check_tls_cert
@@ -49,16 +49,18 @@ else
 fi
 
 # --- 4. Infrastructure up, app stopped while the schema changes -------------------------------
+# The app is stopped first: `up` recreates the db container whenever its image changed (e.g. a
+# rebuilt Dockerfile.db), which would otherwise pull the database out from under a running app.
 # The observability stack (lgtm: Prometheus/Grafana/...) is opt-in and never started here.
-log "Starting db, redis"
-compose up -d --wait db redis
-
 APP_WAS_RUNNING=""
 if [ -n "$(compose ps --status running -q app)" ]; then
   APP_WAS_RUNNING=1
   log "Stopping app for migrations"
   compose stop app
 fi
+
+log "Starting db, redis"
+compose up -d --wait db redis
 
 # --- 5. Migrations -----------------------------------------------------------------------------
 if ! "$SRC_DIR/Norbiz/deploy/migrate.sh"; then
@@ -70,6 +72,10 @@ if ! "$SRC_DIR/Norbiz/deploy/migrate.sh"; then
 fi
 
 # --- 6. New app + web ----------------------------------------------------------------------------
+# Not waited on: photo recognition is optional, a slow/broken embedder must not fail the release.
+log "Starting embedder"
+compose up -d embedder || warn "embedder failed to start — item photo recognition unavailable"
+
 log "Starting app and web (waiting for the app health check)"
 if ! compose up -d --wait --wait-timeout 300 app web; then
   compose logs --tail 80 app >&2 || true

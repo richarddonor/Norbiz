@@ -4,6 +4,7 @@ import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.BillOfMaterialLookupResponse;
 import com.chardizard.Norbiz.dto.CustomerLookupResponse;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
+import com.chardizard.Norbiz.dto.ItemRecognitionMatchResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.StockLookupResponse;
@@ -11,11 +12,14 @@ import com.chardizard.Norbiz.dto.TransactionLookupResponse;
 import com.chardizard.Norbiz.models.CustomerType;
 import com.chardizard.Norbiz.models.EmployeeTag;
 import com.chardizard.Norbiz.models.ItemTag;
+import com.chardizard.Norbiz.services.ItemRecognitionService;
 import com.chardizard.Norbiz.services.LookupService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -23,13 +27,16 @@ import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 // Slim, searchable dropdown data for forms. Each lookup is open to the entity's VIEW_ permission
@@ -49,6 +56,7 @@ public class LookupController {
     private static final int MAX_STOCK_ITEMS = 500;
 
     private final LookupService lookupService;
+    private final ItemRecognitionService itemRecognitionService;
 
     // ---- suppliers ----
 
@@ -158,6 +166,30 @@ public class LookupController {
     public ResponseEntity<AppResponse<ItemLookupResponse>> item(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails,
                                                                Authentication authentication) {
         return ResponseEntity.ok(AppResponse.of(lookupService.item(id, userDetails.getUsername(), canViewCostPrice(authentication))));
+    }
+
+    // A ranked top-N suggestion list, not a browsable result set — hence limit instead of pagination.
+    @Operation(summary = "Recognize an item from a photo",
+            description = "Matches the photo against the company's item reference images (see docs/ITEM_RECOGNITION.md) and "
+                    + "returns the most similar items, best first, as item options plus a 0..1 similarity. Items without an "
+                    + "indexed image can't match; an empty list means nothing looked similar enough. Not cached.")
+    @ApiResponse(responseCode = "200", description = "Candidates returned (possibly none)")
+    @ApiResponse(responseCode = "400", description = "Missing file or not a readable image")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @ApiResponse(responseCode = "503", description = "Recognition disabled or the embedder is down (code ITEM_RECOGNITION_UNAVAILABLE)")
+    @PostMapping(value = "/items/recognize", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("@lookupAccess.can(authentication, 'ITEM')")
+    public ResponseEntity<AppResponse<List<ItemRecognitionMatchResponse>>> recognizeItem(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Photo of the item (jpg, png, webp, ...), max 5 MB") @RequestParam("file") MultipartFile file,
+            @Parameter(description = "Only items carrying this tag (e.g. INVENTORY)") @RequestParam(required = false) ItemTag tag,
+            @Parameter(description = ACTIVE_DESC) @RequestParam(defaultValue = "true") boolean activeOnly,
+            @Parameter(description = "Maximum number of candidates (1-20, default 5)") @RequestParam(defaultValue = "5") @Min(1) @Max(20) int limit,
+            Authentication authentication) throws IOException {
+        return ResponseEntity.ok(AppResponse.of(itemRecognitionService.recognize(userDetails.getUsername(),
+                company(companyId, headerCompanyId), file.getBytes(), tag, activeOnly, limit, canViewCostPrice(authentication))));
     }
 
     // ---- item categories ----

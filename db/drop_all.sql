@@ -34,6 +34,7 @@ DROP TABLE IF EXISTS transaction_action_definition_prerequisites CASCADE;
 DROP TABLE IF EXISTS transaction_action_definitions              CASCADE;
 DROP TABLE IF EXISTS audit_logs      CASCADE;
 DROP TABLE IF EXISTS brands          CASCADE;
+DROP TABLE IF EXISTS item_image_embeddings CASCADE;
 DROP TABLE IF EXISTS item_prices     CASCADE;
 DROP TABLE IF EXISTS item_skus       CASCADE;
 DROP TABLE IF EXISTS items           CASCADE;

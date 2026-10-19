@@ -6,6 +6,7 @@ import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.BillOfMaterialLookupResponse;
 import com.chardizard.Norbiz.dto.CustomerLookupResponse;
 import com.chardizard.Norbiz.dto.ItemLookupResponse;
+import com.chardizard.Norbiz.dto.ItemRecognitionMatchResponse;
 import com.chardizard.Norbiz.dto.LookupResponse;
 import com.chardizard.Norbiz.dto.StockLookupResponse;
 import com.chardizard.Norbiz.dto.TransactionLookupResponse;
@@ -146,6 +147,19 @@ public class LookupService {
                 .orElseThrow(() -> new IllegalArgumentException("Item not found: " + id));
         assertCompanyAccess(username, i.getCompany().getId());
         return toLookup(i, canViewCostPrice);
+    }
+
+    // Photo recognition candidates (ItemRecognitionService) as item options, keeping the match order.
+    // The caller has already checked company access and the matches are all from that company.
+    public List<ItemRecognitionMatchResponse> itemMatches(List<ItemImageEmbeddingRepository.Match> matches,
+                                                          boolean canViewCostPrice) {
+        Map<Long, Item> items = itemRepository.findAllById(matches.stream().map(ItemImageEmbeddingRepository.Match::itemId).toList())
+                .stream().collect(Collectors.toMap(Item::getId, Function.identity()));
+        return matches.stream()
+                .filter(m -> items.containsKey(m.itemId()))
+                .map(m -> new ItemRecognitionMatchResponse(toLookup(items.get(m.itemId()), canViewCostPrice),
+                        m.similarity(), m.imagePath()))
+                .toList();
     }
 
     public Page<LookupResponse> itemCategories(String username, Long companyId, String q, Pageable pageable) {

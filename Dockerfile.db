@@ -1,5 +1,18 @@
 FROM postgres:17-alpine
 
+# pgvector, for item photo recognition (docs/ITEM_RECOGNITION.md). Built from source on the same
+# Alpine base rather than switching to the Debian-based pgvector/pgvector image: changing libc under
+# an existing data directory changes text collation and silently corrupts its indexes.
+# with_llvm=no skips the JIT bitcode (it would need the exact clang the image was built with);
+# OPTFLAGS="" keeps the build portable instead of -march=native.
+ARG PGVECTOR_VERSION=0.8.0
+RUN apk add --no-cache --virtual .pgvector-build build-base git \
+    && git clone --branch "v${PGVECTOR_VERSION}" --depth 1 https://github.com/pgvector/pgvector.git /tmp/pgvector \
+    && make -C /tmp/pgvector with_llvm=no OPTFLAGS="" \
+    && make -C /tmp/pgvector with_llvm=no OPTFLAGS="" install \
+    && rm -rf /tmp/pgvector \
+    && apk del .pgvector-build
+
 ARG DB_USERNAME=admin
 ARG DB_PASSWORD=password
 

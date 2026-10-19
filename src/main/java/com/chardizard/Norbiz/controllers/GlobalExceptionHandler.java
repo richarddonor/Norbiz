@@ -3,6 +3,7 @@ package com.chardizard.Norbiz.controllers;
 import com.chardizard.Norbiz.dto.AppErrorResponse;
 import com.chardizard.Norbiz.exceptions.EntityInUseException;
 import com.chardizard.Norbiz.exceptions.InsufficientStockException;
+import com.chardizard.Norbiz.exceptions.ItemRecognitionUnavailableException;
 import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
@@ -153,6 +154,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(AppErrorResponse.of(
                 ex.getMessage(), span != null ? span.context().traceId() : null, InsufficientStockException.CODE,
                 Map.of("shortfalls", ex.getShortfalls())));
+    }
+
+    // Photo recognition disabled or the embedder sidecar down/failing. 503 + code so the frontend can
+    // hide the camera button / fall back to text search; the cause is logged, not returned.
+    @ExceptionHandler(ItemRecognitionUnavailableException.class)
+    public ResponseEntity<AppErrorResponse> handleItemRecognitionUnavailable(ItemRecognitionUnavailableException ex) {
+        log.warn("Item recognition unavailable: {}", ex.getMessage(), ex.getCause());
+        Span span = tracer.currentSpan();
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(AppErrorResponse.of(
+                ex.getMessage(), span != null ? span.context().traceId() : null, ItemRecognitionUnavailableException.CODE, null));
     }
 
     // Fallback for FK violations that weren't translated in the service (e.g. a delete path that
