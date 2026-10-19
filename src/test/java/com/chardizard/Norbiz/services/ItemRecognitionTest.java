@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
@@ -114,6 +116,7 @@ class ItemRecognitionTest {
     @Test
     void cannotRecognizeAgainstAnotherCompany() {
         when(embeddingClient.embed(any())).thenReturn(new ImageEmbeddingClient.Embedding(MODEL, unit(0)));
+        clearInvocations(embeddingClient);   // setUp's indexing already called it
 
         assertThatThrownBy(() -> recognitionService.recognize(outsider, company.getId(), photo, null, true, 5, false))
                 .isInstanceOf(SecurityException.class);
@@ -128,6 +131,7 @@ class ItemRecognitionTest {
     }
 
     @Test
+    @WithMockUser(authorities = "UPDATE_ITEM")
     void imageUploadIsCompanyScoped() {
         UserDetails outsiderDetails = org.springframework.security.core.userdetails.User.withUsername(outsider)
                 .password("x").authorities("UPDATE_ITEM").build();
@@ -135,6 +139,16 @@ class ItemRecognitionTest {
 
         assertThatThrownBy(() -> itemImageController.uploadItemImage(outsiderDetails, red.getId(), file))
                 .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @WithMockUser(authorities = "UPDATE_ITEM")
+    void reindexNeedsItsOwnPermissionNotUpdateItem() {
+        UserDetails editor = org.springframework.security.core.userdetails.User.withUsername(clerk)
+                .password("x").authorities("UPDATE_ITEM").build();
+
+        assertThatThrownBy(() -> itemImageController.reindexItemImages(editor, company.getId(), null, false))
+                .isInstanceOf(AuthorizationDeniedException.class);
     }
 
     // ---- fixtures ----
