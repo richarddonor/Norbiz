@@ -124,3 +124,61 @@ FROM (
     UNION ALL SELECT 'PURCHASE_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM purchase_receipts
     UNION ALL SELECT 'ASSEMBLY', id, reference_number, voided, voided_by, voided_at FROM assemblies
 ) t WHERE t.voided;
+
+-- ---- Stock Transfer actions (sign-offs) <- tblStockTransferUserActions ----------------------
+-- One action definition per distinct legacy ActionId, then one ACTION history event per legacy
+-- row. Legacy UserId is an employee ID. Every action allows only SUPER_ADMIN, as a placeholder:
+-- the real roles are assigned after cutover. There are no prerequisites, because legacy didn't
+-- enforce an order. A blank ActionId becomes an inactive UNSPECIFIED action, so its history is
+-- kept without showing a button for it.
+
+CREATE TABLE migration.st_action AS
+SELECT a.legacy_action,
+       coalesce(nullif(upper(btrim(regexp_replace(a.legacy_action, '[^A-Za-z0-9]+', '_', 'g'), '_')), ''), 'UNSPECIFIED') AS code,
+       coalesce(nullif(initcap(a.legacy_action), ''), 'Unspecified (legacy)') AS name,
+       a.first_at
+FROM (SELECT btrim(actionid) AS legacy_action, min(migration.at(dateencoded)) AS first_at
+      FROM legacy.tblstocktransferuseractions GROUP BY 1) a;
+
+-- Typical legacy order; an action legacy adds later sorts after these, by name.
+INSERT INTO transaction_action_definitions (company_id, transaction_type, code, name, sort_order, active,
+                                            created_at, updated_at, created_by, updated_by)
+SELECT migration.cid(), 'STOCK_TRANSFER', a.code, migration.trunc(a.name, 255),
+       coalesce(o.sort_order, 100 + row_number() OVER (ORDER BY o.sort_order NULLS FIRST, a.name)::int),
+       a.code <> 'UNSPECIFIED', coalesce(a.first_at, now()), now(), 'legacy-migration', 'legacy-migration'
+FROM migration.st_action a
+LEFT JOIN (VALUES ('ENCODED_BY', 10), ('ISSUED_BY', 20), ('PRICING', 30), ('BARCODE_PRINTING', 40),
+                  ('BARCODE_DISTRIBUTION', 50), ('PRODUCTION', 60), ('QUALITY_CONTROL', 70), ('UNSPECIFIED', 999))
+     o (code, sort_order) ON o.code = a.code;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM roles WHERE name = 'SUPER_ADMIN') THEN
+        RAISE EXCEPTION 'Role SUPER_ADMIN is missing: start Norbiz once so DataInitializer seeds it';
+    END IF;
+END $$;
+
+INSERT INTO transaction_action_definition_roles (action_definition_id, role_id)
+SELECT d.id, r.id FROM transaction_action_definitions d CROSS JOIN roles r
+WHERE d.company_id = migration.cid() AND d.transaction_type = 'STOCK_TRANSFER' AND r.name = 'SUPER_ADMIN';
+
+INSERT INTO transaction_events (company_id, transaction_type, transaction_id, reference_number, event_type,
+                                action_definition_id, action_code, action_name, performed_by, performed_at, remarks)
+SELECT migration.cid(), 'STOCK_TRANSFER', s.id, left(s.reference_number, 50), 'ACTION',
+       d.id, d.code, d.name, migration.actor(u.userid), coalesce(migration.at(u.dateencoded), s.created_at),
+       migration.trunc(regexp_replace(u.comment, '\s+', ' ', 'g'), 255)
+FROM legacy.tblstocktransferuseractions u
+JOIN stock_transfers s ON s.id = u.masterid
+JOIN migration.st_action a ON a.legacy_action = btrim(u.actionid)
+JOIN transaction_action_definitions d ON d.company_id = migration.cid() AND d.transaction_type = 'STOCK_TRANSFER' AND d.code = a.code
+ORDER BY u.id;
+
+INSERT INTO migration.issues (kind, entity, legacy_id, detail)
+SELECT 'truncated', 'StockTransferAction', id, 'Comment of ' || length(btrim(regexp_replace(comment, '\s+', ' ', 'g'))) || ' characters cut to 255'
+FROM legacy.tblstocktransferuseractions WHERE length(btrim(regexp_replace(comment, '\s+', ' ', 'g'))) > 255
+UNION ALL
+SELECT 'unspecified', 'StockTransferAction', id, 'Blank legacy action on transfer ' || masterid || '; recorded as UNSPECIFIED'
+FROM legacy.tblstocktransferuseractions WHERE btrim(actionid) = ''
+UNION ALL
+SELECT 'skipped', 'StockTransferAction', u.id, 'Transfer ' || u.masterid || ' was not migrated'
+FROM legacy.tblstocktransferuseractions u WHERE NOT EXISTS (SELECT 1 FROM stock_transfers s WHERE s.id = u.masterid);

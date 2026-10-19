@@ -60,7 +60,7 @@ Configuration (`config.env`) is plain environment variables:
 4. Run `./run_migration.sh --confirm-reset <production db>` (about 10 min, plus 20–40 min for pictures).
 5. Review `reports/migration-<timestamp>.txt`. Every check must PASS. Read the Issues and transit sections.
 6. Start Norbiz and wait for `DataInitializer`.
-7. Reset the migrated users' passwords and assign roles.
+7. Reset the migrated users' passwords and assign roles. Set the real allowed roles on the migrated Stock Transfer actions (Transaction Actions screen); they allow only SUPER_ADMIN until then.
 8. Spot-check:
    - a few migrated documents and an outlet's stock card against legacy;
    - that a new Delivery Receipt continues the legacy numbering.
@@ -72,13 +72,13 @@ If anything is wrong, restore the backup the run took (`pg_restore --clean --if-
 
 | Step | File | What it does |
 |---|---|---|
-| extract | `extract.py` | Copies the 44 needed legacy tables as-is into a fresh `legacy` schema in the target database (picture columns skipped; `tblInventory` only non-zero rows). |
+| extract | `extract.py` | Copies the 46 needed legacy tables as-is into a fresh `legacy` schema in the target database (picture columns skipped; `tblInventory` only non-zero rows). |
 | 00 | `sql/00_prepare.sql` | Indexes the legacy copy. |
 | 01 | `sql/01_reset_data.sql` | Truncates every Norbiz table except permissions, roles, role_permissions and the seeded users (admin, super_admin, system_admin). Also puts back the column DEFAULTs from `db/init.sql` that a schema created by the app's `ddl-auto=update` lacks, which the bulk INSERTs rely on. |
 | 10 | `sql/10_master.sql` | Company, users, employees, catalog, suppliers, customers + outlet warehouses, pull-out reasons, bills of materials. |
 | 20 | `sql/20_documents.sql` | All transactions: headers, lines, loaded quantities, reconstructed documents. |
 | 25 | `match_returns.py` | Links each Outlet Delivery Return to the sale it reverses. |
-| 40 | `sql/40_ledger.sql` | Inventory movements, balances and CREATED/VOIDED history, generated from the documents. |
+| 40 | `sql/40_ledger.sql` | Inventory movements, balances and CREATED/VOIDED history, generated from the documents; Stock Transfer actions and their ACTION history. |
 | 50 | `sql/50_reconcile.sql` | Aligns on-hand with the legacy stock balance. |
 | 55 | `db/migrations/003_backfill_master_data_create_audit.sql` | A CREATE audit log per master-data record, so change history starts with "Created" (see `docs/AUDIT.md`). |
 | 60 | `sql/60_finalize.sql` | Identity sequences, reference numbering, audit marker. |
@@ -105,6 +105,7 @@ The loader writes with set-based SQL, not through the services. The "on-hand can
 | `tblPullOutReasons`, `tblBillofMaterial`+`RawDetail` | `pull_out_reasons`, `bills_of_materials` |
 | `tblInventoryAdjustment` / `tblOutletInventoryAdjustment` | Inventory Adjustment (outlet ones: header ID +100,000; main lines: ID +3,000,000) |
 | `tblStockTransfer` | Stock Transfer. `DRId` becomes the DR's `stock_transfer_id`. |
+| `tblStockTransferUserActions` | Stock Transfer actions: one `transaction_action_definitions` row per distinct `ActionId` (`ENCODED BY` → code `ENCODED_BY`, name "Encoded By"), ordered as legacy usually took them, no prerequisites (legacy didn't enforce an order), **SUPER_ADMIN only** as a placeholder. A blank `ActionId` becomes the inactive `UNSPECIFIED` action. Each row becomes an `ACTION` history event: `UserId` is an employee ID mapped like other authors, `DateEncoded` keeps its legacy time (some precede the transfer's creation, so they sort before CREATED), the comment becomes the remarks with whitespace collapsed and cut to 255 characters. |
 | `tblDeliveryReceipts` | Delivery Receipt |
 | `tblOutletReceives` | Outlet Receipt |
 | `tblOutletDeliveryReceipts` | Outlet Delivery Receipt |
@@ -162,6 +163,7 @@ Report checks, any failure fails the run:
 - On-hand equals the legacy balance.
 - Balances equal the sum of movements.
 - No line is loaded beyond its quantity.
+- Every legacy Stock Transfer action is in the history (minus those on unmigrated transfers).
 
 ## Known limitations
 

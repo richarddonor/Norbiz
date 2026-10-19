@@ -41,6 +41,7 @@ TABLES = {
     "tblOutletInventoryAdjustmentDetails": None,
     "tblStockTransfer": None,
     "tblStockTransferDetails": None,
+    "tblStockTransferUserActions": None,
     "tblDeliveryReceipts": None,
     "tblDeliveryReceiptDetails": None,
     "tblOutletReceives": None,

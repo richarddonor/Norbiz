@@ -113,6 +113,15 @@ def build(pg):
         ("Pull-out reasons", "pull_out_reasons"), ("Bills of materials", "bills_of_materials")]]
     r.table(("Record", "Count"), rows)
 
+    # ---- stock transfer actions ----
+    r.h("Stock Transfer actions (tblStockTransferUserActions)")
+    rows = pg.execute("""
+        SELECT d.code, d.name, d.active, count(e.id) FROM transaction_action_definitions d
+        LEFT JOIN transaction_events e ON e.action_definition_id = d.id
+        WHERE d.transaction_type = 'STOCK_TRANSFER' GROUP BY d.id ORDER BY d.sort_order, d.code""").fetchall()
+    r.table(("Code", "Name", "Active", "Taken"), [(c, n, "yes" if a else "no", t) for c, n, a, t in rows])
+    r.p("Every action allows only SUPER_ADMIN: assign the real roles after cutover.")
+
     # ---- issues ----
     r.h("Issues (fixed or skipped rows)")
     rows = pg.execute("SELECT kind, entity, count(*), min(detail) FROM migration.issues GROUP BY kind, entity ORDER BY kind, entity").fetchall()
@@ -169,6 +178,11 @@ def build(pg):
              + (SELECT count(*) FROM purchase_invoice_lines WHERE quantity_loaded > quantity)
              + (SELECT count(*) FROM stock_transfer_lines WHERE quantity_loaded > quantity)""")
     r.check("no line loaded beyond its quantity", over == 0, "{} over-loaded lines".format(over))
+    legacy_actions = one(pg, "SELECT count(*) FROM legacy.tblstocktransferuseractions")
+    skipped_actions = one(pg, "SELECT count(*) FROM migration.issues WHERE kind = 'skipped' AND entity = 'StockTransferAction'")
+    actions = one(pg, "SELECT count(*) FROM transaction_events WHERE transaction_type = 'STOCK_TRANSFER' AND event_type = 'ACTION'")
+    r.check("every stock transfer action migrated", actions == legacy_actions - skipped_actions,
+            "{:,} of {:,} legacy ({:,} skipped)".format(actions, legacy_actions, skipped_actions))
     return r
 
 

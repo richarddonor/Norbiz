@@ -6,6 +6,7 @@ CREATE INDEX ON legacy.tbltransactions (typeid, id);
 CREATE INDEX ON legacy.tblinventoryadjustmentdetails (masterid);
 CREATE INDEX ON legacy.tbloutletinventoryadjustmentdetails (masterid);
 CREATE INDEX ON legacy.tblstocktransferdetails (masterid);
+CREATE INDEX ON legacy.tblstocktransferuseractions (masterid);
 CREATE INDEX ON legacy.tbldeliveryreceiptdetails (drid);
 CREATE INDEX ON legacy.tbloutletreceivedetails (masterid);
 CREATE INDEX ON legacy.tbloutletreceivedetails (ancdetailid);
