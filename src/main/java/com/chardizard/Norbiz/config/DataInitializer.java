@@ -53,6 +53,7 @@ public class DataInitializer implements CommandLineRunner {
         Permission updateItemPermission   = findOrCreate("UPDATE_ITEM",   "Maintenance - Item Update");
         Permission deleteItemPermission   = findOrCreate("DELETE_ITEM",   "Maintenance - Item Delete");
         Permission viewCostPricePermission = findOrCreate("VIEW_COST_PRICE", "Maintenance - Item Cost Price View");
+        Permission reindexItemImagesPermission = findOrCreate("REINDEX_ITEM_IMAGES", "Maintenance - Item Photo Search Reindex");
         Permission viewBrandPermission            = findOrCreate("VIEW_BRAND",            "Maintenance - Brand View");
         Permission createBrandPermission          = findOrCreate("CREATE_BRAND",          "Maintenance - Brand Create");
         Permission updateBrandPermission          = findOrCreate("UPDATE_BRAND",          "Maintenance - Brand Update");
@@ -158,7 +159,7 @@ public class DataInitializer implements CommandLineRunner {
         systemAdminRole.setDisplayName("System Administrator");
         systemAdminRole.setPermissions(withAll(reportPermissions,
                 viewUserPermission, createUserPermission, viewRolePermission,
-                viewItemPermission, createItemPermission, updateItemPermission,
+                viewItemPermission, createItemPermission, updateItemPermission, reindexItemImagesPermission,
                 viewBrandPermission, createBrandPermission, updateBrandPermission,
                 viewItemCategoryPermission, createItemCategoryPermission, updateItemCategoryPermission,
                 viewItemGroupPermission, createItemGroupPermission, updateItemGroupPermission,
@@ -194,6 +195,7 @@ public class DataInitializer implements CommandLineRunner {
                 viewUserPermission, createUserPermission, updateUserPermission, deleteUserPermission, resetUserPasswordPermission,
                 viewRolePermission, createRolePermission, updateRolePermission, deleteRolePermission,
                 viewItemPermission, createItemPermission, updateItemPermission, deleteItemPermission, viewCostPricePermission,
+                reindexItemImagesPermission,
                 viewBrandPermission, createBrandPermission, updateBrandPermission, deleteBrandPermission,
                 viewItemCategoryPermission, createItemCategoryPermission, updateItemCategoryPermission, deleteItemCategoryPermission,
                 viewItemGroupPermission, createItemGroupPermission, updateItemGroupPermission, deleteItemGroupPermission,

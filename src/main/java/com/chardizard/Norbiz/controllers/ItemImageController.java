@@ -101,10 +101,10 @@ public class ItemImageController {
                     + "(e.g. after changing the embedder model). Progress is logged; returns the number of items queued.")
     @ApiResponse(responseCode = "202", description = "Job queued; returns { queued }")
     @ApiResponse(responseCode = "400", description = "No company given, or a reindex for this company is already running")
-    @ApiResponse(responseCode = "403", description = "Missing UPDATE_ITEM permission or no access to company")
+    @ApiResponse(responseCode = "403", description = "Missing REINDEX_ITEM_IMAGES permission or no access to company")
     @ApiResponse(responseCode = "503", description = "Recognition disabled (code ITEM_RECOGNITION_UNAVAILABLE)")
     @PostMapping("/items/image-recognition/reindex")
-    @PreAuthorize("hasAuthority('UPDATE_ITEM')")
+    @PreAuthorize("hasAuthority('REINDEX_ITEM_IMAGES')")
     public ResponseEntity<AppResponse<Map<String, Integer>>> reindexItemImages(
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "Company whose images to index; defaults to the X-Company-Id header") @RequestParam(required = false) Long companyId,
