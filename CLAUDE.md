@@ -16,6 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/DASHBOARD.md` — Per-user dashboard widgets: `DashboardWidget` catalog, one `VIEW_DASHBOARD_*` permission per widget, layout saved as the user's `dashboard.layout` preference, adding a widget.
 - `docs/LEGACY_MIGRATION.md` — jbsKarutora → Norbiz migration: how to run `tools/legacy-migration/`, legacy→Norbiz mapping, migrated/reconstructed document rules, reconciliation, known limitations.
 - `docs/DEPLOYMENT.md` — Releasing to the Docker-only Ubuntu server: `deploy/` scripts (bootstrap, deploy, migrate), prod compose/nginx, `db/migrations/` rules, backups and rollback.
+- `docs/SERVER_REQUIREMENTS.md` — Host requirements (CPU/RAM/disk/network, Docker-only), one-time host preparation, and the prod move from 10.16.32.64 to 10.18.18.18.
 - `docs/ITEM_RECOGNITION.md` — Item photo recognition: CLIP `embedder/` sidecar, pgvector `item_image_embeddings` (JDBC, not a JPA entity), recognize/reindex endpoints, model/dimension coupling.
 
 `docs/` is where all non-`CLAUDE.md` project markdown lives — `CLAUDE.md` itself stays at the repo root since Claude Code only auto-discovers it there.

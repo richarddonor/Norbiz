@@ -58,7 +58,7 @@ services:
       # Off unless the opt-in observability profile (lgtm) is running — see docs/DEPLOYMENT.md.
       OTEL_EXPORT_ENABLED: ${OTEL_EXPORT_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
-      # Kept low on the VirtualBox VM: full sampling plus a span per SQL query made lgtm a heavy
+      # Kept low in prod: full sampling plus a span per SQL query made lgtm a heavy
       # disk writer (docs/OBSERVABILITY.md#production-sampling).
       TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-0.1}
       JDBC_SPAN_INCLUDES: ${JDBC_SPAN_INCLUDES:-CONNECTION}

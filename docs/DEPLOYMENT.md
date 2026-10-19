@@ -3,7 +3,8 @@
 Norbiz (backend) and Norbiz-Web (frontend) are released to a Linux server that has **only Docker**
 installed. Everything is built inside Docker on the server from what is pushed to GitHub.
 
-Current target: Ubuntu VirtualBox VM `10.16.32.64`, user `vboxuser`.
+Current target: Ubuntu 24.04 KVM VM `10.18.18.18`, user `rdonor` (prod moved off the VirtualBox VM 10.16.32.64 — see `docs/SERVER_REQUIREMENTS.md#migrating-prod-from-10163264`).
+Host requirements and one-time host preparation (Docker, swap, log rotation): `docs/SERVER_REQUIREMENTS.md`.
 
 ## How it fits together
 
@@ -45,7 +46,7 @@ the images don't contain it.
   carries the (plaintext) Postgres and Redis connections, so encrypting it alone would add nothing.
 - **App** speaks plain HTTP and is published on the server's localhost only, so nothing reaches it except
   through nginx. Swagger UI: `https://<host>/api/swagger-ui.html` (nginx sends `X-Forwarded-Prefix: /api`).
-  Direct access without nginx: `ssh -L 8080:localhost:8080 vboxuser@10.16.32.64`, then http://localhost:8080.
+  Direct access without nginx: `ssh -L 8080:localhost:8080 rdonor@10.18.18.18`, then http://localhost:8080.
 - `deploy.sh` refuses to release (before stopping anything) if either file is missing, sets the
   directory and key to owner-only, and reloads nginx after the stack is up.
 
@@ -65,14 +66,14 @@ from `~/norbiz-pki/` — never inside the repo: anything under `src/main/resourc
 2. Create the server key and a signing request:
 
    ```bash
-   openssl req -newkey rsa:2048 -nodes -keyout tls.key -out tls.csr -subj "/CN=10.16.32.64"
+   openssl req -newkey rsa:2048 -nodes -keyout tls.key -out tls.csr -subj "/CN=10.18.18.18"
    ```
 
 3. Sign it with the CA. The `subjectAltName` must match `PUBLIC_HOST` — browsers ignore the CN. Use
    `DNS:<name>` instead of `IP:<addr>` for a hostname:
 
    ```bash
-   printf "subjectAltName=IP:10.16.32.64\nextendedKeyUsage=serverAuth\n" > san.ext
+   printf "subjectAltName=IP:10.18.18.18\nextendedKeyUsage=serverAuth\n" > san.ext
    openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
      -days 825 -sha256 -extfile san.ext -out tls.crt
    openssl x509 -in tls.crt -noout -text | grep -A1 "Subject Alternative Name"   # verify
@@ -91,30 +92,33 @@ Install or replace the certificate from your machine, then release:
 
 ```bash
 cd ~/norbiz-pki
-scp tls.crt tls.key vboxuser@10.16.32.64:~/norbiz/certs/
-ssh vboxuser@10.16.32.64 'SKIP_FETCH=1 ~/norbiz/deploy.sh'
+scp tls.crt tls.key rdonor@10.18.18.18:~/norbiz/certs/
+ssh rdonor@10.18.18.18 'SKIP_FETCH=1 ~/norbiz/deploy.sh'
 ```
 
 Verify the server presents it and it chains to the CA (want `Verify return code: 0 (ok)`):
 
 ```bash
-openssl s_client -connect 10.16.32.64:443 -CAfile ~/norbiz-pki/ca.crt </dev/null 2>/dev/null | grep "Verify return code"
+openssl s_client -connect 10.18.18.18:443 -CAfile ~/norbiz-pki/ca.crt </dev/null 2>/dev/null | grep "Verify return code"
 ```
 
 ## First-time server setup
 
+First do the one-time host preparation in `docs/SERVER_REQUIREMENTS.md#host-preparation` (Docker from
+Docker's apt repo, log rotation, swap). It includes step 2 below.
+
 1. From your machine, enable key-based SSH (you'll type the server password once):
    ```bash
-   ssh-copy-id vboxuser@10.16.32.64
+   ssh-copy-id rdonor@10.18.18.18
    ```
 2. Let the user run Docker without sudo (on the server, then log out and back in):
    ```bash
-   sudo usermod -aG docker vboxuser
+   sudo usermod -aG docker rdonor
    ```
 3. Copy the bootstrap files up and run it:
    ```bash
-   scp deploy/bootstrap.sh deploy/lib.sh deploy/.env.example vboxuser@10.16.32.64:/tmp/
-   ssh vboxuser@10.16.32.64 'bash /tmp/bootstrap.sh'
+   scp deploy/bootstrap.sh deploy/lib.sh deploy/.env.example rdonor@10.18.18.18:/tmp/
+   ssh rdonor@10.18.18.18 'bash /tmp/bootstrap.sh'
    ```
    It creates `~/norbiz`, writes `~/norbiz/.env` with a random `DB_PASSWORD` and `JWT_SECRET`, and
    prints two public keys.
@@ -122,7 +126,7 @@ openssl s_client -connect 10.16.32.64:443 -CAfile ~/norbiz-pki/ca.crt </dev/null
    (`norbiz` key → Norbiz repo, `norbiz-web` key → Norbiz-Web repo; GitHub doesn't allow one key on two repos).
 5. Run bootstrap again — it clones both repos and creates the `~/norbiz/deploy.sh` symlink:
    ```bash
-   ssh vboxuser@10.16.32.64 'bash /tmp/bootstrap.sh'
+   ssh rdonor@10.18.18.18 'bash /tmp/bootstrap.sh'
    ```
 6. Copy the HTTPS certificate to `~/norbiz/certs/` (see [HTTPS](#https)). Review `~/norbiz/.env`
    (`PUBLIC_HOST`, `CORS_ALLOWED_ORIGINS`, `APP_MAX_HEAP` for the VM's RAM), then
@@ -135,7 +139,7 @@ openssl s_client -connect 10.16.32.64:443 -CAfile ~/norbiz-pki/ca.crt </dev/null
    change) and Norbiz-Web.
 2. Run the release:
    ```bash
-   ssh vboxuser@10.16.32.64 '~/norbiz/deploy.sh'
+   ssh rdonor@10.18.18.18 '~/norbiz/deploy.sh'
    ```
    Optional refs (branch, tag or SHA): `~/norbiz/deploy.sh <norbiz-ref> <norbiz-web-ref>`.
    `SKIP_FETCH=1 ~/norbiz/deploy.sh` redeploys the current checkouts without pulling.
@@ -168,7 +172,7 @@ so it can't change the prod schema. Migrations are written to cope if it ran wit
 creating tables there. Check state on the server:
 
 ```bash
-ssh vboxuser@10.16.32.64 '~/norbiz/src/Norbiz/deploy/migrate.sh --status'
+ssh rdonor@10.18.18.18 '~/norbiz/src/Norbiz/deploy/migrate.sh --status'
 ```
 
 ## Rollback
@@ -207,13 +211,13 @@ SKIP_FETCH=1 ~/norbiz/deploy.sh   # restart the app with export enabled
 Grafana (traces/logs/metrics) from your machine:
 
 ```bash
-ssh -L 3000:localhost:3000 vboxuser@10.16.32.64
+ssh -L 3000:localhost:3000 rdonor@10.18.18.18
 ```
 
 then open http://localhost:3000.
 
-Postgres from another machine (e.g. DBeaver/psql): host `10.16.32.64`, port `5432`, database `norbiz`,
-user `DB_USERNAME`, password `DB_PASSWORD` (`ssh vboxuser@10.16.32.64 'grep ^DB_ ~/norbiz/.env'`).
+Postgres from another machine (e.g. DBeaver/psql): host `10.18.18.18`, port `5432`, database `norbiz`,
+user `DB_USERNAME`, password `DB_PASSWORD` (`ssh rdonor@10.18.18.18 'grep ^DB_ ~/norbiz/.env'`).
 This is the app's own superuser account — treat it accordingly.
 
 The stack restarts by itself after a VM reboot (`restart: unless-stopped`, Docker enabled at boot).
