@@ -47,12 +47,14 @@ public class BrandController {
     public ResponseEntity<AppResponse<PageResponse<BrandResponse>>> getAll(
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "Filter by name (contains)") @RequestParam(required = false) String name,
+            @Parameter(description = "Filter by active status (true or false)") @RequestParam(required = false) String active,
             @Parameter(description = "Filter by creator (contains)") @RequestParam(required = false) String createdBy,
             @Parameter(description = "Filter by last-updated date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtFrom,
             @Parameter(description = "Filter by last-updated date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtTo,
             Pageable pageable) {
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(name)) filters.put("name", name);
+        if (StringUtils.hasText(active)) filters.put("active", active);
         if (StringUtils.hasText(createdBy)) filters.put("createdBy", createdBy);
 
         Instant fromInstant = DateRangeUtils.startOfDayUtc(updatedAtFrom);
@@ -119,6 +121,7 @@ public class BrandController {
         res.setCompanyId(brand.getCompany().getId());
         res.setCompanyName(brand.getCompany().getName());
         res.setName(brand.getName());
+        res.setActive(brand.isActive());
         res.setCreatedAt(brand.getCreatedAt());
         res.setUpdatedAt(brand.getUpdatedAt());
         res.setCreatedBy(brand.getCreatedBy());

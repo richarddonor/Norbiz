@@ -191,6 +191,10 @@ public class ItemSkuService {
             if (!category.getCompany().getId().equals(companyId)) {
                 throw new IllegalArgumentException("Item category does not belong to company: " + companyId);
             }
+            boolean unchanged = sku.getItemCategory() != null && sku.getItemCategory().getId().equals(category.getId());
+            if (!category.isActive() && !unchanged) {
+                throw new IllegalArgumentException("Item category is inactive: " + category.getName());
+            }
             sku.setItemCategory(category);
         }
         if (request.getBrandId() != null) {
@@ -198,6 +202,10 @@ public class ItemSkuService {
                     .orElseThrow(() -> new IllegalArgumentException("Brand not found: " + request.getBrandId()));
             if (!brand.getCompany().getId().equals(companyId)) {
                 throw new IllegalArgumentException("Brand does not belong to company: " + companyId);
+            }
+            boolean unchanged = sku.getBrand() != null && sku.getBrand().getId().equals(brand.getId());
+            if (!brand.isActive() && !unchanged) {
+                throw new IllegalArgumentException("Brand is inactive: " + brand.getName());
             }
             sku.setBrand(brand);
         }

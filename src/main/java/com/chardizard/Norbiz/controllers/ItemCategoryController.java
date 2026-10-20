@@ -48,6 +48,7 @@ public class ItemCategoryController {
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "Filter by name (contains)") @RequestParam(required = false) String name,
             @Parameter(description = "Filter by company name (contains)") @RequestParam(required = false) String company,
+            @Parameter(description = "Filter by active status (true or false)") @RequestParam(required = false) String active,
             @Parameter(description = "Filter by creator (contains)") @RequestParam(required = false) String createdBy,
             @Parameter(description = "Filter by last-updated date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtFrom,
             @Parameter(description = "Filter by last-updated date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtTo,
@@ -55,6 +56,7 @@ public class ItemCategoryController {
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(company)) filters.put("company", company);
+        if (StringUtils.hasText(active)) filters.put("active", active);
         if (StringUtils.hasText(createdBy)) filters.put("createdBy", createdBy);
 
         Instant fromInstant = DateRangeUtils.startOfDayUtc(updatedAtFrom);
@@ -121,6 +123,7 @@ public class ItemCategoryController {
         res.setCompanyId(category.getCompany().getId());
         res.setCompanyName(category.getCompany().getName());
         res.setName(category.getName());
+        res.setActive(category.isActive());
         res.setCreatedAt(category.getCreatedAt());
         res.setUpdatedAt(category.getUpdatedAt());
         res.setCreatedBy(category.getCreatedBy());

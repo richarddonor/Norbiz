@@ -47,7 +47,8 @@ public class ItemService {
     private final UserRepository userRepository;
     private final EntityManager entityManager;
 
-    public Page<Item> findAllForUser(String username, Map<String, String> filters, Pageable pageable) {
+    /** `ids` (empty = no restriction) narrows the list to those items, still within the caller's companies. */
+    public Page<Item> findAllForUser(String username, Map<String, String> filters, List<Long> ids, Pageable pageable) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
 
@@ -63,8 +64,11 @@ public class ItemService {
             companyScope = (root, query, cb) -> root.get("company").get("id").in(companyIds);
         }
 
+        Specification<Item> idScope = ids.isEmpty() ? null : (root, query, cb) -> root.get("id").in(ids);
+
         Specification<Item> spec = SpecificationUtils.allOf(
                 companyScope,
+                idScope,
                 SpecificationUtils.containsIgnoreCase("itemCode", filters.get("itemCode")),
                 SpecificationUtils.containsIgnoreCase("name", filters.get("name")),
                 SpecificationUtils.containsIgnoreCase("itemCategory.name", filters.get("category")),
@@ -103,7 +107,7 @@ public class ItemService {
             throw new IllegalArgumentException("Item code already exists for this company");
         }
 
-        ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), company.getId());
+        ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), company.getId(), null);
         ItemGroup group = loadGroupForCompany(request.getItemGroupId(), company.getId(), null);
 
         Item item = new Item();
@@ -133,7 +137,7 @@ public class ItemService {
     public Item update(Long id, ItemRequest request, String username, boolean canViewCostPrice) {
         Item item = findById(id, username);
 
-        ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), item.getCompany().getId());
+        ItemCategory category = loadCategoryForCompany(request.getItemCategoryId(), item.getCompany().getId(), item.getItemCategory());
         ItemGroup group = loadGroupForCompany(request.getItemGroupId(), item.getCompany().getId(), item.getItemGroup());
 
         BigDecimal existingCostPrice = item.getPrices().stream()
@@ -242,11 +246,16 @@ public class ItemService {
         }
     }
 
-    private ItemCategory loadCategoryForCompany(Long categoryId, Long companyId) {
+    /** An inactive category can't be newly assigned, but an item already in it may keep it. */
+    private ItemCategory loadCategoryForCompany(Long categoryId, Long companyId, ItemCategory currentCategory) {
         ItemCategory category = itemCategoryRepository.findById(categoryId)
                 .orElseThrow(() -> new IllegalArgumentException("Item category not found: " + categoryId));
         if (!category.getCompany().getId().equals(companyId)) {
             throw new IllegalArgumentException("Item category does not belong to company: " + companyId);
+        }
+        boolean unchanged = currentCategory != null && currentCategory.getId().equals(categoryId);
+        if (!category.isActive() && !unchanged) {
+            throw new IllegalArgumentException("Item category is inactive: " + category.getName());
         }
         return category;
     }

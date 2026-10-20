@@ -52,6 +52,7 @@ public class BrandService {
         Specification<Brand> spec = SpecificationUtils.allOf(
                 companyScope,
                 SpecificationUtils.containsIgnoreCase("name", filters.get("name")),
+                SpecificationUtils.booleanEquals("active", filters.get("active")),
                 SpecificationUtils.containsIgnoreCase("createdBy", filters.get("createdBy")),
                 SpecificationUtils.dateRange("updatedAt", updatedAtFrom, updatedAtTo)
         );
@@ -80,6 +81,7 @@ public class BrandService {
         Brand brand = new Brand();
         brand.setCompany(company);
         brand.setName(request.getName());
+        if (request.getActive() != null) brand.setActive(request.getActive());
         Brand saved = brandRepository.save(brand);
         log.info("User '{}' created brand '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
         return saved;
@@ -95,6 +97,7 @@ public class BrandService {
         }
 
         brand.setName(request.getName());
+        if (request.getActive() != null) brand.setActive(request.getActive());
         Brand saved = brandRepository.save(brand);
         log.info("User '{}' updated brand '{}' (id={})", username, saved.getName(), saved.getId());
         return saved;

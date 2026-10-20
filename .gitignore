@@ -52,3 +52,6 @@ tools/legacy-migration/config.env
 *.pfx
 *.key
 *.pem
+
+### macOS ###
+.DS_Store

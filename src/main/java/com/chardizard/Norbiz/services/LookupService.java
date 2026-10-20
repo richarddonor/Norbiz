@@ -162,10 +162,12 @@ public class LookupService {
                 .toList();
     }
 
-    public Page<LookupResponse> itemCategories(String username, Long companyId, String q, Pageable pageable) {
-        return search(CacheRegion.LOOKUP_ITEM_CATEGORY, params("q", q), LookupResponse.class,
+    public Page<LookupResponse> itemCategories(String username, Long companyId, String q, boolean activeOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_ITEM_CATEGORY, params("q", q, "activeOnly", activeOnly), LookupResponse.class,
                 itemCategoryRepository, username, companyId, ItemCategory.class,
-                SpecificationUtils.containsIgnoreCase("name", q),
+                SpecificationUtils.allOf(
+                        SpecificationUtils.containsIgnoreCase("name", q),
+                        activeOnly ? SpecificationUtils.booleanEquals("active", true) : null),
                 withDefaultSort(pageable, "name"), this::toLookup);
     }
 
@@ -496,7 +498,7 @@ public class LookupService {
     }
 
     private LookupResponse toLookup(ItemCategory c) {
-        return new LookupResponse(c.getId(), c.getCompany().getId(), null, c.getName(), true);
+        return new LookupResponse(c.getId(), c.getCompany().getId(), null, c.getName(), c.isActive());
     }
 
     private LookupResponse toLookup(ItemGroup g) {

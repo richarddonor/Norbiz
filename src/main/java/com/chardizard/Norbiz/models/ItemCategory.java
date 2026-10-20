@@ -24,4 +24,7 @@ public class ItemCategory extends Auditable {
 
     @Column(nullable = false, length = 255)
     private String name;
+
+    @Column(nullable = false)
+    private boolean active = true;
 }

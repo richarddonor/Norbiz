@@ -16,7 +16,7 @@ Only response DTOs are cached, never entities.
 
 ```
 controller/service ── auth + company check ──▶ QueryCache.page(region, scope, params, pageable, type, loader)
-                                                  │ key = norbiz:c:v1:{REGION}:sha256(scope | generations | params+paging)
+                                                  │ key = norbiz:c:v2:{REGION}:sha256(scope | generations | params+paging)
                                                   ├─ hit  → deserialize CachedPage → PageImpl
                                                   └─ miss → loader (DB) → SET key EX ttl
 Hibernate write ─▶ CacheInvalidationListener ─▶ (entity, companyId) collected per transaction
@@ -66,6 +66,6 @@ Hits and misses are logged at DEBUG (`logging.level.com.chardizard.Norbiz.cache=
 
 ```bash
 docker compose exec redis redis-cli --scan --pattern 'norbiz:gen:*'      # counters
-docker compose exec redis redis-cli --scan --pattern 'norbiz:c:v1:LIST_BRAND:*'
+docker compose exec redis redis-cli --scan --pattern 'norbiz:c:v2:LIST_BRAND:*'
 docker compose exec redis redis-cli FLUSHDB                               # safe: everything rebuilds from Postgres
 ```

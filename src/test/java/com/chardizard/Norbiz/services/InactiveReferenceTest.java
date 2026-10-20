@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.services;
 
+import com.chardizard.Norbiz.dto.ItemRequest;
 import com.chardizard.Norbiz.dto.PurchaseOrderLineRequest;
 import com.chardizard.Norbiz.dto.PurchaseOrderRequest;
 import com.chardizard.Norbiz.models.*;
@@ -28,6 +29,7 @@ import static org.mockito.Mockito.when;
 class InactiveReferenceTest {
 
     @Autowired PurchaseOrderService purchaseOrderService;
+    @Autowired ItemService itemService;
     @Autowired CompanyRepository companyRepository;
     @Autowired WarehouseRepository warehouseRepository;
     @Autowired SupplierRepository supplierRepository;
@@ -42,6 +44,7 @@ class InactiveReferenceTest {
     private Company company;
     private Warehouse warehouse;
     private Supplier supplier;
+    private ItemCategory category;
     private Item item;
 
     @BeforeEach
@@ -71,7 +74,7 @@ class InactiveReferenceTest {
         supplier.setName("IR Supplier");
         supplier = supplierRepository.save(supplier);
 
-        ItemCategory category = new ItemCategory();
+        category = new ItemCategory();
         category.setCompany(company);
         category.setName("IR Category " + suffix);
         category = itemCategoryRepository.save(category);
@@ -109,6 +112,23 @@ class InactiveReferenceTest {
         item.setActive(false);
         assertThatThrownBy(() -> purchaseOrderService.create(request(), buyer, false))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Item is inactive");
+    }
+
+    @Test
+    void inactiveCategoryCantBeNewlyAssignedButIsKept() {
+        category.setActive(false);
+        ItemRequest req = new ItemRequest();
+        req.setCompanyId(company.getId());
+        req.setItemCode("IR2-" + suffix);
+        req.setName("IR Item 2");
+        req.setItemCategoryId(category.getId());
+        assertThatThrownBy(() -> itemService.create(req, buyer, false))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Item category is inactive");
+
+        // An item already in the category keeps it on edit.
+        req.setItemCode(item.getItemCode());
+        req.setName("IR Item renamed");
+        assertThat(itemService.update(item.getId(), req, buyer, false).getItemCategory().getId()).isEqualTo(category.getId());
     }
 
     private PurchaseOrderRequest request() {

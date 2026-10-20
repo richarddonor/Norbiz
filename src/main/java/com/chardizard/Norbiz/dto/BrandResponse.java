@@ -12,6 +12,7 @@ public class BrandResponse {
     private Long companyId;
     private String companyName;
     private String name;
+    private boolean active;
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;

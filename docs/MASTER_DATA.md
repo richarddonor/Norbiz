@@ -2,6 +2,11 @@
 
 Data in Norbiz is divided into two main categories: Master and Transactional (see `docs/TRANSACTIONS.md` for the latter). Master data acts as the foundational building block of the system — representing the core entities, places, and things your business interacts with. Master Data includes Users, Roles, Permissions, Items, Brands, Company, and so on.
 
+## Active flag
+- Every company-scoped master data record (Brand, Item Category, Item Group, Item, Item SKU, Employee, Warehouse, Supplier, Customer, Pull-out Reason, Bill of Materials) has an `active` boolean (default true; `active` on the request, omitted = unchanged on update; `?active=true|false` list filter).
+- Only active records can be selected in forms: every `/lookups/*` dropdown defaults to `activeOnly=true`, and services reject newly assigning an inactive record (`"<Entity> is inactive"`, 400). A record that already references it keeps it on edit, and `/lookups/*/{id}` still resolves inactive ones for display.
+- Deactivate rather than delete a record that is still in use (`ENTITY_IN_USE`).
+
 ## Users
 - Users are the primary actors of Norbiz
 - `User` may belong to one or many companies via `user_companies` join table.

@@ -2,7 +2,8 @@
 
 Users can identify an item from a photo with the camera button (or Alt+P) next to the item picker in
 forms (`ItemSelect` / `ItemRecognitionDialog` in Norbiz-Web, see its `docs/DROPDOWNS.md`). The Items
-list's "Photo Search" menu starts the reindex job.
+list's "Photo Search" menu filters the list by photo (the top 20 matches, sent back as `GET /items?ids=…`,
+max 100 IDs, still company-scoped), opens a single match, and (admins) starts the reindex job.
 
 ## How it works
 

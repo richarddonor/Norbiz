@@ -16,6 +16,9 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -39,6 +42,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ItemController {
 
+    /** Most IDs the `ids` list filter takes; photo search returns at most 20 matches. */
+    private static final int MAX_ID_FILTER = 100;
+
     private final ItemService itemService;
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
@@ -57,6 +63,8 @@ public class ItemController {
             @Parameter(description = "Filter by company name (contains)") @RequestParam(required = false) String company,
             @Parameter(description = "Filter by SKU code (contains)") @RequestParam(required = false) String skus,
             @Parameter(description = "Filter by unit price (contains)") @RequestParam(required = false) String unitPrice,
+            @Parameter(description = "Only these item IDs (comma-separated or repeated), e.g. the matches of a photo search")
+            @RequestParam(required = false) @Size(max = MAX_ID_FILTER) List<@NotNull @Positive Long> ids,
             Pageable pageable) {
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(itemCode)) filters.put("itemCode", itemCode);
@@ -66,11 +74,12 @@ public class ItemController {
         if (StringUtils.hasText(company)) filters.put("company", company);
         if (StringUtils.hasText(skus)) filters.put("skus", skus);
         if (StringUtils.hasText(unitPrice)) filters.put("unitPrice", unitPrice);
+        List<Long> idFilter = ids == null ? List.of() : ids.stream().distinct().sorted().toList();
 
         // canViewCostPrice is in the key: toResponse hides the cost price from callers without VIEW_COST_PRICE.
         var items = queryCache.page(CacheRegion.LIST_ITEM, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters, "canViewCostPrice", hasCostPriceAuthority(userDetails)), pageable, ItemResponse.class,
-                () -> itemService.findAllForUser(userDetails.getUsername(), filters, pageable).map(item -> toResponse(item, userDetails)));
+                QueryCache.params("filters", filters, "ids", idFilter, "canViewCostPrice", hasCostPriceAuthority(userDetails)), pageable, ItemResponse.class,
+                () -> itemService.findAllForUser(userDetails.getUsername(), filters, idFilter, pageable).map(item -> toResponse(item, userDetails)));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(items)));
     }
 

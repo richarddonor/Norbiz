@@ -16,4 +16,7 @@ public class BrandRequest {
     @NotBlank
     @Size(max = 255)
     private String name;
+
+    /** Omitted = true on create, unchanged on update. Inactive records can't be newly picked in forms. */
+    private Boolean active;
 }

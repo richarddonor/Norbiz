@@ -37,7 +37,7 @@ public class QueryCache {
 
     private static final Logger log = LoggerFactory.getLogger(QueryCache.class);
     // Bump when the stored format or a cached DTO changes incompatibly, to orphan old entries on deploy.
-    private static final String KEY_PREFIX = "norbiz:c:v1:";
+    private static final String KEY_PREFIX = "norbiz:c:v2:";
 
     private final StringRedisTemplate redis;
     private final GenerationStore generations;

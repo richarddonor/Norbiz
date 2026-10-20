@@ -204,8 +204,9 @@ public class LookupController {
             @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
             @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
             @Parameter(description = "Search text (contains, case-insensitive) over name") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = ACTIVE_DESC) @RequestParam(defaultValue = "true") boolean activeOnly,
             Pageable pageable) {
-        return ok(lookupService.itemCategories(userDetails.getUsername(), company(companyId, headerCompanyId), q, pageable));
+        return ok(lookupService.itemCategories(userDetails.getUsername(), company(companyId, headerCompanyId), q, activeOnly, pageable));
     }
 
     @Operation(summary = "Item category option by ID")

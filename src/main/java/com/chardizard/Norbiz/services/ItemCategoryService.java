@@ -52,6 +52,7 @@ public class ItemCategoryService {
         Specification<ItemCategory> spec = SpecificationUtils.allOf(
                 companyScope,
                 SpecificationUtils.containsIgnoreCase("name", filters.get("name")),
+                SpecificationUtils.booleanEquals("active", filters.get("active")),
                 SpecificationUtils.containsIgnoreCase("company.name", filters.get("company")),
                 SpecificationUtils.containsIgnoreCase("createdBy", filters.get("createdBy")),
                 SpecificationUtils.dateRange("updatedAt", updatedAtFrom, updatedAtTo)
@@ -81,6 +82,7 @@ public class ItemCategoryService {
         ItemCategory category = new ItemCategory();
         category.setCompany(company);
         category.setName(request.getName());
+        if (request.getActive() != null) category.setActive(request.getActive());
         ItemCategory saved = itemCategoryRepository.save(category);
         log.info("User '{}' created item category '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
         return saved;
@@ -96,6 +98,7 @@ public class ItemCategoryService {
         }
 
         category.setName(request.getName());
+        if (request.getActive() != null) category.setActive(request.getActive());
         ItemCategory saved = itemCategoryRepository.save(category);
         log.info("User '{}' updated item category '{}' (id={})", username, saved.getName(), saved.getId());
         return saved;
