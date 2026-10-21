@@ -7,7 +7,7 @@ All runtime config is environment-driven via `src/main/resources/application.pro
 | `spring.datasource.url` | `jdbc:postgresql://localhost:5432/norbiz` | DB connection |
 | `spring.jpa.hibernate.ddl-auto` | `update` | Schema management. Prod sets `validate` — schema changes there only come from `db/migrations/` (see `docs/DEPLOYMENT.md`) |
 | `jwt.secret` | (required) | HMAC-SHA256 key, Base64-encoded |
-| `jwt.expiration` | `86400000` | JWT TTL in ms (24 h) |
+| `jwt.expiration` | `43200000` | JWT TTL in ms (12 h) |
 | `cors.allowed-origins` | `http://localhost:5173` | Frontend origin |
 | `app.item-image.upload-dir` | `./item-images` | Image upload path |
 | `spring.data.redis.host` / `.port` / `.password` (`REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`) | `localhost` / `6379` / empty | Redis for the query cache (see `docs/CACHING.md`) |
