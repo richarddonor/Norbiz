@@ -25,8 +25,6 @@ public enum DetailedReportType {
     SUPPLIER_MEMO(TransactionType.SUPPLIER_MEMO, "Supplier Memo", "Accounting"),
     CUSTOMER_PAYMENT(TransactionType.CUSTOMER_PAYMENT, "Customer Payment", "Accounting"),
     SUPPLIER_PAYMENT(TransactionType.SUPPLIER_PAYMENT, "Supplier Payment", "Accounting"),
-    CUSTOMER_CREDIT_APPLICATION(TransactionType.CUSTOMER_CREDIT_APPLICATION, "Customer Credit Application", "Accounting"),
-    SUPPLIER_CREDIT_APPLICATION(TransactionType.SUPPLIER_CREDIT_APPLICATION, "Supplier Credit Application", "Accounting"),
     CUSTOMER_REFUND(TransactionType.CUSTOMER_REFUND, "Customer Refund", "Accounting"),
     SUPPLIER_REFUND(TransactionType.SUPPLIER_REFUND, "Supplier Refund", "Accounting"),
     DEPOSIT(TransactionType.DEPOSIT, "Deposit", "Accounting"),

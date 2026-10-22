@@ -5,16 +5,79 @@ import com.chardizard.Norbiz.models.CustomerPayment;
 import com.chardizard.Norbiz.models.CustomerPaymentTender;
 import com.chardizard.Norbiz.models.OpenItem;
 import com.chardizard.Norbiz.models.OpenItemAllocation;
+import com.chardizard.Norbiz.models.OpenItemSourceType;
 import com.chardizard.Norbiz.models.OpenItemStatus;
 import com.chardizard.Norbiz.models.SupplierPayment;
 import com.chardizard.Norbiz.models.SupplierPaymentTender;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 // Entity → response mappers shared by the AR/AP controllers.
 public final class AccountingResponses {
 
     private AccountingResponses() {
+    }
+
+    /** What a payment paid and which existing credits it used, built from the allocations it made. */
+    public record PaymentBreakdown(List<PaidDocumentResponse> paidDocuments, List<CreditUsedResponse> creditsUsed, BigDecimal creditsUsedAmount) {
+    }
+
+    /**
+     * Groups a payment's allocations by the charge they paid, split into what its own tenders paid and what existing
+     * credits covered, plus one entry per credit used. Reversed allocations (bounced/cancelled checks) are left out,
+     * except on a voided payment, which keeps showing what it had paid.
+     */
+    public static PaymentBreakdown paymentBreakdown(Collection<OpenItemAllocation> allocations, Set<Long> tenderItemIds, boolean voided) {
+        Map<Long, BigDecimal[]> paid = new LinkedHashMap<>();
+        Map<Long, OpenItem> charges = new LinkedHashMap<>();
+        Map<Long, BigDecimal> used = new LinkedHashMap<>();
+        Map<Long, OpenItem> credits = new LinkedHashMap<>();
+        for (OpenItemAllocation a : allocations) {
+            if (a.isReversed() && !voided) continue;
+            OpenItem charge = a.getChargeItem();
+            OpenItem credit = a.getCreditItem();
+            boolean fromTender = tenderItemIds.contains(credit.getId());
+            charges.putIfAbsent(charge.getId(), charge);
+            BigDecimal[] amounts = paid.computeIfAbsent(charge.getId(), id -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            amounts[fromTender ? 0 : 1] = amounts[fromTender ? 0 : 1].add(a.getAmount());
+            if (!fromTender) {
+                credits.putIfAbsent(credit.getId(), credit);
+                used.merge(credit.getId(), a.getAmount(), BigDecimal::add);
+            }
+        }
+        List<PaidDocumentResponse> paidDocuments = new ArrayList<>();
+        paid.forEach((id, amounts) -> {
+            OpenItem charge = charges.get(id);
+            paidDocuments.add(new PaidDocumentResponse(id, charge.getSourceType(), documentType(charge.getSourceType()), charge.getReferenceNumber(),
+                    amounts[0], amounts[1], amounts[0].add(amounts[1])));
+        });
+        List<CreditUsedResponse> creditsUsed = new ArrayList<>();
+        used.forEach((id, amount) -> {
+            OpenItem credit = credits.get(id);
+            creditsUsed.add(new CreditUsedResponse(id, credit.getSourceType(), documentType(credit.getSourceType()), credit.getReferenceNumber(), amount));
+        });
+        return new PaymentBreakdown(paidDocuments, creditsUsed, used.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+
+    /** Printable name of an open item's document. */
+    public static String documentType(OpenItemSourceType type) {
+        return switch (type) {
+            case SALES_INVOICE -> "Sales Invoice";
+            case CUSTOMER_DEBIT_MEMO -> "Customer Debit Memo";
+            case CUSTOMER_CREDIT_MEMO -> "Customer Credit Memo";
+            case CUSTOMER_PAYMENT_TENDER, SUPPLIER_PAYMENT_TENDER -> "Advance";
+            case CUSTOMER_REFUND -> "Customer Refund";
+            case PURCHASE_INVOICE -> "Purchase Invoice";
+            case SUPPLIER_CREDIT_MEMO -> "Supplier Credit Memo";
+            case SUPPLIER_DEBIT_MEMO -> "Supplier Debit Memo";
+            case SUPPLIER_REFUND -> "Supplier Refund";
+        };
     }
 
     public static AllocationResponse allocation(OpenItemAllocation a) {

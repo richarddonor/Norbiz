@@ -27,6 +27,8 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Tag(name = "Supplier Payments", description = "Money paid to suppliers — requires VIEW_SUPPLIER_PAYMENT / CREATE_SUPPLIER_PAYMENT / VOID_SUPPLIER_PAYMENT. "
         + "One or more tenders (our checks, bank transfers, cash), optionally applied to the supplier's open payables (Purchase Invoices, "
@@ -84,12 +86,14 @@ public class SupplierPaymentController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
 
-        var page = paymentService.findAllForUser(userDetails.getUsername(), supplierId, filters, fromInstant, toInstant, sorted)
-                .map(p -> toResponse(p, false));
+        var payments = paymentService.findAllForUser(userDetails.getUsername(), supplierId, filters, fromInstant, toInstant, sorted);
+        Map<Long, List<OpenItemAllocation>> allocations = openItemQueryService.allocationsBySources(TransactionType.SUPPLIER_PAYMENT,
+                payments.getContent().stream().map(SupplierPayment::getId).toList());
+        var page = payments.map(p -> toResponse(p, allocations.getOrDefault(p.getId(), List.of()), false));
         var response = PageResponse.of(page);
         if (totals) {
             response.withTotals(ListTotals.within(page.getTotalElements(), () -> paymentService.findAllForUser(userDetails.getUsername(),
-                            supplierId, filters, fromInstant, toInstant, ListSort.unpaged(sorted)).map(p -> toResponse(p, false)).getContent(),
+                            supplierId, filters, fromInstant, toInstant, ListSort.unpaged(sorted)).map(p -> toResponse(p, null, false)).getContent(),
                     ListTotals.column("totalAmount", SupplierPaymentResponse::getTotalAmount),
                     ListTotals.column("unappliedAmount", SupplierPaymentResponse::getUnappliedAmount)));
         }
@@ -103,14 +107,15 @@ public class SupplierPaymentController {
     @PreAuthorize("hasAuthority('VIEW_SUPPLIER_PAYMENT')")
     public ResponseEntity<AppResponse<SupplierPaymentResponse>> getById(@Parameter(description = "Payment ID") @PathVariable Long id,
                                                                         @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(AppResponse.of(toResponse(paymentService.findById(id, userDetails.getUsername()), true)));
+        return ResponseEntity.ok(AppResponse.of(toResponse(paymentService.findById(id, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Post supplier payment", description = "Tenders: CHECK (bankAccountId, checkNumber, checkDate required) is ISSUED "
             + "(outstanding) until it clears; BANK_TRANSFER (bankAccountId required) settles at once; CASH/OTHERS settle with no bank effect. "
             + "Checks and transfers post a disbursement to the bank account's book. replacesTenderId replaces a CANCELLED check. Applications "
             + "pay the supplier's open payables (GET /lookups/open-items), drawing from settled tenders first and then checks by check date "
-            + "unless tenderIndex says otherwise; the rest stays as an advance. Dated on/after the accounting start date. Numbered SPY-.")
+            + "unless tenderIndex says otherwise; the rest stays as an advance. credits apply the supplier's existing credits (debit memos, "
+            + "advances) to open payables in the same posting, before the tenders; a payment may use credits alone (no tenders). Dated on/after the accounting start date. Numbered SPY-.")
     @ApiResponse(responseCode = "201", description = "Payment posted")
     @ApiResponse(responseCode = "400", description = "Validation error (e.g. missing check details, over-application, inactive supplier)")
     @ApiResponse(responseCode = "403", description = "Missing CREATE_SUPPLIER_PAYMENT permission or no access to company")
@@ -119,11 +124,11 @@ public class SupplierPaymentController {
     public ResponseEntity<AppResponse<SupplierPaymentResponse>> create(@Valid @RequestBody SupplierPaymentRequest request,
                                                                        @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(AppResponse.of(toResponse(paymentService.create(request, userDetails.getUsername()), true)));
+                .body(AppResponse.of(toResponse(paymentService.create(request, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Void supplier payment", description = "Cancels a payment posted in error: reverses its applications and voids its bank "
-            + "entries. Fails if any of those entries is already reconciled, or if a later Supplier Credit Application/Refund used its credit.")
+            + "entries. Fails if any of those entries is already reconciled, or if a later Supplier Payment or Refund used its credit.")
     @ApiResponse(responseCode = "200", description = "Payment voided")
     @ApiResponse(responseCode = "400", description = "Already voided, reconciled, or used by later documents")
     @ApiResponse(responseCode = "403", description = "Missing VOID_SUPPLIER_PAYMENT permission or no access to company")
@@ -131,10 +136,15 @@ public class SupplierPaymentController {
     @PreAuthorize("hasAuthority('VOID_SUPPLIER_PAYMENT')")
     public ResponseEntity<AppResponse<SupplierPaymentResponse>> voidPayment(@Parameter(description = "Payment ID") @PathVariable Long id,
                                                                             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(AppResponse.of(toResponse(paymentService.voidPayment(id, userDetails.getUsername()), true)));
+        return ResponseEntity.ok(AppResponse.of(toResponse(paymentService.voidPayment(id, userDetails.getUsername()))));
     }
 
-    private SupplierPaymentResponse toResponse(SupplierPayment payment, boolean withApplications) {
+    private SupplierPaymentResponse toResponse(SupplierPayment payment) {
+        return toResponse(payment, openItemQueryService.allocationsBySource(TransactionType.SUPPLIER_PAYMENT, payment.getId()), true);
+    }
+
+    // allocations: the payment's own (null skips the paid/credits breakdown, e.g. for list totals).
+    private SupplierPaymentResponse toResponse(SupplierPayment payment, List<OpenItemAllocation> allocations, boolean withApplications) {
         SupplierPaymentResponse res = new SupplierPaymentResponse();
         res.setId(payment.getId());
         res.setCompanyId(payment.getCompany().getId());
@@ -157,9 +167,14 @@ public class SupplierPaymentController {
         res.setTenders(tenders);
         res.setAppliedAmount(tenders.stream().map(IssuedTenderResponse::getAppliedAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
         res.setUnappliedAmount(tenders.stream().map(IssuedTenderResponse::getUnappliedAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
-        if (withApplications) {
-            res.setApplications(openItemQueryService.allocationsBySource(TransactionType.SUPPLIER_PAYMENT, payment.getId()).stream()
-                    .map(AccountingResponses::allocation).toList());
+        if (allocations != null) {
+            Set<Long> tenderItemIds = payment.getTenders().stream().filter(t -> t.getOpenItem() != null)
+                    .map(t -> t.getOpenItem().getId()).collect(Collectors.toSet());
+            AccountingResponses.PaymentBreakdown breakdown = AccountingResponses.paymentBreakdown(allocations, tenderItemIds, payment.isVoided());
+            res.setPaidDocuments(breakdown.paidDocuments());
+            res.setCreditsUsed(breakdown.creditsUsed());
+            res.setCreditsUsedAmount(breakdown.creditsUsedAmount());
+            if (withApplications) res.setApplications(allocations.stream().map(AccountingResponses::allocation).toList());
         }
         return res;
     }

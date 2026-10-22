@@ -32,4 +32,9 @@ public class SupplierPaymentResponse {
     private TransactionOrigin origin;
     private List<IssuedTenderResponse> tenders;
     private List<AllocationResponse> applications;
+    // What the payment paid (per charge: from its tenders and from existing credits) and the existing credits it used.
+    // Not filled for the rows a list's grand totals are computed from.
+    private List<PaidDocumentResponse> paidDocuments;
+    private List<CreditUsedResponse> creditsUsed;
+    private BigDecimal creditsUsedAmount;
 }

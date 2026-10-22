@@ -13,8 +13,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /** Read side of the AR/AP subledger: open-item lists and lookups, and a document's allocations. */
 @Service
@@ -28,6 +31,13 @@ public class OpenItemQueryService {
 
     public List<OpenItemAllocation> allocationsBySource(TransactionType sourceType, Long sourceId) {
         return allocationRepository.findBySourceTypeAndSourceIdOrderByIdAsc(sourceType, sourceId);
+    }
+
+    /** The allocations of several documents of one type, by document id (each in id order). */
+    public Map<Long, List<OpenItemAllocation>> allocationsBySources(TransactionType sourceType, Collection<Long> sourceIds) {
+        if (sourceIds.isEmpty()) return Map.of();
+        return allocationRepository.findBySources(sourceType, sourceIds).stream()
+                .collect(Collectors.groupingBy(OpenItemAllocation::getSourceId, LinkedHashMap::new, Collectors.toList()));
     }
 
     /** Allocations touching an item, active or reversed (an invoice's payment history). */

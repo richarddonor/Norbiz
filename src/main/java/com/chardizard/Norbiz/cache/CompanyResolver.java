@@ -79,8 +79,6 @@ final class CompanyResolver {
             case SupplierMemo m -> m.getCompany().getId();
             case CustomerPayment p -> p.getCompany().getId();
             case SupplierPayment p -> p.getCompany().getId();
-            case CustomerCreditApplication a -> a.getCompany().getId();
-            case SupplierCreditApplication a -> a.getCompany().getId();
             case CustomerRefund r -> r.getCompany().getId();
             case SupplierRefund r -> r.getCompany().getId();
             case Deposit d -> d.getCompany().getId();
@@ -109,8 +107,8 @@ final class CompanyResolver {
             case SupplierMemoLine l -> l.getSupplierMemo().getCompany().getId();
             case CustomerPaymentTender t -> t.getCustomerPayment().getCompany().getId();
             case SupplierPaymentTender t -> t.getSupplierPayment().getCompany().getId();
-            case CustomerCreditApplicationLine l -> l.getCustomerCreditApplication().getCompany().getId();
-            case SupplierCreditApplicationLine l -> l.getSupplierCreditApplication().getCompany().getId();
+            case CustomerPaymentCredit c -> c.getCustomerPayment().getCompany().getId();
+            case SupplierPaymentCredit c -> c.getSupplierPayment().getCompany().getId();
             case CustomerRefundLine l -> l.getCustomerRefund().getCompany().getId();
             case SupplierRefundLine l -> l.getSupplierRefund().getCompany().getId();
             case DepositLine l -> l.getDeposit().getCompany().getId();

@@ -2,7 +2,6 @@ package com.chardizard.Norbiz.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -35,14 +34,21 @@ public class SupplierPaymentRequest {
     @Size(max = 255)
     private String remarks;
 
-    @NotEmpty
+    // Money paid. May be empty when the payment only uses existing credits (see credits); it needs one or the other.
     @Valid
     @Size(max = 50)
     private List<IssuedTenderRequest> tenders;
 
     // Optional: apply the payment to the supplier's open payables now. Whatever is left unapplied stays as an
-    // advance to the supplier (apply it later with a Supplier Credit Application).
+    // advance to the supplier (use it later as a credit on another Supplier Payment, or have it refunded).
     @Valid
     @Size(max = 500)
     private List<ApplicationRequest> applications;
+
+    // Existing credits of the supplier (debit memos, earlier advances) this payment uses, each applied to one of its open
+    // charges: alone, or alongside tenders (e.g. a memo plus a check against one invoice). Applied before the
+    // tenders; voiding the payment reverses them.
+    @Valid
+    @Size(max = 500)
+    private List<PaymentCreditRequest> credits;
 }

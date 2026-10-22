@@ -27,6 +27,8 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Tag(name = "Customer Payments", description = "Money received from customers — requires VIEW_CUSTOMER_PAYMENT / CREATE_CUSTOMER_PAYMENT / VOID_CUSTOMER_PAYMENT. "
         + "One or more tenders (cash, checks, bank transfers, cards), optionally applied to the customer's open charges; whatever is left "
@@ -82,12 +84,14 @@ public class CustomerPaymentController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
 
-        var page = paymentService.findAllForUser(userDetails.getUsername(), customerId, filters, fromInstant, toInstant, sorted)
-                .map(p -> toResponse(p, false));
+        var payments = paymentService.findAllForUser(userDetails.getUsername(), customerId, filters, fromInstant, toInstant, sorted);
+        Map<Long, List<OpenItemAllocation>> allocations = openItemQueryService.allocationsBySources(TransactionType.CUSTOMER_PAYMENT,
+                payments.getContent().stream().map(CustomerPayment::getId).toList());
+        var page = payments.map(p -> toResponse(p, allocations.getOrDefault(p.getId(), List.of()), false));
         var response = PageResponse.of(page);
         if (totals) {
             response.withTotals(ListTotals.within(page.getTotalElements(), () -> paymentService.findAllForUser(userDetails.getUsername(),
-                            customerId, filters, fromInstant, toInstant, ListSort.unpaged(sorted)).map(p -> toResponse(p, false)).getContent(),
+                            customerId, filters, fromInstant, toInstant, ListSort.unpaged(sorted)).map(p -> toResponse(p, null, false)).getContent(),
                     ListTotals.column("totalAmount", CustomerPaymentResponse::getTotalAmount),
                     ListTotals.column("unappliedAmount", CustomerPaymentResponse::getUnappliedAmount)));
         }
@@ -101,13 +105,14 @@ public class CustomerPaymentController {
     @PreAuthorize("hasAuthority('VIEW_CUSTOMER_PAYMENT')")
     public ResponseEntity<AppResponse<CustomerPaymentResponse>> getById(@Parameter(description = "Payment ID") @PathVariable Long id,
                                                                         @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(AppResponse.of(toResponse(paymentService.findById(id, userDetails.getUsername()), true)));
+        return ResponseEntity.ok(AppResponse.of(toResponse(paymentService.findById(id, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Post customer payment", description = "Tenders: CASH and CHECK (checkNumber, checkDate, bankId required) stay ON_HAND until "
             + "deposited; BANK_TRANSFER and CREDIT_CARD (depositBankAccountId required) land in that account at once; OTHERS settles with no bank "
             + "effect. replacesTenderId covers a BOUNCED check. Applications pay the customer's open charges (GET /lookups/open-items), drawing "
             + "from settled tenders first and then checks by check date unless tenderIndex says otherwise; the rest stays as an advance. "
+            + "credits apply the customer's existing credits (credit memos, advances) to open charges in the same posting, before the tenders; a payment may use credits alone (no tenders). "
             + "Dated on/after the accounting start date. Numbered CPY-.")
     @ApiResponse(responseCode = "201", description = "Payment posted")
     @ApiResponse(responseCode = "400", description = "Validation error (e.g. missing check details, over-application, inactive customer)")
@@ -117,11 +122,11 @@ public class CustomerPaymentController {
     public ResponseEntity<AppResponse<CustomerPaymentResponse>> create(@Valid @RequestBody CustomerPaymentRequest request,
                                                                        @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(AppResponse.of(toResponse(paymentService.create(request, userDetails.getUsername()), true)));
+                .body(AppResponse.of(toResponse(paymentService.create(request, userDetails.getUsername()))));
     }
 
     @Operation(summary = "Void customer payment", description = "Cancels a payment posted in error and reverses its applications. Fails if a cash/check "
-            + "tender has been deposited (void the deposit first), cleared or bounced, or if a later Customer Credit Application/Refund used its credit.")
+            + "tender has been deposited (void the deposit first), cleared or bounced, or if a later Customer Payment or Refund used its credit.")
     @ApiResponse(responseCode = "200", description = "Payment voided")
     @ApiResponse(responseCode = "400", description = "Already voided, deposited, or used by later documents")
     @ApiResponse(responseCode = "403", description = "Missing VOID_CUSTOMER_PAYMENT permission or no access to company")
@@ -129,10 +134,15 @@ public class CustomerPaymentController {
     @PreAuthorize("hasAuthority('VOID_CUSTOMER_PAYMENT')")
     public ResponseEntity<AppResponse<CustomerPaymentResponse>> voidPayment(@Parameter(description = "Payment ID") @PathVariable Long id,
                                                                             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(AppResponse.of(toResponse(paymentService.voidPayment(id, userDetails.getUsername()), true)));
+        return ResponseEntity.ok(AppResponse.of(toResponse(paymentService.voidPayment(id, userDetails.getUsername()))));
     }
 
-    private CustomerPaymentResponse toResponse(CustomerPayment payment, boolean withApplications) {
+    private CustomerPaymentResponse toResponse(CustomerPayment payment) {
+        return toResponse(payment, openItemQueryService.allocationsBySource(TransactionType.CUSTOMER_PAYMENT, payment.getId()), true);
+    }
+
+    // allocations: the payment's own (null skips the paid/credits breakdown, e.g. for list totals).
+    private CustomerPaymentResponse toResponse(CustomerPayment payment, List<OpenItemAllocation> allocations, boolean withApplications) {
         CustomerPaymentResponse res = new CustomerPaymentResponse();
         res.setId(payment.getId());
         res.setCompanyId(payment.getCompany().getId());
@@ -154,9 +164,14 @@ public class CustomerPaymentController {
         res.setTenders(tenders);
         res.setAppliedAmount(tenders.stream().map(ReceivedTenderResponse::getAppliedAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
         res.setUnappliedAmount(tenders.stream().map(ReceivedTenderResponse::getUnappliedAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
-        if (withApplications) {
-            res.setApplications(openItemQueryService.allocationsBySource(TransactionType.CUSTOMER_PAYMENT, payment.getId()).stream()
-                    .map(AccountingResponses::allocation).toList());
+        if (allocations != null) {
+            Set<Long> tenderItemIds = payment.getTenders().stream().filter(t -> t.getOpenItem() != null)
+                    .map(t -> t.getOpenItem().getId()).collect(Collectors.toSet());
+            AccountingResponses.PaymentBreakdown breakdown = AccountingResponses.paymentBreakdown(allocations, tenderItemIds, payment.isVoided());
+            res.setPaidDocuments(breakdown.paidDocuments());
+            res.setCreditsUsed(breakdown.creditsUsed());
+            res.setCreditsUsedAmount(breakdown.creditsUsedAmount());
+            if (withApplications) res.setApplications(allocations.stream().map(AccountingResponses::allocation).toList());
         }
         return res;
     }

@@ -159,7 +159,7 @@ Placeholders in `<...>` are filled from the type's schema and `DefaultDocumentLa
 - The total payable amount from Purchase Order is the net of quantity times cost price
 - Discounting can be done per item and for the transaction as a whole. Allow discounting by percentage.
 - There will be additional payable entries for additional fees
-- The net payable is settled by Supplier Payments, Supplier Credit Applications and supplier debit memos (`docs/ACCOUNTING.md`)
+- The net payable is settled by Supplier Payments (with tenders and/or existing credits such as supplier debit memos) and debit memos applied inline (`docs/ACCOUNTING.md`)
 - Purchase Invoice Direct. There can be a transaction flow that merges Purchase Order and Purchase Invoice into one. This Purchase Invoice will post the same inventory movement behavior (posting to intransit quantity) and can be received/loadable to the Purchase Receipt module
 
 **Implementation notes**:

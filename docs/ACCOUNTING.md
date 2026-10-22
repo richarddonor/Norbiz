@@ -61,9 +61,8 @@ Every one follows the standard transaction rules (docs/TRANSACTIONS.md):
 | Sales Invoice | `SI` | `/sales-invoices` | RECEIVABLE CHARGE for `netAmount`. **Direct**: own lines; deducts the main warehouse's on-hand stock (void returns it). **From a Delivery Receipt**: bills one plain-customer DR in full (lines copied, no stock effect, `DeliveryReceipt.billed`). Outlet DRs can't be billed (consignment): bill outlets with debit memos. |
 | Customer Memo | `CDM` / `CCM` | `/customer-memos` | DEBIT → RECEIVABLE CHARGE; CREDIT → RECEIVABLE CREDIT, optionally applied inline. Reasons: SALES_RETURN, REBATE, PRICE_ADJUSTMENT, BILLING, OPENING_BALANCE, OTHER. |
 | Supplier Memo | `SDM` / `SCM` | `/supplier-memos` | DEBIT (we debit the supplier, e.g. a return) → PAYABLE CREDIT, optionally applied inline; CREDIT (supplier credits their account, i.e. bills more) → PAYABLE CHARGE. |
-| Customer Payment | `CPY` | `/customer-payments` | One RECEIVABLE CREDIT per tender (cash, check, transfer, card, others), plus optional applications. **What's left unapplied is the customer's advance.** |
+| Customer Payment | `CPY` | `/customer-payments` | One RECEIVABLE CREDIT per tender (cash, check, transfer, card, others), plus optional applications and existing credits used (see below). **What's left unapplied is the customer's advance.** |
 | Supplier Payment | `SPY` | `/supplier-payments` | One PAYABLE CREDIT per tender (our check, transfer, cash). Checks and transfers post a disbursement to the bank book. Unapplied = advance to the supplier. Checked/approved sign-offs use Transaction Actions. |
-| Customer / Supplier Credit Application | `CCA` / `SCA` | `/customer-credit-applications`, `/supplier-credit-applications` | Applies existing credits (advances, credit-side memos) to open charges. |
 | Customer Refund | `CRF` | `/customer-refunds` | Pays unused customer credit back: a RECEIVABLE CHARGE fully applied from the chosen credits. Paid by one issued instrument (a check stays ISSUED until reconciled). Credits paid by an uncleared check can't be refunded yet. |
 | Supplier Refund | `SRF` | `/supplier-refunds` | A supplier pays us back unused credit: a PAYABLE CHARGE fully applied from the chosen credits. Posted straight to the receiving bank account; if their check bounces, void the refund. |
 | Deposit | `DEP` | `/deposits` | Takes ON_HAND cash/checks to a bank account (one DEPOSIT bank entry). Checks → DEPOSITED, cash → CLEARED. Post-dated checks can't be deposited before their date. |
@@ -73,10 +72,29 @@ Every one follows the standard transaction rules (docs/TRANSACTIONS.md):
 Applications on a payment draw from a named tender (`tenderIndex`), or else from the settled tenders first and then
 checks by check date. Nothing can be applied beyond either side's balance.
 
+A payment can also use the party's **existing credits** (`credits`: credit → charge lines), e.g. a supplier debit
+memo plus a check against one invoice, or an earlier advance applied to a new invoice. This is the only way to apply
+an existing credit after it was posted (there is no separate credit-application document): a payment may consist of
+credits alone, with no tenders and a `totalAmount` of zero; it needs at least one tender or one credit. Credits are
+applied before the tenders and recorded under the payment, so voiding the payment reverses them (and the memo can't
+be voided until then). A bounced/cancelled check only reverses what the check itself paid. Memos and advances are not
+tenders: they never appear in the payment's `totalAmount`, tender list or bank book. Each credit used is stored as a
+payment line (`customer_payment_credits` / `supplier_payment_credits`: credit item, charge item, amount), numbered
+after the tenders and kept as posted even after a void; the `<Payment> - Detailed` report lists tenders and credits
+together (`Customer/SupplierPaymentReportLine`, a read-only `@Subselect` over both), so its Amount total is money
+paid plus credits used.
+
+Customer/Supplier Credit Applications (`CCA`/`SCA`) existed until migration `008_remove_credit_applications.sql`,
+which drops them and refuses to run if any was posted.
+
+Payment responses (and list rows) carry `paidDocuments` (per charge: `paidAmount` from the tenders, `creditAmount`
+from credits, `amount`), `creditsUsed` (per credit) and `creditsUsedAmount`, also bindable in print templates. They
+count active allocations only, except on a voided payment, which keeps showing what it had paid.
+
 **Voiding** reverses the allocations the document made. It is blocked while *other* documents have applied to or
 from its items (void those first). Specifically:
 - a paid Sales or Purchase Invoice can't be voided;
-- a payment can't be voided once its cash/check was deposited, or its credit was used by a later application or refund;
+- a payment can't be voided once its cash/check was deposited, or its credit was used by a later payment or refund;
 - anything whose bank entry is reconciled can't be voided.
 
 Every `void` writes the change down by flushing at once. One non-voided Sales Invoice per DR and one non-voided
@@ -156,7 +174,7 @@ adjustments, and puts the instruments it cleared back to DEPOSITED / ISSUED.
 
 | Area | Permissions |
 |---|---|
-| Each document type | `VIEW_` / `CREATE_` / `VOID_` × SALES_INVOICE, CUSTOMER_MEMO, SUPPLIER_MEMO, CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, CUSTOMER_CREDIT_APPLICATION, SUPPLIER_CREDIT_APPLICATION, CUSTOMER_REFUND, SUPPLIER_REFUND, DEPOSIT, BANK_RECONCILIATION, STATEMENT_OF_ACCOUNT |
+| Each document type | `VIEW_` / `CREATE_` / `VOID_` × SALES_INVOICE, CUSTOMER_MEMO, SUPPLIER_MEMO, CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, CUSTOMER_REFUND, SUPPLIER_REFUND, DEPOSIT, BANK_RECONCILIATION, STATEMENT_OF_ACCOUNT |
 | Banks and bank accounts | `VIEW_` / `CREATE_` / `UPDATE_` / `DELETE_` × BANK, BANK_ACCOUNT |
 | Check status | `UPDATE_RECEIVED_CHECK_STATUS`, `UPDATE_ISSUED_CHECK_STATUS` |
 | Settings | `MANAGE_ACCOUNTING_SETTINGS` |

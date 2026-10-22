@@ -45,7 +45,7 @@ Company ── AccountingSettings (start date)
 Company ──< OpenItem (customer XOR supplier; CHARGE | CREDIT) ──< OpenItemAllocation (credit item → charge item)
 SalesInvoice / PurchaseInvoice / CustomerMemo / SupplierMemo / CustomerRefund / SupplierRefund ── OpenItem (1:1)
 CustomerPayment ──< CustomerPaymentTender ── OpenItem (CREDIT)   ;  SupplierPayment ──< SupplierPaymentTender ── OpenItem
-Customer/SupplierCreditApplication ──< lines (credit OpenItem, charge OpenItem)
+Customer/SupplierPayment ──< Customer/SupplierPaymentCredit (credit OpenItem used, charge OpenItem paid)
 Deposit ──< DepositLine >── CustomerPaymentTender ; BankReconciliation ──< BankReconciliationLine >── BankEntry
 StatementOfAccount ──< StatementOfAccountLine >── OpenItem
 SalesInvoice >── DeliveryReceipt (optional, billed in full)

@@ -31,6 +31,11 @@ public class CustomerPaymentResponse {
     private String voidedBy;
     private TransactionOrigin origin;
     private List<ReceivedTenderResponse> tenders;
-    // Applications this payment made when posted (later ones are on Customer Credit Applications).
+    // Applications this payment made when posted (a later payment may also use its unapplied credit).
     private List<AllocationResponse> applications;
+    // What the payment paid (per charge: from its tenders and from existing credits) and the existing credits it used.
+    // Not filled for the rows a list's grand totals are computed from.
+    private List<PaidDocumentResponse> paidDocuments;
+    private List<CreditUsedResponse> creditsUsed;
+    private BigDecimal creditsUsedAmount;
 }

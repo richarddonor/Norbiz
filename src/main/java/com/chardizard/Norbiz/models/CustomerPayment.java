@@ -12,7 +12,7 @@ import org.hibernate.annotations.ColumnDefault;
 // Not Auditable: immutable once posted (only create/view/void) — the open-item allocation ledger is the audit trail.
 // Money received from a customer (legacy tblCustomerPayments): one or more tenders (cash, checks, transfers...), each
 // opening a RECEIVABLE CREDIT open item, optionally applied to the customer's open charges right away. A tender's
-// unapplied balance is an advance, applied later by a Customer Credit Application — see docs/ACCOUNTING.md.
+// unapplied balance is an advance, used later as a credit on another Customer Payment — see docs/ACCOUNTING.md.
 @Getter
 @Setter
 @Entity
@@ -82,4 +82,9 @@ public class CustomerPayment {
     @OneToMany(mappedBy = "customerPayment", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
     private List<CustomerPaymentTender> tenders = new ArrayList<>();
+
+    // Existing credits the payment used, numbered after the tenders.
+    @OneToMany(mappedBy = "customerPayment", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("lineNumber ASC")
+    private List<CustomerPaymentCredit> credits = new ArrayList<>();
 }

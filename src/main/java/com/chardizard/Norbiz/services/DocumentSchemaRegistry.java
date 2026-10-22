@@ -525,6 +525,7 @@ public class DocumentSchemaRegistry {
                                     new DocumentFieldSchema("totalAmount", "Total Amount", "currency"),
                                     new DocumentFieldSchema("appliedAmount", "Applied", "currency"),
                                     new DocumentFieldSchema("unappliedAmount", "Unapplied (Advance)", "currency"),
+                                    new DocumentFieldSchema("creditsUsedAmount", "Credits Used", "currency"),
                                     new DocumentFieldSchema("remarks", "Remarks", "string"),
                                     new DocumentFieldSchema("createdBy", "Posted By", "user")
                             ),
@@ -539,6 +540,18 @@ public class DocumentSchemaRegistry {
                                     new DocumentRepeatingGroupSchema("applications", "Applied To", List.of(
                                             new DocumentFieldSchema("chargeReferenceNumber", "Applied To", "string"),
                                             new DocumentFieldSchema("amount", "Amount", "currency")
+                                    )),
+                                    new DocumentRepeatingGroupSchema("paidDocuments", "Paid", List.of(
+                                            new DocumentFieldSchema("documentType", "Document Type", "string"),
+                                            new DocumentFieldSchema("referenceNumber", "Reference No.", "string"),
+                                            new DocumentFieldSchema("paidAmount", "Paid by Payment", "currency"),
+                                            new DocumentFieldSchema("creditAmount", "Paid by Credits", "currency"),
+                                            new DocumentFieldSchema("amount", "Total Paid", "currency")
+                                    )),
+                                    new DocumentRepeatingGroupSchema("creditsUsed", "Credits Used", List.of(
+                                            new DocumentFieldSchema("documentType", "Document Type", "string"),
+                                            new DocumentFieldSchema("referenceNumber", "Reference No.", "string"),
+                                            new DocumentFieldSchema("amount", "Amount", "currency")
                                     ))
                             )
                     ),
@@ -551,8 +564,15 @@ public class DocumentSchemaRegistry {
                                             new DefaultDocumentLayout.Column("bankName", 200),
                                             new DefaultDocumentLayout.Column("checkDate", 100),
                                             new DefaultDocumentLayout.Column("amount", 120))),
-                                    new DefaultDocumentLayout.Table("applications", "Applied To", 2, List.of(
-                                            new DefaultDocumentLayout.Column("chargeReferenceNumber", 590),
+                                    new DefaultDocumentLayout.Table("paidDocuments", "Paid", 2, List.of(
+                                            new DefaultDocumentLayout.Column("documentType", 160),
+                                            new DefaultDocumentLayout.Column("referenceNumber", 200),
+                                            new DefaultDocumentLayout.Column("paidAmount", 120),
+                                            new DefaultDocumentLayout.Column("creditAmount", 120),
+                                            new DefaultDocumentLayout.Column("amount", 120))),
+                                    new DefaultDocumentLayout.Table("creditsUsed", "Credits Used", 1, List.of(
+                                            new DefaultDocumentLayout.Column("documentType", 200),
+                                            new DefaultDocumentLayout.Column("referenceNumber", 390),
                                             new DefaultDocumentLayout.Column("amount", 130))))
                     )
             )),
@@ -569,6 +589,7 @@ public class DocumentSchemaRegistry {
                                     new DocumentFieldSchema("totalAmount", "Total Amount", "currency"),
                                     new DocumentFieldSchema("appliedAmount", "Applied", "currency"),
                                     new DocumentFieldSchema("unappliedAmount", "Unapplied (Advance)", "currency"),
+                                    new DocumentFieldSchema("creditsUsedAmount", "Credits Used", "currency"),
                                     new DocumentFieldSchema("remarks", "Remarks", "string"),
                                     new DocumentFieldSchema("createdBy", "Posted By", "user")
                             ),
@@ -583,6 +604,18 @@ public class DocumentSchemaRegistry {
                                     new DocumentRepeatingGroupSchema("applications", "Applied To", List.of(
                                             new DocumentFieldSchema("chargeReferenceNumber", "Applied To", "string"),
                                             new DocumentFieldSchema("amount", "Amount", "currency")
+                                    )),
+                                    new DocumentRepeatingGroupSchema("paidDocuments", "Paid", List.of(
+                                            new DocumentFieldSchema("documentType", "Document Type", "string"),
+                                            new DocumentFieldSchema("referenceNumber", "Reference No.", "string"),
+                                            new DocumentFieldSchema("paidAmount", "Paid by Payment", "currency"),
+                                            new DocumentFieldSchema("creditAmount", "Paid by Credits", "currency"),
+                                            new DocumentFieldSchema("amount", "Total Paid", "currency")
+                                    )),
+                                    new DocumentRepeatingGroupSchema("creditsUsed", "Credits Used", List.of(
+                                            new DocumentFieldSchema("documentType", "Document Type", "string"),
+                                            new DocumentFieldSchema("referenceNumber", "Reference No.", "string"),
+                                            new DocumentFieldSchema("amount", "Amount", "currency")
                                     ))
                             )
                     ),
@@ -595,69 +628,16 @@ public class DocumentSchemaRegistry {
                                             new DefaultDocumentLayout.Column("bankAccountName", 200),
                                             new DefaultDocumentLayout.Column("checkDate", 100),
                                             new DefaultDocumentLayout.Column("amount", 120))),
-                                    new DefaultDocumentLayout.Table("applications", "Applied To", 2, List.of(
-                                            new DefaultDocumentLayout.Column("chargeReferenceNumber", 590),
+                                    new DefaultDocumentLayout.Table("paidDocuments", "Paid", 2, List.of(
+                                            new DefaultDocumentLayout.Column("documentType", 160),
+                                            new DefaultDocumentLayout.Column("referenceNumber", 200),
+                                            new DefaultDocumentLayout.Column("paidAmount", 120),
+                                            new DefaultDocumentLayout.Column("creditAmount", 120),
+                                            new DefaultDocumentLayout.Column("amount", 120))),
+                                    new DefaultDocumentLayout.Table("creditsUsed", "Credits Used", 1, List.of(
+                                            new DefaultDocumentLayout.Column("documentType", 200),
+                                            new DefaultDocumentLayout.Column("referenceNumber", 390),
                                             new DefaultDocumentLayout.Column("amount", 130))))
-                    )
-            )),
-            Map.entry("CUSTOMER_CREDIT_APPLICATION", new Entry(
-                    new DocumentSchemaResponse(
-                            "CUSTOMER_CREDIT_APPLICATION",
-                            List.of(
-                                    new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
-                                    new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
-                                    new DocumentFieldSchema("companyName", "Company", "string"),
-                                    new DocumentFieldSchema("customerName", "Customer", "string"),
-                                    new DocumentFieldSchema("applicationDate", "Application Date", "date"),
-                                    new DocumentFieldSchema("totalAmount", "Total Amount", "currency"),
-                                    new DocumentFieldSchema("remarks", "Remarks", "string"),
-                                    new DocumentFieldSchema("createdBy", "Posted By", "user")
-                            ),
-                            List.of(
-                                    new DocumentRepeatingGroupSchema("lines", "Applications", List.of(
-                                            new DocumentFieldSchema("creditReferenceNumber", "Credit", "string"),
-                                            new DocumentFieldSchema("chargeReferenceNumber", "Applied To", "string"),
-                                            new DocumentFieldSchema("amount", "Amount", "currency")
-                                    ))
-                            )
-                    ),
-                    new DefaultDocumentLayout(
-                            "Customer Credit Application", "applicationDate", "Customer:", "customerName", "remarks",
-                            List.of(
-                                    new DefaultDocumentLayout.Table("lines", "Applications", 1, List.of(
-                                            new DefaultDocumentLayout.Column("creditReferenceNumber", 300),
-                                            new DefaultDocumentLayout.Column("chargeReferenceNumber", 300),
-                                            new DefaultDocumentLayout.Column("amount", 120))))
-                    )
-            )),
-            Map.entry("SUPPLIER_CREDIT_APPLICATION", new Entry(
-                    new DocumentSchemaResponse(
-                            "SUPPLIER_CREDIT_APPLICATION",
-                            List.of(
-                                    new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
-                                    new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
-                                    new DocumentFieldSchema("companyName", "Company", "string"),
-                                    new DocumentFieldSchema("supplierName", "Supplier", "string"),
-                                    new DocumentFieldSchema("applicationDate", "Application Date", "date"),
-                                    new DocumentFieldSchema("totalAmount", "Total Amount", "currency"),
-                                    new DocumentFieldSchema("remarks", "Remarks", "string"),
-                                    new DocumentFieldSchema("createdBy", "Posted By", "user")
-                            ),
-                            List.of(
-                                    new DocumentRepeatingGroupSchema("lines", "Applications", List.of(
-                                            new DocumentFieldSchema("creditReferenceNumber", "Credit", "string"),
-                                            new DocumentFieldSchema("chargeReferenceNumber", "Applied To", "string"),
-                                            new DocumentFieldSchema("amount", "Amount", "currency")
-                                    ))
-                            )
-                    ),
-                    new DefaultDocumentLayout(
-                            "Supplier Credit Application", "applicationDate", "Supplier:", "supplierName", "remarks",
-                            List.of(
-                                    new DefaultDocumentLayout.Table("lines", "Applications", 1, List.of(
-                                            new DefaultDocumentLayout.Column("creditReferenceNumber", 300),
-                                            new DefaultDocumentLayout.Column("chargeReferenceNumber", 300),
-                                            new DefaultDocumentLayout.Column("amount", 120))))
                     )
             )),
             Map.entry("CUSTOMER_REFUND", new Entry(

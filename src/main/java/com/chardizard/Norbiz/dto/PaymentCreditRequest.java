@@ -8,10 +8,11 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 
-// Applies part of an existing CREDIT open item (an advance or credit memo) to a CHARGE open item.
+// Uses part of an existing CREDIT open item (an advance, supplier debit memo or customer credit memo) on a payment,
+// applying it to one of the party's CHARGE open items.
 @Getter
 @Setter
-public class CreditApplicationLineRequest {
+public class PaymentCreditRequest {
 
     @NotNull
     private Long creditItemId;

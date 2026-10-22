@@ -149,8 +149,6 @@ public class DataInitializer implements CommandLineRunner {
                 {"SUPPLIER_MEMO", "Accounting - Supplier Memo"},
                 {"CUSTOMER_PAYMENT", "Accounting - Customer Payment"},
                 {"SUPPLIER_PAYMENT", "Accounting - Supplier Payment"},
-                {"CUSTOMER_CREDIT_APPLICATION", "Accounting - Customer Credit Application"},
-                {"SUPPLIER_CREDIT_APPLICATION", "Accounting - Supplier Credit Application"},
                 {"CUSTOMER_REFUND", "Accounting - Customer Refund"},
                 {"SUPPLIER_REFUND", "Accounting - Supplier Refund"},
                 {"DEPOSIT", "Accounting - Deposit"},

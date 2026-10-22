@@ -27,8 +27,6 @@ BEGIN
         ('supplier_memos',           'SUPPLIER_MEMO'),
         ('customer_payments',        'CUSTOMER_PAYMENT'),
         ('supplier_payments',        'SUPPLIER_PAYMENT'),
-        ('customer_credit_applications', 'CUSTOMER_CREDIT_APPLICATION'),
-        ('supplier_credit_applications', 'SUPPLIER_CREDIT_APPLICATION'),
         ('customer_refunds',         'CUSTOMER_REFUND'),
         ('supplier_refunds',         'SUPPLIER_REFUND'),
         ('deposits',                 'DEPOSIT'),

@@ -39,14 +39,13 @@ class AccountingFlowTest {
     @Autowired SupplierMemoService supplierMemoService;
     @Autowired CustomerPaymentService customerPaymentService;
     @Autowired SupplierPaymentService supplierPaymentService;
-    @Autowired CustomerCreditApplicationService customerCreditApplicationService;
-    @Autowired SupplierCreditApplicationService supplierCreditApplicationService;
     @Autowired CheckStatusService checkStatusService;
     @Autowired DepositService depositService;
     @Autowired BankReconciliationService bankReconciliationService;
     @Autowired RefundService refundService;
     @Autowired StatementOfAccountService statementService;
     @Autowired AccountingReportService reportService;
+    @Autowired TransactionDetailedReportService detailedReportService;
     @Autowired InventoryAdjustmentService inventoryAdjustmentService;
     @Autowired CustomerService customerService;
     @Autowired BankService bankService;
@@ -259,18 +258,22 @@ class AccountingFlowTest {
         assertThat(advance.getBalance()).as("unapplied = advance").isEqualByComparingTo("300.00");
 
         SalesInvoice later = directInvoice("2026-04-01", "10", "50.00");   // 500
-        CustomerCreditApplicationRequest cca = new CustomerCreditApplicationRequest();
-        cca.setCompanyId(company.getId());
-        cca.setCustomerId(customer.getId());
-        cca.setApplicationDate("2026-04-02");
-        cca.setLines(List.of(creditLine(advance, later.getOpenItem(), "300.00")));
-        CustomerCreditApplication application = customerCreditApplicationService.create(cca, user);
+        // A later payment made of credits alone (no money) applies the advance.
+        CustomerPaymentRequest creditsOnly = new CustomerPaymentRequest();
+        creditsOnly.setCompanyId(company.getId());
+        creditsOnly.setCustomerId(customer.getId());
+        creditsOnly.setPaymentDate("2026-04-02");
+        creditsOnly.setCredits(List.of(creditLine(advance, later.getOpenItem(), "300.00")));
+        CustomerPayment application = customerPaymentService.create(creditsOnly, user);
+        assertThat(application.getTotalAmount()).isEqualByComparingTo("0");
+        assertThat(application.getTenders()).isEmpty();
 
         assertThat(later.getOpenItem().getBalance()).isEqualByComparingTo("200.00");
         assertThat(advance.getStatus()).isEqualTo(OpenItemStatus.CLOSED);
         assertThatThrownBy(() -> salesInvoiceService.voidSalesInvoice(later.getId(), user)).hasMessageContaining("applied");
+        assertThatThrownBy(() -> customerPaymentService.voidPayment(second.getId(), user)).hasMessageContaining("later documents");
 
-        customerCreditApplicationService.voidApplication(application.getId(), user);
+        customerPaymentService.voidPayment(application.getId(), user);
         assertThat(later.getOpenItem().getBalance()).isEqualByComparingTo("500.00");
         assertThat(advance.getBalance()).isEqualByComparingTo("300.00");
         // Cash still on hand and nothing later uses its credit any more: voidable, and the first invoice reopens.
@@ -285,6 +288,7 @@ class AccountingFlowTest {
                 .hasMessageContaining("exceed");
         assertThatThrownBy(() -> customerPayment("2026-03-10", List.of(cashTender("500.00")), apply(si.getOpenItem(), "150.00")))
                 .hasMessageContaining("balance is 100.00");
+        assertThatThrownBy(() -> customerPayment("2026-03-10", List.of(), null)).hasMessageContaining("at least one tender or one credit");
     }
 
     @Test
@@ -387,6 +391,94 @@ class AccountingFlowTest {
         assertThat(advance.getBalance()).isEqualByComparingTo("200.00");
     }
 
+    @Test
+    void supplierPaymentUsesADebitMemoAlongsideItsCheck() {
+        PurchaseInvoice pi = purchaseInvoice("2026-02-10", "10", "100", "0", null);   // 1000
+        SupplierMemoRequest sdm = new SupplierMemoRequest();
+        sdm.setCompanyId(company.getId());
+        sdm.setSupplierId(supplier.getId());
+        sdm.setMemoType(MemoType.DEBIT);
+        sdm.setReason(SupplierMemoReason.PURCHASE_RETURN);
+        sdm.setMemoDate("2026-02-12");
+        sdm.setLines(List.of(amountLine("Returned 2 pcs", "200.00")));
+        SupplierMemo memo = supplierMemoService.create(sdm, user);
+
+        SupplierPaymentRequest req = new SupplierPaymentRequest();
+        req.setCompanyId(company.getId());
+        req.setSupplierId(supplier.getId());
+        req.setPaymentDate("2026-02-20");
+        req.setTenders(List.of(issuedCheck("800.00", "OUR-9", "2026-02-20")));
+        req.setApplications(List.of(apply(pi.getOpenItem(), "800.00")));
+        req.setCredits(List.of(creditLine(memo.getOpenItem(), pi.getOpenItem(), "200.00")));
+        SupplierPayment payment = supplierPaymentService.create(req, user);
+        assertThat(pi.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(memo.getOpenItem().getStatus()).isEqualTo(OpenItemStatus.CLOSED);
+        assertThat(pi.getOpenItem().getPendingAmount()).as("only the check is pending").isEqualByComparingTo("800.00");
+        assertThatThrownBy(() -> supplierMemoService.voidMemo(memo.getId(), user)).hasMessageContaining("void those first");
+
+        var breakdown = AccountingResponses.paymentBreakdown(
+                allocationRepository.findBySourceTypeAndSourceIdOrderByIdAsc(TransactionType.SUPPLIER_PAYMENT, payment.getId()),
+                Set.of(payment.getTenders().getFirst().getOpenItem().getId()), false);
+        assertThat(breakdown.paidDocuments()).singleElement().satisfies(d -> {
+            assertThat(d.referenceNumber()).isEqualTo(pi.getOpenItem().getReferenceNumber());
+            assertThat(d.paidAmount()).isEqualByComparingTo("800.00");
+            assertThat(d.creditAmount()).isEqualByComparingTo("200.00");
+            assertThat(d.amount()).isEqualByComparingTo("1000.00");
+        });
+        assertThat(breakdown.creditsUsed()).singleElement().satisfies(c -> {
+            assertThat(c.documentType()).isEqualTo("Supplier Debit Memo");
+            assertThat(c.amount()).isEqualByComparingTo("200.00");
+        });
+        assertThat(breakdown.creditsUsedAmount()).isEqualByComparingTo("200.00");
+
+        // The detailed report lists the check and the memo used as lines 1 and 2.
+        DetailedReportFilter filter = new DetailedReportFilter();
+        filter.setReferenceNumber(payment.getReferenceNumber());
+        assertThat(detailedReportService.find(DetailedReportType.SUPPLIER_PAYMENT, user, filter, false, PageRequest.of(0, 50)).getContent())
+                .extracting(TransactionDetailedReportRow::getLineNumber, TransactionDetailedReportRow::getDescription, r -> r.getAmount().toPlainString())
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1, "CHECK #OUR-9 (ISSUED)", "800.00"),
+                        org.assertj.core.groups.Tuple.tuple(2, "Supplier Debit Memo " + memo.getReferenceNumber() + " → " + pi.getOpenItem().getReferenceNumber(), "200.00"));
+
+        // Cancelling the check undoes only what the check paid; the memo stays applied.
+        checkStatusService.cancel(payment.getTenders().getFirst().getId(), "2026-03-01", IssuedCancelReason.STALE, null, user);
+        assertThat(pi.getOpenItem().getBalance()).isEqualByComparingTo("800.00");
+        assertThat(memo.getOpenItem().getBalance()).isEqualByComparingTo("0");
+
+        supplierPaymentService.voidPayment(payment.getId(), user);
+        assertThat(pi.getOpenItem().getBalance()).isEqualByComparingTo("1000.00");
+        assertThat(memo.getOpenItem().getBalance()).isEqualByComparingTo("200.00");
+        supplierMemoService.voidMemo(memo.getId(), user);
+    }
+
+    @Test
+    void supplierDebitMemoAloneSettlesAnInvoiceThroughAPayment() {
+        PurchaseInvoice pi = purchaseInvoice("2026-02-10", "10", "100", "0", null);   // 1000
+        SupplierMemoRequest sdm = new SupplierMemoRequest();
+        sdm.setCompanyId(company.getId());
+        sdm.setSupplierId(supplier.getId());
+        sdm.setMemoType(MemoType.DEBIT);
+        sdm.setReason(SupplierMemoReason.PURCHASE_RETURN);
+        sdm.setMemoDate("2026-02-12");
+        sdm.setLines(List.of(amountLine("Returned all", "1000.00")));
+        SupplierMemo memo = supplierMemoService.create(sdm, user);
+
+        SupplierPaymentRequest req = new SupplierPaymentRequest();
+        req.setCompanyId(company.getId());
+        req.setSupplierId(supplier.getId());
+        req.setPaymentDate("2026-02-20");
+        req.setCredits(List.of(creditLine(memo.getOpenItem(), pi.getOpenItem(), "1000.00")));
+        SupplierPayment payment = supplierPaymentService.create(req, user);
+        assertThat(payment.getTotalAmount()).isEqualByComparingTo("0");
+        assertThat(pi.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(pi.getOpenItem().getPendingAmount()).as("a memo is not a check").isEqualByComparingTo("0");
+        assertThat(bankEntryRepository.findBySourceTypeAndSourceIdOrderByIdAsc(TransactionType.SUPPLIER_PAYMENT, payment.getId())).isEmpty();
+
+        supplierPaymentService.voidPayment(payment.getId(), user);
+        assertThat(pi.getPaymentStatus()).isEqualTo(PaymentStatus.UNPAID);
+        assertThat(memo.getOpenItem().getBalance()).isEqualByComparingTo("1000.00");
+    }
+
     // ---- memos ----
 
     @Test
@@ -414,6 +506,39 @@ class AccountingFlowTest {
         customerMemoService.voidMemo(memo.getId(), user);
         assertThat(si.getOpenItem().getBalance()).isEqualByComparingTo("100.00");
         assertThat(memo.getOpenItem().getStatus()).isEqualTo(OpenItemStatus.VOIDED);
+    }
+
+    @Test
+    void customerPaymentUsesACreditMemoAndRejectsOtherPartiesOrCharges() {
+        SalesInvoice si = directInvoice("2026-03-01", "2", "50.00");   // 100
+        CustomerMemo ccm = customerMemoService.create(memo(MemoType.CREDIT, CustomerMemoReason.REBATE, "2026-03-02", "30.00"), user);
+
+        CustomerPaymentRequest req = new CustomerPaymentRequest();
+        req.setCompanyId(company.getId());
+        req.setCustomerId(customer.getId());
+        req.setPaymentDate("2026-03-10");
+        req.setTenders(List.of(cashTender("70.00")));
+        req.setApplications(List.of(apply(si.getOpenItem(), "70.00")));
+
+        req.setCredits(List.of(creditLine(si.getOpenItem(), si.getOpenItem(), "30.00")));
+        assertThatThrownBy(() -> customerPaymentService.create(req, user)).hasMessageContaining("is not a credit");
+        Customer other = customerService.create(customerRequest("OTHER" + suffix, CustomerType.CUSTOMER, 0), user);
+        CustomerMemoRequest otherMemo = memo(MemoType.CREDIT, CustomerMemoReason.REBATE, "2026-03-02", "30.00");
+        otherMemo.setCustomerId(other.getId());
+        CustomerMemo othersCredit = customerMemoService.create(otherMemo, user);
+        req.setCredits(List.of(creditLine(othersCredit.getOpenItem(), si.getOpenItem(), "30.00")));
+        assertThatThrownBy(() -> customerPaymentService.create(req, user)).hasMessageContaining("receivables of customer");
+        req.setCredits(List.of(creditLine(ccm.getOpenItem(), si.getOpenItem(), "40.00")));
+        assertThatThrownBy(() -> customerPaymentService.create(req, user)).hasMessageContaining("only 30.00 is unapplied");
+
+        req.setCredits(List.of(creditLine(ccm.getOpenItem(), si.getOpenItem(), "30.00")));
+        CustomerPayment payment = customerPaymentService.create(req, user);
+        assertThat(si.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(payment.getTenders().getFirst().getOpenItem().getBalance()).isEqualByComparingTo("0");
+
+        customerPaymentService.voidPayment(payment.getId(), user);
+        assertThat(si.getOpenItem().getBalance()).isEqualByComparingTo("100.00");
+        assertThat(ccm.getOpenItem().getBalance()).isEqualByComparingTo("30.00");
     }
 
     // ---- bank reconciliation ----
@@ -730,8 +855,8 @@ class AccountingFlowTest {
         return a;
     }
 
-    private static CreditApplicationLineRequest creditLine(OpenItem credit, OpenItem charge, String amount) {
-        CreditApplicationLineRequest l = new CreditApplicationLineRequest();
+    private static PaymentCreditRequest creditLine(OpenItem credit, OpenItem charge, String amount) {
+        PaymentCreditRequest l = new PaymentCreditRequest();
         l.setCreditItemId(credit.getId());
         l.setChargeItemId(charge.getId());
         l.setAmount(new BigDecimal(amount));

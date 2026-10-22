@@ -18,8 +18,6 @@ import com.chardizard.Norbiz.repositories.CustomerMemoRepository;
 import com.chardizard.Norbiz.repositories.SupplierMemoRepository;
 import com.chardizard.Norbiz.repositories.CustomerPaymentRepository;
 import com.chardizard.Norbiz.repositories.SupplierPaymentRepository;
-import com.chardizard.Norbiz.repositories.CustomerCreditApplicationRepository;
-import com.chardizard.Norbiz.repositories.SupplierCreditApplicationRepository;
 import com.chardizard.Norbiz.repositories.CustomerRefundRepository;
 import com.chardizard.Norbiz.repositories.SupplierRefundRepository;
 import com.chardizard.Norbiz.repositories.DepositRepository;
@@ -53,8 +51,6 @@ public class TransactionLookupService {
     private final SupplierMemoRepository supplierMemoRepository;
     private final CustomerPaymentRepository customerPaymentRepository;
     private final SupplierPaymentRepository supplierPaymentRepository;
-    private final CustomerCreditApplicationRepository customerCreditApplicationRepository;
-    private final SupplierCreditApplicationRepository supplierCreditApplicationRepository;
     private final CustomerRefundRepository customerRefundRepository;
     private final SupplierRefundRepository supplierRefundRepository;
     private final DepositRepository depositRepository;
@@ -112,12 +108,6 @@ public class TransactionLookupService {
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case SUPPLIER_PAYMENT -> supplierPaymentRepository.findById(id)
-                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
-                    .orElseThrow(() -> notFound(type, id));
-            case CUSTOMER_CREDIT_APPLICATION -> customerCreditApplicationRepository.findById(id)
-                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
-                    .orElseThrow(() -> notFound(type, id));
-            case SUPPLIER_CREDIT_APPLICATION -> supplierCreditApplicationRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case CUSTOMER_REFUND -> customerRefundRepository.findById(id)

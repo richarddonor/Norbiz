@@ -96,6 +96,10 @@ public class SupplierPaymentService {
         }
         Instant paymentDate = DateRangeUtils.startOfDayUtc(request.getPaymentDate());
         accountingSettingsService.assertOnOrAfterStart(company, paymentDate, "Payment");
+        List<IssuedTenderRequest> tenderRequests = request.getTenders() != null ? request.getTenders() : List.of();
+        if (tenderRequests.isEmpty() && (request.getCredits() == null || request.getCredits().isEmpty())) {
+            throw new IllegalArgumentException("A payment needs at least one tender or one credit to use");
+        }
 
         Instant now = Instant.now();
         SupplierPayment payment = new SupplierPayment();
@@ -110,7 +114,7 @@ public class SupplierPaymentService {
 
         BigDecimal total = BigDecimal.ZERO;
         int lineNumber = 1;
-        for (IssuedTenderRequest t : request.getTenders()) {
+        for (IssuedTenderRequest t : tenderRequests) {
             SupplierPaymentTender tender = buildTender(t, company, supplier, paymentDate);
             tender.setSupplierPayment(payment);
             tender.setLineNumber(lineNumber++);
@@ -123,6 +127,17 @@ public class SupplierPaymentService {
         List<OpenItem> charges = new ArrayList<>();
         for (ApplicationRequest application : applications) {
             charges.add(openItemService.require(application.getOpenItemId(), company));
+        }
+        List<TenderApplications.CreditUse> credits = TenderApplications.resolveCredits(openItemService, request.getCredits(), company,
+                AccountSide.PAYABLE, supplier.getId(), supplier.getName());
+        for (TenderApplications.CreditUse use : credits) {
+            SupplierPaymentCredit line = new SupplierPaymentCredit();
+            line.setSupplierPayment(payment);
+            line.setLineNumber(lineNumber++);
+            line.setCreditItem(use.credit());
+            line.setChargeItem(use.charge());
+            line.setAmount(use.amount());
+            payment.getCredits().add(line);
         }
 
         payment.setReferenceNumber(transactionReferenceService.next(company.getId(), TYPE.name(), REFERENCE_PREFIX));
@@ -150,16 +165,16 @@ public class SupplierPaymentService {
                         .thenComparing(i -> saved.getTenders().get(i).getCheckDate(), Comparator.nullsFirst(Comparator.naturalOrder()))
                         .thenComparing(i -> i))
                 .toList();
-        TenderApplications.apply(openItemService, tenderItems, autoOrder, applications, charges, paymentDate, TYPE, saved.getId(), username);
+        TenderApplications.apply(openItemService, tenderItems, autoOrder, applications, charges, credits, paymentDate, TYPE, saved.getId(), username);
 
-        log.info("User '{}' posted supplier payment (id={}) {} for {} to supplier {} with {} tender(s), {} application(s)", username,
-                saved.getId(), saved.getReferenceNumber(), total.toPlainString(), supplier.getId(), saved.getTenders().size(), applications.size());
+        log.info("User '{}' posted supplier payment (id={}) {} for {} to supplier {} with {} tender(s), {} application(s), {} credit(s) used", username,
+                saved.getId(), saved.getReferenceNumber(), total.toPlainString(), supplier.getId(), saved.getTenders().size(), applications.size(), credits.size());
         return saved;
     }
 
     /**
      * Cancels a payment posted in error. None of its bank entries may be reconciled yet, and nothing posted later
-     * may have applied its credit (Supplier Credit Application, Refund).
+     * may have applied its credit (a later Supplier Payment, Refund).
      */
     @Transactional
     public SupplierPayment voidPayment(Long id, String username) {

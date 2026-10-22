@@ -86,4 +86,9 @@ public class SupplierPayment {
     @OneToMany(mappedBy = "supplierPayment", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
     private List<SupplierPaymentTender> tenders = new ArrayList<>();
+
+    // Existing credits the payment used, numbered after the tenders.
+    @OneToMany(mappedBy = "supplierPayment", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("lineNumber ASC")
+    private List<SupplierPaymentCredit> credits = new ArrayList<>();
 }

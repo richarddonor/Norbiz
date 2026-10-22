@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.services;
 
+import com.chardizard.Norbiz.dto.AccountingResponses;
 import com.chardizard.Norbiz.dto.DetailedReportFilter;
 import com.chardizard.Norbiz.dto.TransactionDetailedReportRow;
 import com.chardizard.Norbiz.models.*;
@@ -62,10 +63,8 @@ public class TransactionDetailedReportService {
     private final SalesInvoiceLineRepository salesInvoiceLineRepository;
     private final CustomerMemoLineRepository customerMemoLineRepository;
     private final SupplierMemoLineRepository supplierMemoLineRepository;
-    private final CustomerPaymentTenderRepository customerPaymentTenderRepository;
-    private final SupplierPaymentTenderRepository supplierPaymentTenderRepository;
-    private final CustomerCreditApplicationLineRepository customerCreditApplicationLineRepository;
-    private final SupplierCreditApplicationLineRepository supplierCreditApplicationLineRepository;
+    private final CustomerPaymentReportLineRepository customerPaymentReportLineRepository;
+    private final SupplierPaymentReportLineRepository supplierPaymentReportLineRepository;
     private final CustomerRefundLineRepository customerRefundLineRepository;
     private final SupplierRefundLineRepository supplierRefundLineRepository;
     private final DepositLineRepository depositLineRepository;
@@ -141,42 +140,24 @@ public class TransactionDetailedReportService {
                             l.getSupplierMemo().getOrigin(), l.getSupplierMemo().getSupplier().getId(), l.getSupplierMemo().getSupplier().getName(),
                             l.getSupplierMemo().getMemoType() + " " + l.getSupplierMemo().getReason() + ": " + l.getDescription(),
                             l.getSupplierMemo().getMemoType() == MemoType.CREDIT ? l.getAmount() : l.getAmount().negate()));
-            case CUSTOMER_PAYMENT -> queryAmounts(customerPaymentTenderRepository,
+            case CUSTOMER_PAYMENT -> queryAmounts(customerPaymentReportLineRepository,
                     new Shape("customerPayment", "paymentDate", "remarks", "customer", null), type, username, filter, pageable,
                     t -> amountRow(t.getId(), t.getLineNumber(), t.getCustomerPayment().getId(), t.getCustomerPayment().getCompany(),
                             t.getCustomerPayment().getReferenceNumber(), t.getCustomerPayment().getSheetNumber(), t.getCustomerPayment().getPaymentDate(),
                             t.getCustomerPayment().getRemarks(), t.getCustomerPayment().isVoided(), t.getCustomerPayment().getVoidedAt(),
                             t.getCustomerPayment().getVoidedBy(), t.getCustomerPayment().getCreatedAt(), t.getCustomerPayment().getCreatedBy(),
                             t.getCustomerPayment().getOrigin(), t.getCustomerPayment().getCustomer().getId(), t.getCustomerPayment().getCustomer().getName(),
-                            t.getMode() + (t.getCheckNumber() != null ? " #" + t.getCheckNumber() : "") + " (" + t.getStatus() + ")", t.getAmount()));
-            case SUPPLIER_PAYMENT -> queryAmounts(supplierPaymentTenderRepository,
+                            paymentLineDescription(t.getMode(), t.getCheckNumber(), t.getStatus(), t.getCreditSourceType(),
+                                    t.getCreditReference(), t.getChargeReference()), t.getAmount()));
+            case SUPPLIER_PAYMENT -> queryAmounts(supplierPaymentReportLineRepository,
                     new Shape("supplierPayment", "paymentDate", "remarks", "supplier", null), type, username, filter, pageable,
                     t -> amountRow(t.getId(), t.getLineNumber(), t.getSupplierPayment().getId(), t.getSupplierPayment().getCompany(),
                             t.getSupplierPayment().getReferenceNumber(), t.getSupplierPayment().getSheetNumber(), t.getSupplierPayment().getPaymentDate(),
                             t.getSupplierPayment().getRemarks(), t.getSupplierPayment().isVoided(), t.getSupplierPayment().getVoidedAt(),
                             t.getSupplierPayment().getVoidedBy(), t.getSupplierPayment().getCreatedAt(), t.getSupplierPayment().getCreatedBy(),
                             t.getSupplierPayment().getOrigin(), t.getSupplierPayment().getSupplier().getId(), t.getSupplierPayment().getSupplier().getName(),
-                            t.getMode() + (t.getCheckNumber() != null ? " #" + t.getCheckNumber() : "") + " (" + t.getStatus() + ")", t.getAmount()));
-            case CUSTOMER_CREDIT_APPLICATION -> queryAmounts(customerCreditApplicationLineRepository,
-                    new Shape("customerCreditApplication", "applicationDate", "remarks", "customer", null), type, username, filter, pageable,
-                    l -> amountRow(l.getId(), l.getLineNumber(), l.getCustomerCreditApplication().getId(), l.getCustomerCreditApplication().getCompany(),
-                            l.getCustomerCreditApplication().getReferenceNumber(), l.getCustomerCreditApplication().getSheetNumber(),
-                            l.getCustomerCreditApplication().getApplicationDate(), l.getCustomerCreditApplication().getRemarks(),
-                            l.getCustomerCreditApplication().isVoided(), l.getCustomerCreditApplication().getVoidedAt(),
-                            l.getCustomerCreditApplication().getVoidedBy(), l.getCustomerCreditApplication().getCreatedAt(),
-                            l.getCustomerCreditApplication().getCreatedBy(), l.getCustomerCreditApplication().getOrigin(),
-                            l.getCustomerCreditApplication().getCustomer().getId(), l.getCustomerCreditApplication().getCustomer().getName(),
-                            l.getCreditItem().getReferenceNumber() + " → " + l.getChargeItem().getReferenceNumber(), l.getAmount()));
-            case SUPPLIER_CREDIT_APPLICATION -> queryAmounts(supplierCreditApplicationLineRepository,
-                    new Shape("supplierCreditApplication", "applicationDate", "remarks", "supplier", null), type, username, filter, pageable,
-                    l -> amountRow(l.getId(), l.getLineNumber(), l.getSupplierCreditApplication().getId(), l.getSupplierCreditApplication().getCompany(),
-                            l.getSupplierCreditApplication().getReferenceNumber(), l.getSupplierCreditApplication().getSheetNumber(),
-                            l.getSupplierCreditApplication().getApplicationDate(), l.getSupplierCreditApplication().getRemarks(),
-                            l.getSupplierCreditApplication().isVoided(), l.getSupplierCreditApplication().getVoidedAt(),
-                            l.getSupplierCreditApplication().getVoidedBy(), l.getSupplierCreditApplication().getCreatedAt(),
-                            l.getSupplierCreditApplication().getCreatedBy(), l.getSupplierCreditApplication().getOrigin(),
-                            l.getSupplierCreditApplication().getSupplier().getId(), l.getSupplierCreditApplication().getSupplier().getName(),
-                            l.getCreditItem().getReferenceNumber() + " → " + l.getChargeItem().getReferenceNumber(), l.getAmount()));
+                            paymentLineDescription(t.getMode(), t.getCheckNumber(), t.getStatus(), t.getCreditSourceType(),
+                                    t.getCreditReference(), t.getChargeReference()), t.getAmount()));
             case CUSTOMER_REFUND -> queryAmounts(customerRefundLineRepository,
                     new Shape("customerRefund", "refundDate", "remarks", "customer", null), type, username, filter, pageable,
                     l -> amountRow(l.getId(), l.getLineNumber(), l.getCustomerRefund().getId(), l.getCustomerRefund().getCompany(),
@@ -549,6 +530,15 @@ public class TransactionDetailedReportService {
 
     // One accounting-document line: header fields, the counterparty (null for deposits/reconciliations), a description
     // and a signed amount (memos: negative when it lowers the balance).
+    // A payment line: a tender ("CHECK #123 (ISSUED)") or a credit used ("Supplier Debit Memo SDM-0004 → PI-0012").
+    private static String paymentLineDescription(String mode, String checkNumber, String status, OpenItemSourceType creditSourceType,
+                                                 String creditReference, String chargeReference) {
+        if ("CREDIT".equals(mode)) {
+            return AccountingResponses.documentType(creditSourceType) + " " + creditReference + " → " + chargeReference;
+        }
+        return mode + (checkNumber != null ? " #" + checkNumber : "") + " (" + status + ")";
+    }
+
     private static TransactionDetailedReportRow amountRow(Long id, Integer lineNumber, Long transactionId, Company company, String referenceNumber,
                                                           String sheetNumber, Instant date, String remarks, boolean voided, Instant voidedAt,
                                                           String voidedBy, Instant createdAt, String createdBy, TransactionOrigin origin,

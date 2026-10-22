@@ -98,6 +98,10 @@ public class CustomerPaymentService {
         }
         Instant paymentDate = DateRangeUtils.startOfDayUtc(request.getPaymentDate());
         accountingSettingsService.assertOnOrAfterStart(company, paymentDate, "Payment");
+        List<ReceivedTenderRequest> tenderRequests = request.getTenders() != null ? request.getTenders() : List.of();
+        if (tenderRequests.isEmpty() && (request.getCredits() == null || request.getCredits().isEmpty())) {
+            throw new IllegalArgumentException("A payment needs at least one tender or one credit to use");
+        }
 
         Instant now = Instant.now();
         CustomerPayment payment = new CustomerPayment();
@@ -111,7 +115,7 @@ public class CustomerPaymentService {
 
         BigDecimal total = BigDecimal.ZERO;
         int lineNumber = 1;
-        for (ReceivedTenderRequest t : request.getTenders()) {
+        for (ReceivedTenderRequest t : tenderRequests) {
             CustomerPaymentTender tender = buildTender(t, company, customer, paymentDate);
             tender.setCustomerPayment(payment);
             tender.setLineNumber(lineNumber++);
@@ -124,6 +128,17 @@ public class CustomerPaymentService {
         List<OpenItem> charges = new ArrayList<>();
         for (ApplicationRequest application : applications) {
             charges.add(openItemService.require(application.getOpenItemId(), company));
+        }
+        List<TenderApplications.CreditUse> credits = TenderApplications.resolveCredits(openItemService, request.getCredits(), company,
+                AccountSide.RECEIVABLE, customer.getId(), customer.getName());
+        for (TenderApplications.CreditUse use : credits) {
+            CustomerPaymentCredit line = new CustomerPaymentCredit();
+            line.setCustomerPayment(payment);
+            line.setLineNumber(lineNumber++);
+            line.setCreditItem(use.credit());
+            line.setChargeItem(use.charge());
+            line.setAmount(use.amount());
+            payment.getCredits().add(line);
         }
 
         // Generated last, only once validation has fully passed.
@@ -152,16 +167,16 @@ public class CustomerPaymentService {
                         .thenComparing(i -> saved.getTenders().get(i).getCheckDate(), Comparator.nullsFirst(Comparator.naturalOrder()))
                         .thenComparing(i -> i))
                 .toList();
-        TenderApplications.apply(openItemService, tenderItems, autoOrder, applications, charges, paymentDate, TYPE, saved.getId(), username);
+        TenderApplications.apply(openItemService, tenderItems, autoOrder, applications, charges, credits, paymentDate, TYPE, saved.getId(), username);
 
-        log.info("User '{}' posted customer payment (id={}) {} for {} from customer {} with {} tender(s), {} application(s)", username,
-                saved.getId(), saved.getReferenceNumber(), total.toPlainString(), customer.getId(), saved.getTenders().size(), applications.size());
+        log.info("User '{}' posted customer payment (id={}) {} for {} from customer {} with {} tender(s), {} application(s), {} credit(s) used", username,
+                saved.getId(), saved.getReferenceNumber(), total.toPlainString(), customer.getId(), saved.getTenders().size(), applications.size(), credits.size());
         return saved;
     }
 
     /**
      * Cancels a payment posted in error. Every cash/check tender must still be on hand (not deposited, cleared or
-     * bounced), and nothing posted later may have applied its credit (Customer Credit Application, Refund).
+     * bounced), and nothing posted later may have applied its credit (a later Customer Payment, Refund).
      */
     @Transactional
     public CustomerPayment voidPayment(Long id, String username) {

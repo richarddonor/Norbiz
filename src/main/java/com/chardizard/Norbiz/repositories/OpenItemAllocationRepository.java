@@ -5,6 +5,7 @@ import com.chardizard.Norbiz.models.TransactionType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -12,6 +13,11 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 public interface OpenItemAllocationRepository extends JpaRepository<OpenItemAllocation, Long>, JpaSpecificationExecutor<OpenItemAllocation> {
 
     List<OpenItemAllocation> findBySourceTypeAndSourceIdOrderByIdAsc(TransactionType sourceType, Long sourceId);
+
+    // A page of documents' allocations at once, with both items (list pages show what each document applied).
+    @Query("select a from OpenItemAllocation a join fetch a.creditItem join fetch a.chargeItem "
+            + "where a.sourceType = :sourceType and a.sourceId in :sourceIds order by a.id")
+    List<OpenItemAllocation> findBySources(@Param("sourceType") TransactionType sourceType, @Param("sourceIds") Collection<Long> sourceIds);
 
     List<OpenItemAllocation> findByCreditItemIdAndReversedFalseOrderByIdAsc(Long creditItemId);
 

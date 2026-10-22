@@ -234,28 +234,6 @@ public class TransactionDetailedReportController {
         return report(DetailedReportType.SUPPLIER_PAYMENT, userDetails, filter, pageable, totals);
     }
 
-    @Operation(summary = "Customer Credit Application - Detailed", description = ACCOUNTING_DESCRIPTION)
-    @ApiResponse(responseCode = "200", description = "Report rows returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_CUSTOMER_CREDIT_APPLICATION_DETAILED_REPORT permission")
-    @GetMapping("/customer-credit-applications")
-    @PreAuthorize("hasAuthority('VIEW_CUSTOMER_CREDIT_APPLICATION_DETAILED_REPORT')")
-    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> customerCreditApplications(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
-            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
-        return report(DetailedReportType.CUSTOMER_CREDIT_APPLICATION, userDetails, filter, pageable, totals);
-    }
-
-    @Operation(summary = "Supplier Credit Application - Detailed", description = ACCOUNTING_DESCRIPTION)
-    @ApiResponse(responseCode = "200", description = "Report rows returned")
-    @ApiResponse(responseCode = "403", description = "Missing VIEW_SUPPLIER_CREDIT_APPLICATION_DETAILED_REPORT permission")
-    @GetMapping("/supplier-credit-applications")
-    @PreAuthorize("hasAuthority('VIEW_SUPPLIER_CREDIT_APPLICATION_DETAILED_REPORT')")
-    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> supplierCreditApplications(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
-            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
-        return report(DetailedReportType.SUPPLIER_CREDIT_APPLICATION, userDetails, filter, pageable, totals);
-    }
-
     @Operation(summary = "Customer Refund - Detailed", description = ACCOUNTING_DESCRIPTION)
     @ApiResponse(responseCode = "200", description = "Report rows returned")
     @ApiResponse(responseCode = "403", description = "Missing VIEW_CUSTOMER_REFUND_DETAILED_REPORT permission")

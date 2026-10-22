@@ -29,7 +29,7 @@ import java.util.Map;
 /**
  * Customer debit/credit memos (docs/ACCOUNTING.md "Memos"). A DEBIT memo opens a RECEIVABLE CHARGE (billing an
  * outlet's sales, a price adjustment, a carried-over balance...); a CREDIT memo opens a RECEIVABLE CREDIT (sales
- * return, rebate...) that can be applied to open charges right away or later by a Customer Credit Application.
+ * return, rebate...) that can be applied to open charges right away or later as a credit on a Customer Payment.
  */
 @Service
 @RequiredArgsConstructor

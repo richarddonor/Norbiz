@@ -210,9 +210,9 @@ class TransactionDetailedReportServiceTest {
             filter.setDateTo("2026-12-31");
             switch (type) {
                 case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIPT,
-                     SUPPLIER_MEMO, SUPPLIER_PAYMENT, SUPPLIER_CREDIT_APPLICATION, SUPPLIER_REFUND -> { filter.setSupplierId(1L); filter.setCounterparty("x"); }
+                     SUPPLIER_MEMO, SUPPLIER_PAYMENT, SUPPLIER_REFUND -> { filter.setSupplierId(1L); filter.setCounterparty("x"); }
                 case DELIVERY_RECEIPT, OUTLET_RECEIPT, STOCK_TRANSFER, OUTLET_PULL_OUT, PULL_OUT_RECEIPT, SALES_INVOICE,
-                     CUSTOMER_MEMO, CUSTOMER_PAYMENT, CUSTOMER_CREDIT_APPLICATION, CUSTOMER_REFUND, STATEMENT_OF_ACCOUNT -> {
+                     CUSTOMER_MEMO, CUSTOMER_PAYMENT, CUSTOMER_REFUND, STATEMENT_OF_ACCOUNT -> {
                     filter.setCustomerId(1L);
                     filter.setCounterparty("x");
                 }
