@@ -7,6 +7,7 @@ import com.chardizard.Norbiz.services.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -71,6 +72,7 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 // Images are served publicly — paths are UUID-prefixed and not guessable
                 .requestMatchers("/item-images/*/items/images/*").permitAll()
+                .requestMatchers(HttpMethod.GET, "/company-logos/*/*").permitAll()
                 // System-level endpoints: SUPER_ADMIN only
                 .requestMatchers("/actuator/**").hasRole("SUPER_ADMIN")
                 // Business-level endpoints: SUPER_ADMIN or SYSTEM_ADMIN

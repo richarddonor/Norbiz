@@ -174,6 +174,7 @@ public class DataInitializer implements CommandLineRunner {
                 findOrCreate("DELETE_BANK", "Maintenance - Bank Delete"),
                 findOrCreate("DELETE_BANK_ACCOUNT", "Maintenance - Bank Account Delete"));
         List<Permission> systemAdminExtras = new ArrayList<>(reportPermissions);
+        systemAdminExtras.add(findOrCreate("MANAGE_COMPANY_THEME", "Configuration - Company Theme Manage"));
         systemAdminExtras.addAll(accountingPermissions);
         List<Permission> superAdminExtras = new ArrayList<>(systemAdminExtras);
         superAdminExtras.addAll(accountingDeletePermissions);

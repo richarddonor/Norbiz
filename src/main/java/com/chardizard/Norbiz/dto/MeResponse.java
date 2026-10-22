@@ -20,5 +20,6 @@ public class MeResponse {
     public static class CompanyInfo {
         private Long id;
         private String name;
+        private CompanyThemeResponse theme;
     }
 }

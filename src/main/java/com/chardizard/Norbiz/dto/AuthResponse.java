@@ -17,5 +17,6 @@ public class AuthResponse {
     public static class CompanyInfo {
         private final Long id;
         private final String name;
+        private final CompanyThemeResponse theme;
     }
 }

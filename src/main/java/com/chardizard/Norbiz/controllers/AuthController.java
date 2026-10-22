@@ -1,6 +1,7 @@
 package com.chardizard.Norbiz.controllers;
 
 import com.chardizard.Norbiz.dto.AppResponse;
+import com.chardizard.Norbiz.dto.CompanyThemeResponse;
 import com.chardizard.Norbiz.dto.AuthRequest;
 import com.chardizard.Norbiz.dto.AuthResponse;
 import com.chardizard.Norbiz.dto.ChangePasswordRequest;
@@ -72,7 +73,7 @@ public class AuthController {
         String token = jwtUtil.generateToken(userDetails, user.getDisplayName());
 
         List<AuthResponse.CompanyInfo> companies = user.getCompanies().stream()
-                .map(c -> new AuthResponse.CompanyInfo(c.getId(), c.getName()))
+                .map(c -> new AuthResponse.CompanyInfo(c.getId(), c.getName(), CompanyThemeResponse.of(c)))
                 .collect(Collectors.toList());
 
         log.info("User '{}' logged in successfully", request.getUsername());
@@ -101,6 +102,7 @@ public class AuthController {
                     MeResponse.CompanyInfo info = new MeResponse.CompanyInfo();
                     info.setId(c.getId());
                     info.setName(c.getName());
+                    info.setTheme(CompanyThemeResponse.of(c));
                     return info;
                 })
                 .collect(Collectors.toList()));

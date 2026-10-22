@@ -18,6 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/DEPLOYMENT.md` — Releasing to the Docker-only Ubuntu server: `deploy/` scripts (bootstrap, deploy, migrate), prod compose/nginx, `db/migrations/` rules, backups and rollback.
 - `docs/SERVER_REQUIREMENTS.md` — Host requirements (CPU/RAM/disk/network, Docker-only), one-time host preparation, and the prod move from 10.16.32.64 to 10.18.18.18.
 - `docs/ACCOUNTING.md` — AR/AP subledger: open items + allocation ledger, Sales Invoice, memos, customer/supplier payments (tenders and/or existing credits) and advances, refunds, deposits, check lifecycles (bounce/clear/cancel), bank reconciliation, aging/ledger/SOA reports, accounting start date.
+- `docs/THEMING.md` — Per-company UI theme: brand colour preset/custom hex, logo, corner radius, sidebar, form surface, record open/close motion; `MANAGE_COMPANY_THEME`; public `/company-logos/**`.
 - `docs/ITEM_RECOGNITION.md` — Item photo recognition: CLIP `embedder/` sidecar, pgvector `item_image_embeddings` (JDBC, not a JPA entity), recognize/reindex endpoints, model/dimension coupling.
 
 `docs/` is where all non-`CLAUDE.md` project markdown lives — `CLAUDE.md` itself stays at the repo root since Claude Code only auto-discovers it there.
@@ -90,7 +91,7 @@ The app runs on port 8080. Swagger UI is at `/swagger-ui.html`.
 - `UserDetailsServiceImpl` loads roles and permissions; both are added as `GrantedAuthority` entries so `@PreAuthorize("hasAuthority('VIEW_ITEM')")` works at the method level.
 - RBAC is permission-grained: permissions (e.g. `VIEW_ITEM`, `CREATE_BRAND`) are assigned to roles, roles are assigned to users.
 - A user can be assigned multiple roles per Company. Roles are narrow capability-based (e.g. `INVENTORY_VIEWER`, `PRICE_EDITOR`) and composed per user to avoid role explosion.
-- Public endpoints: `/auth/**`, `/health`, `/swagger-ui/**`, `/v3/api-docs/**`, `/item-images/**`.
+- Public endpoints: `/auth/**`, `/health`, `/swagger-ui/**`, `/v3/api-docs/**`, `/item-images/**`, `GET /company-logos/**`.
 - Admin paths (`/admin/**`) require `SUPER_ADMIN` or `SYSTEM_ADMIN`.
 - At application start, `DataInitializer` guarantees that '`SUPER_ADMIN` user and all roles and privileges/permissions are given to it.
 - A user must belong to at least one `Company` to log in — `POST /auth/login` returns 403 (after the password check) for a user with none.
