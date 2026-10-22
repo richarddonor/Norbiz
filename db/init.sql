@@ -7,6 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- pgvector (compiled into the Dockerfile.db image) — item photo recognition, docs/ITEM_RECOGNITION.md
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;  -- see 012; preloaded in deploy/docker-compose.prod.yml
 
 ALTER DATABASE norbiz SET search_path TO public;
 

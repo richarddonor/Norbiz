@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -31,14 +32,17 @@ import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.Map;
+import java.util.regex.Pattern;
 
-@Tag(name = "Item Images", description = "Upload and serve item images. Images are stored at {ITEM_IMAGE_UPLOAD_DIR}/{companyId}/items/images/{itemCode}.{ext}")
+@Tag(name = "Item Images", description = "Upload and serve item images. Images are stored at {ITEM_IMAGE_UPLOAD_DIR}/{companyId}/items/images/{itemCode}-v{uploadMillis}.{ext}")
 @RestController
 @RequiredArgsConstructor
 public class ItemImageController {
 
     private static final Logger log = LoggerFactory.getLogger(ItemImageController.class);
+    private static final Pattern VERSIONED_IMAGE = Pattern.compile(".+-v\\d{13}\\.[A-Za-z0-9]+");
 
     private final ItemRepository itemRepository;
     private final ItemService itemService;
@@ -65,7 +69,8 @@ public class ItemImageController {
         Item item = itemService.findById(id, userDetails.getUsername());
 
         String ext = getExtension(file.getOriginalFilename());
-        String filename = sanitizeFilename(item.getItemCode()) + ext;
+        // Versioned name: every upload gets a new URL, so browsers may cache an image forever (see serveItemImage).
+        String filename = sanitizeFilename(item.getItemCode()) + "-v" + System.currentTimeMillis() + ext;
 
         String companyId = item.getCompany().getId().toString();
         Path itemImageDir = resolveUploadDir().resolve(companyId).resolve("items").resolve("images");
@@ -77,14 +82,14 @@ public class ItemImageController {
             throw new SecurityException("Invalid file path");
         }
 
-        // Delete old image if present
-        if (item.getImagePath() != null) {
-            Files.deleteIfExists(resolveUploadDir().resolve(item.getImagePath()));
-        }
-
         // Read once: the same bytes are written to disk and sent to the embedder.
         byte[] bytes = file.getBytes();
         Files.write(target, bytes);
+
+        // Delete the old image only once the new one is on disk.
+        if (item.getImagePath() != null) {
+            Files.deleteIfExists(resolveUploadDir().resolve(item.getImagePath()));
+        }
 
         String imagePath = companyId + "/items/images/" + filename;
         item.setImagePath(imagePath);
@@ -141,9 +146,20 @@ public class ItemImageController {
         }
 
         return ResponseEntity.ok()
+                .cacheControl(cacheControl(filename))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
                 .contentType(MediaType.parseMediaType(detectContentType(filename)))
                 .body(resource);
+    }
+
+    /**
+     * Versioned uploads ({@code <code>-v<millis>.<ext>}) are never rewritten, so they're cacheable for a year.
+     * Older {@code <code>.<ext>} files (earlier uploads, legacy migration) can be overwritten in place, so only a day.
+     */
+    static CacheControl cacheControl(String filename) {
+        return VERSIONED_IMAGE.matcher(filename).matches()
+                ? CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable()
+                : CacheControl.maxAge(Duration.ofDays(1)).cachePublic();
     }
 
     private Path resolveUploadDir() {

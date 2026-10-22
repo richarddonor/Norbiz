@@ -25,7 +25,7 @@ public class CacheProperties {
     @Setter
     public static class Ttl {
         private Duration lookup = Duration.ofMinutes(10);
-        private Duration list = Duration.ofMinutes(2);
+        private Duration list = Duration.ofMinutes(30);
         /** Dashboard widgets aren't invalidated by writes, so this is how stale a widget may be. */
         private Duration dashboard = Duration.ofMinutes(2);
     }

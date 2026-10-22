@@ -54,7 +54,7 @@ Redis is optional at runtime:
 - Read or write errors log a WARN and fall back to Postgres.
 - Command timeout is 200 ms and connect timeout is 500 ms.
 - `management.health.redis.enabled=false` keeps Redis out of the overall health status.
-- A failed bump after commit logs a WARN. The affected entries may be stale until their TTL (10 min lookups, 2 min lists). Dashboard snapshots are always up to their TTL (2 min) old.
+- A failed bump after commit logs a WARN. The affected entries may be stale until their TTL (10 min lookups, 30 min lists). Dashboard snapshots are always up to their TTL (2 min) old.
 
 **Redis must use a `volatile-*` eviction policy** (docker-compose: `volatile-lru`). Generation counters have no TTL, and an evicted counter would restart at 0, which could resurrect an old entry. Persistence is off (`--save ""`), so a restart drops counters and entries together, which is safe.
 
