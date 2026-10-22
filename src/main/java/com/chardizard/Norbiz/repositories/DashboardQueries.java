@@ -1,5 +1,8 @@
 package com.chardizard.Norbiz.repositories;
 
+import com.chardizard.Norbiz.models.AccountSide;
+import com.chardizard.Norbiz.models.OpenItemDirection;
+import com.chardizard.Norbiz.models.OpenItemSourceType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Tuple;
@@ -306,6 +309,142 @@ public class DashboardQueries {
                 .getResultList();
         return rows.stream()
                 .map(r -> new ActivityRow((String) r[0], (String) r[1], toLocalDate(r[2]), lng(r[3])))
+                .toList();
+    }
+
+    // ---- accounting (AR/AP subledger, bank) -------------------------------------------------------------------
+
+    /** An OPEN open item with a balance left. Party = the customer (RECEIVABLE) or supplier (PAYABLE). */
+    public record OpenItemRow(Long id, OpenItemSourceType sourceType, Long sourceId, String referenceNumber,
+                              Instant documentDate, Instant dueDate, Long partyId, String partyName,
+                              OpenItemDirection direction, BigDecimal amount, BigDecimal balance, BigDecimal pending) {
+    }
+
+    public List<OpenItemRow> openItems(Long companyId, AccountSide side) {
+        return em.createQuery("""
+                        SELECT oi.id, oi.sourceType, oi.sourceId, oi.referenceNumber, oi.documentDate, oi.dueDate,
+                               COALESCE(c.id, s.id), COALESCE(c.name, s.name), oi.direction, oi.amount, oi.balance, oi.pendingAmount
+                        FROM OpenItem oi LEFT JOIN oi.customer c LEFT JOIN oi.supplier s
+                        WHERE oi.company.id = :companyId AND oi.side = :side
+                          AND oi.status = com.chardizard.Norbiz.models.OpenItemStatus.OPEN AND oi.balance > 0
+                        """, Tuple.class)
+                .setParameter("companyId", companyId)
+                .setParameter("side", side)
+                .getResultList().stream()
+                .map(t -> new OpenItemRow(lng(t.get(0)), (OpenItemSourceType) t.get(1), lng(t.get(2)), (String) t.get(3),
+                        (Instant) t.get(4), (Instant) t.get(5), lng(t.get(6)), (String) t.get(7), (OpenItemDirection) t.get(8),
+                        bd(t.get(9)), bd(t.get(10)), bd(t.get(11))))
+                .toList();
+    }
+
+    /**
+     * Amount billed in [from, to): open items of the given source types dated in the period, unless their document
+     * was voided (a bounced/cancelled void still stood, but only credits bounce, so charges here are VOIDED or not).
+     */
+    public BigDecimal billed(Long companyId, Collection<OpenItemSourceType> sourceTypes, Instant from, Instant to) {
+        return em.createQuery("""
+                        SELECT COALESCE(SUM(oi.amount), 0) FROM OpenItem oi
+                        WHERE oi.company.id = :companyId AND oi.sourceType IN :types
+                          AND oi.documentDate >= :from AND oi.documentDate < :to
+                          AND oi.status <> com.chardizard.Norbiz.models.OpenItemStatus.VOIDED
+                        """, BigDecimal.class)
+                .setParameter("companyId", companyId).setParameter("types", sourceTypes)
+                .setParameter("from", from).setParameter("to", to)
+                .getSingleResult();
+    }
+
+    /**
+     * Money received from customers in [from, to): tenders of non-voided payments, less checks that bounced (a
+     * replacement is its own tender). Credits used aren't money, so they're not tenders and don't count.
+     */
+    public BigDecimal customerPaymentsTotal(Long companyId, Instant from, Instant to) {
+        return em.createQuery("""
+                        SELECT COALESCE(SUM(t.amount), 0) FROM CustomerPaymentTender t JOIN t.customerPayment p
+                        WHERE p.company.id = :companyId AND p.voided = false AND p.paymentDate >= :from AND p.paymentDate < :to
+                          AND t.status NOT IN (com.chardizard.Norbiz.models.ReceivedCheckStatus.BOUNCED,
+                                               com.chardizard.Norbiz.models.ReceivedCheckStatus.REPLACED)
+                        """, BigDecimal.class)
+                .setParameter("companyId", companyId).setParameter("from", from).setParameter("to", to)
+                .getSingleResult();
+    }
+
+    /** Money paid to suppliers in [from, to): tenders of non-voided payments, less cancelled checks. */
+    public BigDecimal supplierPaymentsTotal(Long companyId, Instant from, Instant to) {
+        return em.createQuery("""
+                        SELECT COALESCE(SUM(t.amount), 0) FROM SupplierPaymentTender t JOIN t.supplierPayment p
+                        WHERE p.company.id = :companyId AND p.voided = false AND p.paymentDate >= :from AND p.paymentDate < :to
+                          AND t.status <> com.chardizard.Norbiz.models.IssuedCheckStatus.CANCELLED
+                        """, BigDecimal.class)
+                .setParameter("companyId", companyId).setParameter("from", from).setParameter("to", to)
+                .getSingleResult();
+    }
+
+    /**
+     * Each bank account's book (opening balance + non-voided entries dated on/before asOf), the uncleared part of it
+     * split into money in (deposits in transit) and out (outstanding disbursements), and its last reconciliation.
+     */
+    public record BankAccountRow(Long id, String name, String accountNumber, String bankName, boolean active,
+                                 BigDecimal openingBalance, BigDecimal entries, BigDecimal unclearedIn,
+                                 BigDecimal unclearedOut, Instant lastReconciled) {
+    }
+
+    public List<BankAccountRow> bankAccounts(Long companyId, Instant asOf) {
+        return em.createQuery("""
+                        SELECT a.id, a.name, a.accountNumber, b.name, a.active, a.openingBalance,
+                               SUM(CASE WHEN e.id IS NOT NULL AND e.voided = false AND e.entryDate <= :asOf THEN e.amount ELSE 0 END),
+                               SUM(CASE WHEN e.id IS NOT NULL AND e.voided = false AND e.cleared = false AND e.entryDate <= :asOf
+                                        AND e.amount > 0 THEN e.amount ELSE 0 END),
+                               SUM(CASE WHEN e.id IS NOT NULL AND e.voided = false AND e.cleared = false AND e.entryDate <= :asOf
+                                        AND e.amount < 0 THEN e.amount ELSE 0 END),
+                               (SELECT MAX(r.statementDate) FROM BankReconciliation r WHERE r.bankAccount = a AND r.voided = false)
+                        FROM BankAccount a JOIN a.bank b LEFT JOIN BankEntry e ON e.bankAccount = a
+                        WHERE a.company.id = :companyId
+                        GROUP BY a.id, a.name, a.accountNumber, b.name, a.active, a.openingBalance
+                        """, Tuple.class)
+                .setParameter("companyId", companyId).setParameter("asOf", asOf)
+                .getResultList().stream()
+                .map(t -> new BankAccountRow(lng(t.get(0)), (String) t.get(1), (String) t.get(2), (String) t.get(3),
+                        (Boolean) t.get(4), bd(t.get(5)), bd(t.get(6)), bd(t.get(7)), bd(t.get(8)), (Instant) t.get(9)))
+                .toList();
+    }
+
+    /** A payment tender (received or issued) with its payment and party. {@code bankName} = drawee bank / our account. */
+    public record TenderRow(Long id, Long paymentId, String paymentReference, Instant paymentDate, Long partyId,
+                            String partyName, String mode, BigDecimal amount, String checkNumber, Instant checkDate,
+                            String bankName, String status, Instant statusDate) {
+    }
+
+    /** Received tenders still with us (ON_HAND), deposited but not cleared, or bounced on/after {@code bouncedSince}. */
+    public List<TenderRow> receivedTenders(Long companyId, Instant bouncedSince) {
+        return tenders("""
+                SELECT t.id, p.id, p.referenceNumber, p.paymentDate, c.id, c.name, t.mode, t.amount, t.checkNumber, t.checkDate,
+                       bk.name, t.status, t.statusDate
+                FROM CustomerPaymentTender t JOIN t.customerPayment p JOIN p.customer c LEFT JOIN t.bank bk
+                WHERE p.company.id = :companyId AND p.voided = false
+                  AND (t.status IN (com.chardizard.Norbiz.models.ReceivedCheckStatus.ON_HAND,
+                                    com.chardizard.Norbiz.models.ReceivedCheckStatus.DEPOSITED)
+                       OR (t.status = com.chardizard.Norbiz.models.ReceivedCheckStatus.BOUNCED AND t.statusDate >= :since))
+                """, companyId, bouncedSince);
+    }
+
+    /** Our checks to suppliers not yet cleared (ISSUED). */
+    public List<TenderRow> issuedChecksOutstanding(Long companyId) {
+        return tenders("""
+                SELECT t.id, p.id, p.referenceNumber, p.paymentDate, s.id, s.name, t.mode, t.amount, t.checkNumber, t.checkDate,
+                       a.name, t.status, t.statusDate
+                FROM SupplierPaymentTender t JOIN t.supplierPayment p JOIN p.supplier s LEFT JOIN t.bankAccount a
+                WHERE p.company.id = :companyId AND p.voided = false
+                  AND t.status = com.chardizard.Norbiz.models.IssuedCheckStatus.ISSUED
+                """, companyId, null);
+    }
+
+    private List<TenderRow> tenders(String jpql, Long companyId, Instant since) {
+        var query = em.createQuery(jpql, Tuple.class).setParameter("companyId", companyId);
+        if (since != null) query.setParameter("since", since);
+        return query.getResultList().stream()
+                .map(t -> new TenderRow(lng(t.get(0)), lng(t.get(1)), (String) t.get(2), (Instant) t.get(3), lng(t.get(4)),
+                        (String) t.get(5), String.valueOf(t.get(6)), bd(t.get(7)), (String) t.get(8), (Instant) t.get(9),
+                        (String) t.get(10), String.valueOf(t.get(11)), (Instant) t.get(12)))
                 .toList();
     }
 

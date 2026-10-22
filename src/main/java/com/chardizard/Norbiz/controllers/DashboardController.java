@@ -218,6 +218,61 @@ public class DashboardController {
                 userDetails.getUsername(), company(companyId, headerCompanyId), days, asOf, tz)));
     }
 
+    @Operation(summary = "Receivables Aging",
+            description = "Open receivables (Sales Invoices, customer debit memos, refunds) aged by due date as of asOf: Current, 1-30 … 120+ "
+                    + "buckets, overdue and due-within-7-days totals, amounts awaiting check clearance, unapplied customer credits, "
+                    + "billed vs collected over the last `days`, the top 8 customers by balance plus Others, and the 8 most overdue items.")
+    @ApiResponse(responseCode = "200", description = "Widget data returned")
+    @ApiResponse(responseCode = "400", description = "days outside 7–365")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_DASHBOARD_RECEIVABLES_AGING or no access to company")
+    @GetMapping("/widgets/receivables-aging")
+    @PreAuthorize("hasAuthority('VIEW_DASHBOARD_RECEIVABLES_AGING')")
+    public ResponseEntity<AppResponse<SubledgerSummaryResponse>> receivablesAging(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Window for billed vs collected, in days (7–365, default 30)") @RequestParam(defaultValue = "30") @Min(7) @Max(365) int days,
+            @Parameter(description = AS_OF_DESC) @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return ResponseEntity.ok(AppResponse.of(
+                dashboardService.receivablesAging(userDetails.getUsername(), company(companyId, headerCompanyId), days, asOf)));
+    }
+
+    @Operation(summary = "Payables Due",
+            description = "Open payables (tracked Purchase Invoices, supplier credit memos, refunds) by when they fall due as of asOf: overdue "
+                    + "31+/1-30 days, due in 0-7/8-30/31+ days; amounts awaiting our checks' clearance, unapplied supplier credits "
+                    + "(advances), billed vs paid over the last `days`, the top 8 suppliers by balance plus Others, and the 8 items due first.")
+    @ApiResponse(responseCode = "200", description = "Widget data returned")
+    @ApiResponse(responseCode = "400", description = "days outside 7–365")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_DASHBOARD_PAYABLES_DUE or no access to company")
+    @GetMapping("/widgets/payables-due")
+    @PreAuthorize("hasAuthority('VIEW_DASHBOARD_PAYABLES_DUE')")
+    public ResponseEntity<AppResponse<SubledgerSummaryResponse>> payablesDue(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Window for billed vs paid, in days (7–365, default 30)") @RequestParam(defaultValue = "30") @Min(7) @Max(365) int days,
+            @Parameter(description = AS_OF_DESC) @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return ResponseEntity.ok(AppResponse.of(
+                dashboardService.payablesDue(userDetails.getUsername(), company(companyId, headerCompanyId), days, asOf)));
+    }
+
+    @Operation(summary = "Cash & Checks",
+            description = "Bank account book balances as of asOf with deposits in transit and outstanding disbursements; received cash and "
+                    + "checks not yet deposited (post-dated split out), deposits not yet cleared, our issued checks not yet cleared, and "
+                    + "checks bounced in the last 30 days, with the next checks to deposit and the oldest outstanding.")
+    @ApiResponse(responseCode = "200", description = "Widget data returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_DASHBOARD_CASH_AND_CHECKS or no access to company")
+    @GetMapping("/widgets/cash-and-checks")
+    @PreAuthorize("hasAuthority('VIEW_DASHBOARD_CASH_AND_CHECKS')")
+    public ResponseEntity<AppResponse<CashAndChecksResponse>> cashAndChecks(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = AS_OF_DESC) @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return ResponseEntity.ok(AppResponse.of(
+                dashboardService.cashAndChecks(userDetails.getUsername(), company(companyId, headerCompanyId), asOf)));
+    }
+
     private static boolean canViewCostPrice(Authentication authentication) {
         return authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("VIEW_COST_PRICE"));
     }

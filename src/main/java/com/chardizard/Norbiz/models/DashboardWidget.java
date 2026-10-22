@@ -26,7 +26,13 @@ public enum DashboardWidget {
     PULL_OUTS_AWAITING_RECEIPT("pull-outs-awaiting-receipt", "Pull-outs Awaiting Receipt", "Sales",
             "Outlet pull-outs not yet received back at the main warehouse: quantity and value in transit, aging, by outlet and by reason."),
     TRANSACTION_ACTIVITY("transaction-activity", "Transaction Activity", "Operations",
-            "Documents posted per day for each transaction type as a heatmap, with voids and the busiest day.");
+            "Documents posted per day for each transaction type as a heatmap, with voids and the busiest day."),
+    RECEIVABLES_AGING("receivables-aging", "Receivables Aging", "Accounting",
+            "What customers owe: open receivables aged by due date, overdue share, unapplied advances, billed vs collected, and the customers owing the most."),
+    PAYABLES_DUE("payables-due", "Payables Due", "Accounting",
+            "What we owe suppliers: open payables by when they fall due (overdue, this week, this month), supplier advances, and the next bills to pay."),
+    CASH_AND_CHECKS("cash-and-checks", "Cash & Checks", "Accounting",
+            "Bank account book balances, undeposited cash and checks (including post-dated), deposits not yet cleared, outstanding issued checks and recent bounces.");
 
     private final String slug;
     private final String displayName;

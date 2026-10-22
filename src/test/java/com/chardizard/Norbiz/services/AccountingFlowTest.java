@@ -45,6 +45,7 @@ class AccountingFlowTest {
     @Autowired RefundService refundService;
     @Autowired StatementOfAccountService statementService;
     @Autowired AccountingReportService reportService;
+    @Autowired DashboardService dashboardService;
     @Autowired TransactionDetailedReportService detailedReportService;
     @Autowired InventoryAdjustmentService inventoryAdjustmentService;
     @Autowired CustomerService customerService;
@@ -643,6 +644,77 @@ class AccountingFlowTest {
         LedgerResponse ledger = reportService.ledger(AccountSide.RECEIVABLE, company.getId(), customer.getId(), "2026-03-01", "2026-04-30", user);
         assertThat(ledger.getOpeningBalance()).isEqualByComparingTo("1000.00");
         assertThat(ledger.getClosingBalance()).isEqualByComparingTo("500.00");
+    }
+
+    // ---- dashboard widgets ----
+
+    @Test
+    void accountingDashboardWidgetsSummarizeOpenItemsAndChecks() {
+        java.time.LocalDate asOf = java.time.LocalDate.parse("2026-05-15");
+        SalesInvoice overdue = directInvoice("2026-03-01", "20", "50.00");   // 1000, due 03-31 → 45 days overdue
+        directInvoice("2026-05-10", "10", "50.00");                           // 500, due 06-09 → current
+        CustomerPayment byCheck = customerPayment("2026-05-12", List.of(checkTender("300.00", "CHK-1", "2026-05-12")),
+                apply(overdue.getOpenItem(), "300.00"));
+        customerPayment("2026-05-13", List.of(cashTender("200.00")), null);                         // advance, cash on hand
+        customerPayment("2026-05-14", List.of(checkTender("150.00", "PDC-1", "2026-06-01")), null); // post-dated advance
+        CustomerPayment bouncing = customerPayment("2026-05-01", List.of(checkTender("50.00", "CHK-2", "2026-05-01")), null);
+        checkStatusService.bounce(bouncing.getTenders().getFirst().getId(), "2026-05-05", BounceReason.DAIF, null, user);
+        deposit("2026-05-13", byCheck.getTenders().getFirst());
+
+        PurchaseInvoice late = purchaseInvoice("2026-04-01", "10", "40.00", "0", null);   // 400, due 04-16 → 29 days overdue
+        purchaseInvoice("2026-05-10", "5", "40.00", "0", null);                           // 200, due 05-25 → due in 10 days
+        supplierPayment("2026-05-12", issuedCheck("100.00", "SCHK-1", "2026-05-12"), apply(late.getOpenItem(), "100.00"));
+
+        SubledgerSummaryResponse ar = dashboardService.receivablesAging(user, company.getId(), 30, asOf);
+        assertThat(ar.outstanding()).isEqualByComparingTo("1200.00");
+        assertThat(ar.overdue()).isEqualByComparingTo("700.00");
+        assertThat(ar.overdueCount()).isEqualTo(1);
+        assertThat(ar.oldestOverdueDays()).isEqualTo(45);
+        assertThat(ar.pendingClearance()).as("deposited, not cleared").isEqualByComparingTo("300.00");
+        assertThat(ar.unappliedCredits()).as("cash advance + PDC; the bounced check's credit is void").isEqualByComparingTo("350.00");
+        assertThat(ar.billed()).as("invoices dated 04-16..05-15").isEqualByComparingTo("500.00");
+        assertThat(ar.settled()).as("bounced check excluded").isEqualByComparingTo("650.00");
+        assertThat(ar.buckets()).extracting(SubledgerSummaryResponse.Bucket::key, b -> b.amount().stripTrailingZeros().toPlainString())
+                .contains(org.assertj.core.groups.Tuple.tuple("CURRENT", "500"),
+                        org.assertj.core.groups.Tuple.tuple("DAYS_31_60", "700"),
+                        org.assertj.core.groups.Tuple.tuple("DAYS_1_30", "0"));
+        assertThat(ar.byParty()).singleElement().satisfies(p -> {
+            assertThat(p.id()).isEqualTo(customer.getId());
+            assertThat(p.unappliedCredits()).isEqualByComparingTo("350.00");
+        });
+        assertThat(ar.items().getFirst().sourceId()).isEqualTo(overdue.getId());
+
+        SubledgerSummaryResponse ap = dashboardService.payablesDue(user, company.getId(), 30, asOf);
+        assertThat(ap.outstanding()).isEqualByComparingTo("500.00");
+        assertThat(ap.overdue()).isEqualByComparingTo("300.00");
+        assertThat(ap.dueSoon()).as("next due is 10 days out").isEqualByComparingTo("0");
+        assertThat(ap.pendingClearance()).isEqualByComparingTo("100.00");
+        assertThat(ap.billed()).isEqualByComparingTo("200.00");
+        assertThat(ap.settled()).isEqualByComparingTo("100.00");
+        assertThat(ap.buckets()).filteredOn(b -> b.amount().signum() != 0)
+                .extracting(SubledgerSummaryResponse.Bucket::key).containsExactly("OVERDUE_1_30", "DUE_8_30");
+
+        CashAndChecksResponse cash = dashboardService.cashAndChecks(user, company.getId(), asOf);
+        assertThat(cash.bookBalance()).as("10000 opening + 300 deposit − 100 check").isEqualByComparingTo("10200.00");
+        assertThat(cash.accounts()).singleElement().satisfies(a -> {
+            assertThat(a.depositsInTransit()).isEqualByComparingTo("300.00");
+            assertThat(a.outstandingDisbursements()).isEqualByComparingTo("-100.00");
+        });
+        assertThat(cash.undepositedCash()).isEqualTo(new CashAndChecksResponse.Stat(1, new BigDecimal("200.00")));
+        assertThat(cash.checksOnHand().amount()).isEqualByComparingTo("150.00");
+        assertThat(cash.postDatedChecks().count()).isEqualTo(1);
+        assertThat(cash.depositedUncleared().amount()).isEqualByComparingTo("300.00");
+        assertThat(cash.issuedOutstanding().amount()).isEqualByComparingTo("100.00");
+        assertThat(cash.bounced().amount()).isEqualByComparingTo("50.00");
+        assertThat(cash.toDeposit()).singleElement().satisfies(c -> assertThat(c.daysFromCheckDate()).isEqualTo(-17));
+        assertThat(cash.recentlyBounced()).extracting(CashAndChecksResponse.Check::checkNumber).containsExactly("CHK-2");
+
+        String outsider = user2(newCompanySaved());
+        assertThatThrownBy(() -> dashboardService.cashAndChecks(outsider, company.getId(), asOf)).isInstanceOf(SecurityException.class);
+    }
+
+    private Company newCompanySaved() {
+        return companyRepository.save(newCompany("Outsider " + suffix));
     }
 
     @Test

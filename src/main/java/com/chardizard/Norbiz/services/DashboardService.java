@@ -1,13 +1,18 @@
 package com.chardizard.Norbiz.services;
 
 import com.chardizard.Norbiz.dto.*;
+import com.chardizard.Norbiz.models.AccountSide;
 import com.chardizard.Norbiz.models.DashboardWidget;
+import com.chardizard.Norbiz.models.OpenItemDirection;
+import com.chardizard.Norbiz.models.OpenItemSourceType;
 import com.chardizard.Norbiz.models.User;
 import com.chardizard.Norbiz.repositories.DashboardQueries;
 import com.chardizard.Norbiz.repositories.DashboardQueries.AdjustmentTotal;
 import com.chardizard.Norbiz.repositories.DashboardQueries.BacklogRow;
 import com.chardizard.Norbiz.repositories.DashboardQueries.DatedAmount;
+import com.chardizard.Norbiz.repositories.DashboardQueries.OpenItemRow;
 import com.chardizard.Norbiz.repositories.DashboardQueries.OutletItemSalesRow;
+import com.chardizard.Norbiz.repositories.DashboardQueries.TenderRow;
 import com.chardizard.Norbiz.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -24,6 +29,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Data behind the dashboard widgets (see {@link DashboardWidget}). Every widget is scoped to one company and
@@ -468,6 +474,159 @@ public class DashboardService {
                 types.stream().mapToLong(TransactionActivityResponse.TypeRow::voided).sum(),
                 perDay.length > 0 && perDay[busiest] > 0 ? dates.get(busiest) : null,
                 perDay.length > 0 ? perDay[busiest] : 0, dates, types);
+    }
+
+    // ---- accounting -------------------------------------------------------------------------------------------
+
+    private static final int DUE_SOON_DAYS = 7;
+    private static final int BOUNCED_WINDOW_DAYS = 30;
+    private static final int TOP_CHARGES = 8;
+    private static final int CHECK_LIST = 8;
+
+    /** Days overdue in [minDays, maxDays] (negative = not yet due); a null bound is open-ended. */
+    private record DueBucket(String key, String label, Integer minDays, Integer maxDays) {
+        boolean contains(int daysOverdue) {
+            return (minDays == null || daysOverdue >= minDays) && (maxDays == null || daysOverdue <= maxDays);
+        }
+    }
+
+    // Same keys and edges as the AR/AP aging report (AccountingReportService.bucket).
+    private static final List<DueBucket> RECEIVABLE_BUCKETS = List.of(
+            new DueBucket("CURRENT", "Current", null, 0), new DueBucket("DAYS_1_30", "1-30 days", 1, 30),
+            new DueBucket("DAYS_31_60", "31-60 days", 31, 60), new DueBucket("DAYS_61_90", "61-90 days", 61, 90),
+            new DueBucket("DAYS_91_120", "91-120 days", 91, 120), new DueBucket("OVER_120", "120+ days", 121, null));
+    // Payables are about what to pay next, so the not-yet-due side is split too.
+    private static final List<DueBucket> PAYABLE_BUCKETS = List.of(
+            new DueBucket("OVERDUE_31", "Overdue 31+ days", 31, null), new DueBucket("OVERDUE_1_30", "Overdue 1-30 days", 1, 30),
+            new DueBucket("DUE_0_7", "Due in 0-7 days", -DUE_SOON_DAYS, 0), new DueBucket("DUE_8_30", "Due in 8-30 days", -30, -DUE_SOON_DAYS - 1),
+            new DueBucket("DUE_31", "Due in 31+ days", null, -31));
+
+    /** Open receivables aged by due date; billed = Sales Invoices + customer debit memos, settled = customer payments. */
+    @Transactional(readOnly = true)
+    public SubledgerSummaryResponse receivablesAging(String username, Long companyId, int days, LocalDate asOf) {
+        LocalDate today = begin(username, companyId, asOf, DashboardWidget.RECEIVABLES_AGING);
+        Period period = period(today, days);
+        return subledger(AccountSide.RECEIVABLE, queries.openItems(companyId, AccountSide.RECEIVABLE), today, days,
+                queries.billed(companyId, List.of(OpenItemSourceType.SALES_INVOICE, OpenItemSourceType.CUSTOMER_DEBIT_MEMO),
+                        period.from(), period.to()),
+                queries.customerPaymentsTotal(companyId, period.from(), period.to()), RECEIVABLE_BUCKETS);
+    }
+
+    /**
+     * Open payables by when they fall due; billed = Purchase Invoices + supplier credit memos, settled = supplier
+     * payments. Open-item balances are AP figures, not line costs, so they aren't gated by VIEW_COST_PRICE (same
+     * as the AP aging report). Untracked (pre-start-date/migrated) Purchase Invoices have no open item and aren't here.
+     */
+    @Transactional(readOnly = true)
+    public SubledgerSummaryResponse payablesDue(String username, Long companyId, int days, LocalDate asOf) {
+        LocalDate today = begin(username, companyId, asOf, DashboardWidget.PAYABLES_DUE);
+        Period period = period(today, days);
+        return subledger(AccountSide.PAYABLE, queries.openItems(companyId, AccountSide.PAYABLE), today, days,
+                queries.billed(companyId, List.of(OpenItemSourceType.PURCHASE_INVOICE, OpenItemSourceType.SUPPLIER_CREDIT_MEMO),
+                        period.from(), period.to()),
+                queries.supplierPaymentsTotal(companyId, period.from(), period.to()), PAYABLE_BUCKETS);
+    }
+
+    private SubledgerSummaryResponse subledger(AccountSide side, List<OpenItemRow> rows, LocalDate today, int days,
+                                               BigDecimal billed, BigDecimal settled, List<DueBucket> buckets) {
+        List<OpenItemRow> charges = rows.stream().filter(r -> r.direction() == OpenItemDirection.CHARGE).toList();
+        List<OpenItemRow> credits = rows.stream().filter(r -> r.direction() == OpenItemDirection.CREDIT).toList();
+        Map<Long, Integer> overdueDays = charges.stream().collect(Collectors.toMap(OpenItemRow::id, r -> daysOverdue(r, today)));
+        List<OpenItemRow> overdue = charges.stream().filter(r -> overdueDays.get(r.id()) > 0).toList();
+        List<OpenItemRow> dueSoon = charges.stream()
+                .filter(r -> overdueDays.get(r.id()) <= 0 && overdueDays.get(r.id()) >= -DUE_SOON_DAYS).toList();
+
+        List<SubledgerSummaryResponse.Bucket> bucketTotals = buckets.stream().map(b -> {
+            List<OpenItemRow> in = charges.stream().filter(r -> b.contains(overdueDays.get(r.id()))).toList();
+            return new SubledgerSummaryResponse.Bucket(b.key(), b.label(), b.minDays(), b.maxDays(), in.size(), sum(in, OpenItemRow::balance));
+        }).toList();
+
+        Map<Long, List<OpenItemRow>> chargesByParty = charges.stream().collect(Collectors.groupingBy(OpenItemRow::partyId));
+        Map<Long, BigDecimal> creditsByParty = credits.stream()
+                .collect(Collectors.toMap(OpenItemRow::partyId, r -> nz(r.balance()), BigDecimal::add));
+        List<SubledgerSummaryResponse.Party> parties = chargesByParty.values().stream()
+                .map(list -> new SubledgerSummaryResponse.Party(list.getFirst().partyId(), list.getFirst().partyName(), list.size(),
+                        sum(list, OpenItemRow::balance),
+                        sum(list.stream().filter(r -> overdueDays.get(r.id()) > 0).toList(), OpenItemRow::balance),
+                        creditsByParty.getOrDefault(list.getFirst().partyId(), BigDecimal.ZERO)))
+                .sorted(Comparator.comparing(SubledgerSummaryResponse.Party::outstanding).reversed()
+                        .thenComparing(SubledgerSummaryResponse.Party::name, Comparator.nullsLast(String::compareTo)))
+                .toList();
+        List<SubledgerSummaryResponse.Party> topParties = new ArrayList<>(parties.stream().limit(TOP_SLICES).toList());
+        if (parties.size() > TOP_SLICES) {
+            List<SubledgerSummaryResponse.Party> rest = parties.subList(TOP_SLICES, parties.size());
+            topParties.add(new SubledgerSummaryResponse.Party(null, OTHERS + " (" + rest.size() + ")",
+                    rest.stream().mapToLong(SubledgerSummaryResponse.Party::chargeCount).sum(),
+                    sum(rest, SubledgerSummaryResponse.Party::outstanding), sum(rest, SubledgerSummaryResponse.Party::overdue),
+                    sum(rest, SubledgerSummaryResponse.Party::unappliedCredits)));
+        }
+
+        List<SubledgerSummaryResponse.Item> items = charges.stream()
+                .sorted(Comparator.comparing((OpenItemRow r) -> overdueDays.get(r.id())).reversed().thenComparing(OpenItemRow::id))
+                .limit(TOP_CHARGES)
+                .map(r -> new SubledgerSummaryResponse.Item(r.id(), r.sourceType().name(), r.sourceId(), r.referenceNumber(),
+                        r.documentDate(), r.dueDate(), overdueDays.get(r.id()), r.partyId(), r.partyName(), r.amount(), r.balance(), r.pending()))
+                .toList();
+
+        return new SubledgerSummaryResponse(side.name(), startOfDay(today),
+                sum(charges, OpenItemRow::balance), sum(overdue, OpenItemRow::balance), sum(dueSoon, OpenItemRow::balance),
+                DUE_SOON_DAYS, sum(charges, OpenItemRow::pending), sum(credits, OpenItemRow::balance),
+                charges.size(), overdue.size(), chargesByParty.size(),
+                overdue.stream().map(r -> overdueDays.get(r.id())).max(Integer::compare).orElse(null),
+                days, nz(billed), nz(settled), bucketTotals, topParties, items);
+    }
+
+    /** asOf − due date (document date when there's none, e.g. a refund); negative = not yet due. */
+    private static int daysOverdue(OpenItemRow item, LocalDate today) {
+        Instant due = item.dueDate() != null ? item.dueDate() : item.documentDate();
+        return (int) ChronoUnit.DAYS.between(LocalDate.ofInstant(due, ZoneOffset.UTC), today);
+    }
+
+    @Transactional(readOnly = true)
+    public CashAndChecksResponse cashAndChecks(String username, Long companyId, LocalDate asOf) {
+        LocalDate today = begin(username, companyId, asOf, DashboardWidget.CASH_AND_CHECKS);
+        Instant asOfInstant = startOfDay(today);
+
+        List<CashAndChecksResponse.Account> accounts = queries.bankAccounts(companyId, asOfInstant).stream()
+                .map(a -> new CashAndChecksResponse.Account(a.id(), a.name(), a.accountNumber(), a.bankName(), a.active(),
+                        nz(a.openingBalance()).add(nz(a.entries())), nz(a.unclearedIn()), nz(a.unclearedOut()), a.lastReconciled()))
+                // An inactive account only matters while money is still on it or in flight.
+                .filter(a -> a.active() || a.bookBalance().signum() != 0 || a.depositsInTransit().signum() != 0
+                        || a.outstandingDisbursements().signum() != 0)
+                .sorted(Comparator.comparing(CashAndChecksResponse.Account::bookBalance).reversed())
+                .toList();
+
+        List<TenderRow> received = queries.receivedTenders(companyId, startOfDay(today.minusDays(BOUNCED_WINDOW_DAYS - 1L)));
+        List<TenderRow> cash = received.stream().filter(t -> t.status().equals("ON_HAND") && t.mode().equals("CASH")).toList();
+        List<TenderRow> checksOnHand = received.stream().filter(t -> t.status().equals("ON_HAND") && t.mode().equals("CHECK")).toList();
+        List<TenderRow> postDated = checksOnHand.stream()
+                .filter(t -> t.checkDate() != null && t.checkDate().isAfter(asOfInstant)).toList();
+        List<TenderRow> deposited = received.stream().filter(t -> t.status().equals("DEPOSITED")).toList();
+        List<TenderRow> bounced = received.stream().filter(t -> t.status().equals("BOUNCED")).toList();
+        List<TenderRow> issued = queries.issuedChecksOutstanding(companyId);
+
+        Comparator<TenderRow> byCheckDate = Comparator.comparing(TenderRow::checkDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(TenderRow::id);
+        return new CashAndChecksResponse(asOfInstant, sum(accounts, CashAndChecksResponse.Account::bookBalance),
+                stat(cash), stat(checksOnHand), stat(postDated), stat(deposited), stat(issued), stat(bounced), BOUNCED_WINDOW_DAYS,
+                accounts,
+                checks(checksOnHand.stream().sorted(byCheckDate), today),
+                checks(issued.stream().sorted(byCheckDate), today),
+                checks(bounced.stream().sorted(Comparator.comparing(TenderRow::statusDate, Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .reversed()), today));
+    }
+
+    private static CashAndChecksResponse.Stat stat(List<TenderRow> tenders) {
+        return new CashAndChecksResponse.Stat(tenders.size(), sum(tenders, TenderRow::amount));
+    }
+
+    private static List<CashAndChecksResponse.Check> checks(Stream<TenderRow> tenders, LocalDate today) {
+        return tenders.limit(CHECK_LIST)
+                .map(t -> new CashAndChecksResponse.Check(t.id(), t.paymentId(), t.paymentReference(), t.partyId(), t.partyName(),
+                        t.checkNumber(), t.checkDate(),
+                        t.checkDate() == null ? null : (int) ChronoUnit.DAYS.between(LocalDate.ofInstant(t.checkDate(), ZoneOffset.UTC), today),
+                        t.bankName(), t.amount(), t.status(), t.statusDate()))
+                .toList();
     }
 
     // ---- shared helpers ---------------------------------------------------------------------------------------

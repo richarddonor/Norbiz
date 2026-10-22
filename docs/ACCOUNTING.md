@@ -152,6 +152,10 @@ adjustments, and puts the instruments it cleared back to DEPOSITED / ISSUED.
 | Open items (filter/sort/totals; `overdueAsOf`) and one item with its payment history | `GET /open-items`, `/open-items/{id}` | same, by side |
 | Bank book | `GET /reports/bank-book` | `VIEW_BANK_BOOK` |
 
+**Dashboard widgets** `receivables-aging`, `payables-due` and `cash-and-checks` summarize the current open items, bank
+book and checks (see docs/DASHBOARD.md). They read live state, not the as-of rules below: `asOf` only sets "today"
+for aging.
+
 **As-of rules** for aging, Statement of Account and ledgers:
 - An item counts if it is dated on/before the date, and either wasn't voided or was voided later because its check bounced/was cancelled.
 - An allocation counts if it is dated on/before the date and wasn't reversed by then.
