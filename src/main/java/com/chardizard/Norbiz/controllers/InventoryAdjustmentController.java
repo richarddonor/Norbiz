@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.InventoryAdjustment;
 import com.chardizard.Norbiz.models.InventoryAdjustmentLine;
 import com.chardizard.Norbiz.services.InventoryAdjustmentService;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,6 +38,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class InventoryAdjustmentController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "referenceNumber", "referenceNumber",
+            "sheetNumber", "sheetNumber",
+            "voided", "voided",
+            "warehouse", "warehouse.name",
+            "date", "adjustmentDate",
+            "reason", "reason");
+
     private final InventoryAdjustmentService inventoryAdjustmentService;
 
     @Operation(summary = "List inventory adjustments", description = "Returns adjustments belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
@@ -53,6 +64,7 @@ public class InventoryAdjustmentController {
             @Parameter(description = "Filter by adjustment date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
             @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.CREATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
@@ -61,7 +73,7 @@ public class InventoryAdjustmentController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
 
-        var adjustments = inventoryAdjustmentService.findAllForUser(userDetails.getUsername(), warehouseId, filters, fromInstant, toInstant, pageable)
+        var adjustments = inventoryAdjustmentService.findAllForUser(userDetails.getUsername(), warehouseId, filters, fromInstant, toInstant, sorted)
                 .map(this::toResponse);
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(adjustments)));
     }

@@ -5,6 +5,7 @@ import com.chardizard.Norbiz.dto.TransactionDetailedReportRow;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.*;
 import com.chardizard.Norbiz.util.DateRangeUtils;
+import com.chardizard.Norbiz.util.ListSort;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.From;
@@ -28,6 +29,8 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.function.Function;
 
 /**
@@ -155,14 +158,35 @@ public class TransactionDetailedReportService {
             return cb.and(predicates.toArray(Predicate[]::new));
         };
 
-        // Fixed, total ordering so export (which pages through every page) never skips or repeats a row.
-        Sort sort = Sort.by(
-                Sort.Order.desc(shape.header() + "." + shape.date()),
+        // The requested column sort (ListSort), then a fixed total ordering — newest transaction first,
+        // lines in entry order — so export (which pages through every page) never skips or repeats a row.
+        Sort sort = ListSort.resolve(pageable.getSort(), sortable(shape)).and(Sort.by(
+                Sort.Order.desc(shape.header() + ".createdAt"),
                 Sort.Order.desc(shape.header() + ".id"),
                 Sort.Order.asc("lineNumber"),
-                Sort.Order.asc("id"));
-        Pageable sorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
+                Sort.Order.asc("id")));
+        Pageable sorted = pageable.isPaged()
+                ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort)
+                : Pageable.unpaged(sort);
         return repository.findAll(spec, sorted).map(mapper);
+    }
+
+    /** Report column key → line-entity path for ?sort= (ListSort). */
+    private static Map<String, String> sortable(Shape shape) {
+        String h = shape.header() + ".";
+        Map<String, String> fields = new HashMap<>(ListSort.fields(
+                "company", h + "company.name",
+                "referenceNumber", h + "referenceNumber",
+                "sheetNumber", h + "sheetNumber",
+                "date", h + shape.date(),
+                "warehouse", h + "warehouse.name",
+                "itemCode", "item.itemCode",
+                "itemName", "item.name",
+                "lineNumber", "lineNumber",
+                "quantity", "quantity",
+                "voided", h + "voided"));
+        if (shape.counterparty() != null) fields.put("counterparty", h + shape.counterparty() + ".name");
+        return fields;
     }
 
     private void rejectInapplicableFilters(Shape shape, DetailedReportType type, DetailedReportFilter f) {

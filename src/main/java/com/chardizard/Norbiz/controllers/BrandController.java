@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.dto.BrandResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.Brand;
 import com.chardizard.Norbiz.services.BrandService;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +36,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class BrandController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "name", "name",
+            "active", "active",
+            "createdBy", "createdBy",
+            "updatedAt", "updatedAt");
+
     private final BrandService brandService;
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
@@ -52,6 +61,7 @@ public class BrandController {
             @Parameter(description = "Filter by last-updated date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtFrom,
             @Parameter(description = "Filter by last-updated date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtTo,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(active)) filters.put("active", active);
@@ -61,8 +71,8 @@ public class BrandController {
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
         var brands = queryCache.page(CacheRegion.LIST_BRAND, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, BrandResponse.class,
-                () -> brandService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), sorted, BrandResponse.class,
+                () -> brandService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(brands)));
     }
 

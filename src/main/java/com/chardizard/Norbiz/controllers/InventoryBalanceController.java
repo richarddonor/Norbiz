@@ -5,6 +5,8 @@ import com.chardizard.Norbiz.dto.InventoryBalanceResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.services.InventoryBalanceService;
 import com.chardizard.Norbiz.util.DateRangeUtils;
+import com.chardizard.Norbiz.util.ListSort;
+import com.chardizard.Norbiz.util.ListTotals;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -41,6 +43,7 @@ public class InventoryBalanceController {
             @Parameter(description = "Reconstruct balance as of this date (yyyy-MM-dd) instead of the live running balance") @RequestParam(required = false) String asOfDate,
             @Parameter(description = "Period report: range start (yyyy-MM-dd, inclusive). Requires endDate too.") @RequestParam(required = false) String startDate,
             @Parameter(description = "Period report: range end (yyyy-MM-dd, inclusive). Requires startDate too.") @RequestParam(required = false) String endDate,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals,
             Pageable pageable) {
         Instant asOfInstant = DateRangeUtils.endOfDayUtc(asOfDate);
         Instant rangeStart = DateRangeUtils.startOfDayUtc(startDate);
@@ -50,6 +53,13 @@ public class InventoryBalanceController {
 
         var balances = inventoryBalanceService.findBalances(userDetails.getUsername(), warehouseId, itemId,
                 asOfInstant, rangeStart, rangeEnd, canViewCostPrice, pageable);
-        return ResponseEntity.ok(AppResponse.of(PageResponse.of(balances)));
+        var response = PageResponse.of(balances);
+
+        if (totals) {
+            // Summed from raw balance rows, however many match. value is left out without VIEW_COST_PRICE.
+            response.withTotals(inventoryBalanceService.totals(userDetails.getUsername(), warehouseId, itemId,
+                    asOfInstant, rangeStart, rangeEnd, canViewCostPrice));
+        }
+        return ResponseEntity.ok(AppResponse.of(response));
     }
 }

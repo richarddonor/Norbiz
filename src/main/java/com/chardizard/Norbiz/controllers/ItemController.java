@@ -11,6 +11,7 @@ import com.chardizard.Norbiz.models.Item;
 import com.chardizard.Norbiz.models.ItemSku;
 import com.chardizard.Norbiz.models.PriceType;
 import com.chardizard.Norbiz.services.ItemService;
+import com.chardizard.Norbiz.util.ListSort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -42,6 +43,15 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ItemController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "itemCode", "itemCode",
+            "name", "name",
+            "category", "itemCategory.name",
+            "group", "itemGroup.name",
+            "active", "active");
+
     /** Most IDs the `ids` list filter takes; photo search returns at most 20 matches. */
     private static final int MAX_ID_FILTER = 100;
 
@@ -58,6 +68,7 @@ public class ItemController {
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "Filter by item code (contains)") @RequestParam(required = false) String itemCode,
             @Parameter(description = "Filter by name (contains)") @RequestParam(required = false) String name,
+            @Parameter(description = "Filter by active status (true or false)") @RequestParam(required = false) String active,
             @Parameter(description = "Filter by category name (contains)") @RequestParam(required = false) String category,
             @Parameter(description = "Filter by item group name (contains)") @RequestParam(required = false) String group,
             @Parameter(description = "Filter by company name (contains)") @RequestParam(required = false) String company,
@@ -66,9 +77,11 @@ public class ItemController {
             @Parameter(description = "Only these item IDs (comma-separated or repeated), e.g. the matches of a photo search")
             @RequestParam(required = false) @Size(max = MAX_ID_FILTER) List<@NotNull @Positive Long> ids,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(itemCode)) filters.put("itemCode", itemCode);
         if (StringUtils.hasText(name)) filters.put("name", name);
+        if (StringUtils.hasText(active)) filters.put("active", active);
         if (StringUtils.hasText(category)) filters.put("category", category);
         if (StringUtils.hasText(group)) filters.put("group", group);
         if (StringUtils.hasText(company)) filters.put("company", company);
@@ -78,8 +91,8 @@ public class ItemController {
 
         // canViewCostPrice is in the key: toResponse hides the cost price from callers without VIEW_COST_PRICE.
         var items = queryCache.page(CacheRegion.LIST_ITEM, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters, "ids", idFilter, "canViewCostPrice", hasCostPriceAuthority(userDetails)), pageable, ItemResponse.class,
-                () -> itemService.findAllForUser(userDetails.getUsername(), filters, idFilter, pageable).map(item -> toResponse(item, userDetails)));
+                QueryCache.params("filters", filters, "ids", idFilter, "canViewCostPrice", hasCostPriceAuthority(userDetails)), sorted, ItemResponse.class,
+                () -> itemService.findAllForUser(userDetails.getUsername(), filters, idFilter, sorted).map(item -> toResponse(item, userDetails)));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(items)));
     }
 

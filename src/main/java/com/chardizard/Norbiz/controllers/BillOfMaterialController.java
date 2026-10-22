@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.dto.BillOfMaterialResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.BillOfMaterial;
 import com.chardizard.Norbiz.services.BillOfMaterialService;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -36,6 +37,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class BillOfMaterialController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "code", "code",
+            "item", "item.itemCode",
+            "active", "active",
+            "createdBy", "createdBy",
+            "updatedAt", "updatedAt");
+
     private final BillOfMaterialService billOfMaterialService;
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
@@ -55,6 +65,7 @@ public class BillOfMaterialController {
             @Parameter(description = "Filter by last-updated date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtFrom,
             @Parameter(description = "Filter by last-updated date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtTo,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(code)) filters.put("code", code);
         if (StringUtils.hasText(item)) filters.put("item", item);
@@ -66,8 +77,8 @@ public class BillOfMaterialController {
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
         var page = queryCache.page(CacheRegion.LIST_BILL_OF_MATERIAL, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, BillOfMaterialResponse.class,
-                () -> billOfMaterialService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), sorted, BillOfMaterialResponse.class,
+                () -> billOfMaterialService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(page)));
     }
 

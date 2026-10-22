@@ -11,6 +11,7 @@ import com.chardizard.Norbiz.dto.DocumentTemplateResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.DocumentTemplate;
 import com.chardizard.Norbiz.services.DocumentSchemaRegistry;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.services.DocumentTemplateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,6 +38,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DocumentTemplateController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "name", "name",
+            "documentType", "documentType",
+            "defaultTemplate", "defaultTemplate",
+            "active", "active",
+            "updatedAt", "updatedAt");
+
     private final DocumentTemplateService documentTemplateService;
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
@@ -52,13 +62,14 @@ public class DocumentTemplateController {
             @Parameter(description = "Filter by name (contains)") @RequestParam(required = false) String name,
             @Parameter(description = "Filter by document type (contains)") @RequestParam(required = false) String documentType,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(documentType)) filters.put("documentType", documentType);
 
         var templates = queryCache.page(CacheRegion.LIST_DOCUMENT_TEMPLATE, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters), pageable, DocumentTemplateResponse.class,
-                () -> documentTemplateService.findAllForUser(userDetails.getUsername(), filters, pageable).map(this::toResponse));
+                QueryCache.params("filters", filters), sorted, DocumentTemplateResponse.class,
+                () -> documentTemplateService.findAllForUser(userDetails.getUsername(), filters, sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(templates)));
     }
 

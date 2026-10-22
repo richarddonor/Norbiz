@@ -1,5 +1,6 @@
 package com.chardizard.Norbiz.controllers;
 
+import java.util.Map;
 import com.chardizard.Norbiz.cache.CacheRegion;
 import com.chardizard.Norbiz.cache.CacheScopeResolver;
 import com.chardizard.Norbiz.cache.QueryCache;
@@ -9,6 +10,7 @@ import com.chardizard.Norbiz.dto.EmployeeResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.Employee;
 import com.chardizard.Norbiz.services.EmployeeService;
+import com.chardizard.Norbiz.util.ListSort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -29,6 +31,16 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class EmployeeController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "employeeCode", "employeeCode",
+            "firstName", "firstName",
+            "lastName", "lastName",
+            "email", "email",
+            "phone", "phone",
+            "active", "active");
+
     private final EmployeeService employeeService;
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
@@ -40,9 +52,10 @@ public class EmployeeController {
     @PreAuthorize("hasAuthority('VIEW_EMPLOYEE')")
     public ResponseEntity<AppResponse<PageResponse<EmployeeResponse>>> getAll(@AuthenticationPrincipal UserDetails userDetails,
                                                                               Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         var employees = queryCache.page(CacheRegion.LIST_EMPLOYEE, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params(), pageable, EmployeeResponse.class,
-                () -> employeeService.findAllForUser(userDetails.getUsername(), pageable).map(this::toResponse));
+                QueryCache.params(), sorted, EmployeeResponse.class,
+                () -> employeeService.findAllForUser(userDetails.getUsername(), sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(employees)));
     }
 

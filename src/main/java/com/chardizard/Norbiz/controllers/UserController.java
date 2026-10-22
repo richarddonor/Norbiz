@@ -11,6 +11,7 @@ import com.chardizard.Norbiz.dto.UpdateUserRequest;
 import com.chardizard.Norbiz.dto.UserResponse;
 import com.chardizard.Norbiz.models.User;
 import com.chardizard.Norbiz.services.UserService;
+import com.chardizard.Norbiz.util.ListSort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -38,6 +39,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class UserController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "displayName", "displayName",
+            "username", "username",
+            "email", "email");
+
     private final UserService userService;
     private final QueryCache queryCache;
 
@@ -53,6 +60,7 @@ public class UserController {
             @Parameter(description = "Filter by role name (contains)") @RequestParam(required = false) String roles,
             @Parameter(description = "Filter by company name (contains)") @RequestParam(required = false) String companies,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(displayName)) filters.put("displayName", displayName);
         if (StringUtils.hasText(username)) filters.put("username", username);
@@ -61,8 +69,8 @@ public class UserController {
         if (StringUtils.hasText(companies)) filters.put("companies", companies);
 
         // UserService.findAll is not company-scoped, so neither is the cache entry.
-        var users = queryCache.page(CacheRegion.LIST_USER, CacheScope.global(), QueryCache.params("filters", filters), pageable,
-                UserResponse.class, () -> userService.findAll(filters, pageable).map(this::toResponse));
+        var users = queryCache.page(CacheRegion.LIST_USER, CacheScope.global(), QueryCache.params("filters", filters), sorted,
+                UserResponse.class, () -> userService.findAll(filters, sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(users)));
     }
 

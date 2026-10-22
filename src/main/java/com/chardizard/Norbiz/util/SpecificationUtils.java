@@ -1,10 +1,14 @@
 package com.chardizard.Norbiz.util;
 
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.From;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
@@ -20,16 +24,12 @@ public final class SpecificationUtils {
     }
 
     /** Case-insensitive LIKE %value% on a dotted path (e.g. "itemCategory.name").
-     * Every segment but the last is resolved via a LEFT JOIN, so this works
-     * uniformly for direct fields, @ManyToOne, and to-many associations.
-     * Returns null (a no-op) when value is blank. */
+     * Works uniformly for direct fields, @ManyToOne, and to-many associations (see
+     * {@link #matches}). Returns null (a no-op) when value is blank. */
     public static <T> Specification<T> containsIgnoreCase(String dotPath, String value) {
         if (!StringUtils.hasText(value)) return null;
         String pattern = "%" + value.trim().toLowerCase() + "%";
-        return (root, query, cb) -> {
-            query.distinct(true);
-            return cb.like(cb.lower(resolvePath(root, dotPath).as(String.class)), pattern);
-        };
+        return (root, query, cb) -> matches(root, query, cb, pattern, dotPath);
     }
 
     /** Same as containsIgnoreCase, but OR's across several candidate paths —
@@ -37,14 +37,32 @@ public final class SpecificationUtils {
     public static <T> Specification<T> anyContainsIgnoreCase(String value, String... dotPaths) {
         if (!StringUtils.hasText(value)) return null;
         String pattern = "%" + value.trim().toLowerCase() + "%";
-        return (root, query, cb) -> {
-            query.distinct(true);
-            Predicate[] predicates = new Predicate[dotPaths.length];
-            for (int i = 0; i < dotPaths.length; i++) {
-                predicates[i] = cb.like(cb.lower(resolvePath(root, dotPaths[i]).as(String.class)), pattern);
-            }
-            return cb.or(predicates);
-        };
+        return (root, query, cb) -> matches(root, query, cb, pattern, dotPaths);
+    }
+
+    /** LIKE {@code pattern} on any of {@code dotPaths}. A path through an association is matched in an
+     * EXISTS subquery (joined LEFT inside it) rather than by joining the main query: a to-many match then
+     * never duplicates rows, so the main query needs no DISTINCT — which Postgres refuses together with an
+     * ORDER BY on a joined column, i.e. list sorting by e.g. {@code company.name} (see {@link ListSort}). */
+    @SuppressWarnings("unchecked")
+    private static <T> Predicate matches(Root<T> root, CriteriaQuery<?> query, CriteriaBuilder cb, String pattern, String... dotPaths) {
+        boolean joined = false;
+        for (String path : dotPaths) joined |= path.contains(".");
+        if (!joined) return cb.or(likes(root, cb, pattern, dotPaths));
+
+        Subquery<Integer> sub = query.subquery(Integer.class);
+        Root<T> subRoot = (Root<T>) sub.from(root.getJavaType());
+        sub.select(cb.literal(1))
+                .where(cb.equal(subRoot.get("id"), root.get("id")), cb.or(likes(subRoot, cb, pattern, dotPaths)));
+        return cb.exists(sub);
+    }
+
+    private static Predicate[] likes(From<?, ?> from, CriteriaBuilder cb, String pattern, String... dotPaths) {
+        Predicate[] predicates = new Predicate[dotPaths.length];
+        for (int i = 0; i < dotPaths.length; i++) {
+            predicates[i] = cb.like(cb.lower(resolvePath(from, dotPaths[i]).as(String.class)), pattern);
+        }
+        return predicates;
     }
 
     /** Inclusive date-range filter on an Instant-typed dotted path. Either bound

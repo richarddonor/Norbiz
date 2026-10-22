@@ -10,6 +10,8 @@ import com.chardizard.Norbiz.models.Employee;
 import com.chardizard.Norbiz.models.OutletDeliveryReturn;
 import com.chardizard.Norbiz.models.OutletDeliveryReturnLine;
 import com.chardizard.Norbiz.services.OutletDeliveryReturnService;
+import com.chardizard.Norbiz.util.ListSort;
+import com.chardizard.Norbiz.util.ListTotals;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -40,6 +42,16 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OutletDeliveryReturnController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "referenceNumber", "referenceNumber",
+            "sheetNumber", "sheetNumber",
+            "voided", "voided",
+            "outlet", "customer.name",
+            "source", "outletDeliveryReceipt.referenceNumber",
+            "date", "returnDate");
+
     private final OutletDeliveryReturnService outletDeliveryReturnService;
 
     @Operation(summary = "List outlet delivery returns", description = "Returns belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
@@ -57,7 +69,9 @@ public class OutletDeliveryReturnController {
             @Parameter(description = "Filter by return date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
             @Parameter(description = "Filter by return date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
             @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.CREATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
@@ -67,9 +81,16 @@ public class OutletDeliveryReturnController {
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
 
         var returns = outletDeliveryReturnService.findAllForUser(userDetails.getUsername(), customerId, agentId, outletDeliveryReceiptId,
-                        filters, fromInstant, toInstant, pageable)
+                        filters, fromInstant, toInstant, sorted)
                 .map(this::toResponse);
-        return ResponseEntity.ok(AppResponse.of(PageResponse.of(returns)));
+        var response = PageResponse.of(returns);
+        if (totals) {
+            response.withTotals(ListTotals.within(returns.getTotalElements(), () -> outletDeliveryReturnService.findAllForUser(userDetails.getUsername(), customerId, agentId, outletDeliveryReceiptId,
+                            filters, fromInstant, toInstant, ListSort.unpaged(sorted))
+                    .map(this::toResponse).getContent(),
+                    ListTotals.column("total", OutletDeliveryReturnResponse::getTotalAmount)));
+        }
+        return ResponseEntity.ok(AppResponse.of(response));
     }
 
     @Operation(summary = "Get outlet delivery return by ID")

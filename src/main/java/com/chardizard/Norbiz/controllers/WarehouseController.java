@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.dto.WarehouseRequest;
 import com.chardizard.Norbiz.dto.WarehouseResponse;
 import com.chardizard.Norbiz.models.Warehouse;
 import com.chardizard.Norbiz.services.WarehouseService;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +36,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class WarehouseController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "code", "code",
+            "name", "name",
+            "active", "active",
+            "createdBy", "createdBy",
+            "updatedAt", "updatedAt");
+
     private final WarehouseService warehouseService;
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
@@ -54,6 +64,7 @@ public class WarehouseController {
             @Parameter(description = "Filter by last-updated date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtFrom,
             @Parameter(description = "Filter by last-updated date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtTo,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(code)) filters.put("code", code);
@@ -65,8 +76,8 @@ public class WarehouseController {
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
         var warehouses = queryCache.page(CacheRegion.LIST_WAREHOUSE, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, WarehouseResponse.class,
-                () -> warehouseService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), sorted, WarehouseResponse.class,
+                () -> warehouseService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(warehouses)));
     }
 

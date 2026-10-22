@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.dto.ItemCategoryResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.ItemCategory;
 import com.chardizard.Norbiz.services.ItemCategoryService;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +36,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ItemCategoryController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "name", "name",
+            "active", "active",
+            "createdBy", "createdBy",
+            "updatedAt", "updatedAt");
+
     private final ItemCategoryService itemCategoryService;
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
@@ -53,6 +62,7 @@ public class ItemCategoryController {
             @Parameter(description = "Filter by last-updated date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtFrom,
             @Parameter(description = "Filter by last-updated date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String updatedAtTo,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(company)) filters.put("company", company);
@@ -63,8 +73,8 @@ public class ItemCategoryController {
         Instant toInstant = DateRangeUtils.endOfDayUtc(updatedAtTo);
 
         var categories = queryCache.page(CacheRegion.LIST_ITEM_CATEGORY, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), pageable, ItemCategoryResponse.class,
-                () -> itemCategoryService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable).map(this::toResponse));
+                QueryCache.params("filters", filters, "updatedAtFrom", fromInstant, "updatedAtTo", toInstant), sorted, ItemCategoryResponse.class,
+                () -> itemCategoryService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(categories)));
     }
 

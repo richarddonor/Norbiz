@@ -12,6 +12,8 @@ import com.chardizard.Norbiz.models.PurchaseInvoice;
 import com.chardizard.Norbiz.models.PurchaseInvoiceFee;
 import com.chardizard.Norbiz.models.PurchaseInvoiceLine;
 import com.chardizard.Norbiz.services.PurchaseInvoiceService;
+import com.chardizard.Norbiz.util.ListSort;
+import com.chardizard.Norbiz.util.ListTotals;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -43,6 +45,18 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PurchaseInvoiceController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "referenceNumber", "referenceNumber",
+            "sheetNumber", "sheetNumber",
+            "voided", "voided",
+            "warehouse", "warehouse.name",
+            "supplier", "supplier.name",
+            "purchaseOrder", "purchaseOrder.referenceNumber",
+            "date", "invoiceDate",
+            "paymentStatus", "paymentStatus");
+
     private final PurchaseInvoiceService purchaseInvoiceService;
 
     @Operation(summary = "List purchase invoices", description = "Returns invoices belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
@@ -60,7 +74,9 @@ public class PurchaseInvoiceController {
             @Parameter(description = "Filter by invoice date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
             @Parameter(description = "Filter by invoice date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
             @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.CREATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
@@ -71,9 +87,16 @@ public class PurchaseInvoiceController {
 
         boolean canViewCostPrice = hasCostPriceAuthority(userDetails);
         var invoices = purchaseInvoiceService.findAllForUser(userDetails.getUsername(), warehouseId, supplierId, paymentStatus,
-                        filters, fromInstant, toInstant, pageable)
+                        filters, fromInstant, toInstant, sorted)
                 .map(i -> toResponse(i, canViewCostPrice));
-        return ResponseEntity.ok(AppResponse.of(PageResponse.of(invoices)));
+        var response = PageResponse.of(invoices);
+        if (totals) {
+            response.withTotals(ListTotals.within(invoices.getTotalElements(), () -> purchaseInvoiceService.findAllForUser(userDetails.getUsername(), warehouseId, supplierId, paymentStatus,
+                            filters, fromInstant, toInstant, ListSort.unpaged(sorted))
+                    .map(i -> toResponse(i, canViewCostPrice)).getContent(),
+                    ListTotals.column("netPayable", PurchaseInvoiceResponse::getNetPayable)));
+        }
+        return ResponseEntity.ok(AppResponse.of(response));
     }
 
     @Operation(summary = "Get purchase invoice by ID")

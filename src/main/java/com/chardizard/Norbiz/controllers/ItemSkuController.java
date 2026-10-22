@@ -10,6 +10,7 @@ import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.ItemSku;
 import com.chardizard.Norbiz.models.PriceType;
 import com.chardizard.Norbiz.services.ItemSkuService;
+import com.chardizard.Norbiz.util.ListSort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -34,6 +35,13 @@ import java.util.Map;
 @RequestMapping("/item-skus")
 @RequiredArgsConstructor
 public class ItemSkuController {
+
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "skuCode", "skuCode",
+            "itemCode", "item.itemCode",
+            "itemName", "item.name",
+            "unitPrice", "unitPrice");
 
     private final ItemSkuService itemSkuService;
     private final QueryCache queryCache;
@@ -61,6 +69,7 @@ public class ItemSkuController {
             @Parameter(description = "Filter by active flag") @RequestParam(required = false) Boolean active,
             @Parameter(description = "true: only SKUs assigned to an item; false: only SKUs without one") @RequestParam(required = false) Boolean assigned,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(skuCode)) filters.put("skuCode", skuCode);
         if (StringUtils.hasText(itemCode)) filters.put("itemCode", itemCode);
@@ -78,8 +87,8 @@ public class ItemSkuController {
         if (assigned != null) filters.put("assigned", assigned.toString());
 
         var skus = queryCache.page(CacheRegion.LIST_ITEM_SKU, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters), pageable, ItemSkuResponse.class,
-                () -> itemSkuService.findAll(userDetails.getUsername(), filters, pageable).map(this::toResponse));
+                QueryCache.params("filters", filters), sorted, ItemSkuResponse.class,
+                () -> itemSkuService.findAll(userDetails.getUsername(), filters, sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(skus)));
     }
 

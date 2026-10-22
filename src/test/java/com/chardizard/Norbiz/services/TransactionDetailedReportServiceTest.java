@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -121,6 +123,35 @@ class TransactionDetailedReportServiceTest {
         assertThat(first.getPrice()).isEqualByComparingTo("12.50");
         assertThat(first.getAmount()).isEqualByComparingTo("50.00");
         assertThat(first.getOrigin()).isEqualTo(TransactionOrigin.NATIVE);
+    }
+
+    @Test
+    void sortsByARequestedColumnAheadOfTheFixedOrder() {
+        deliveryReceiptService.create(drRequest(), user);
+
+        Page<TransactionDetailedReportRow> byItemDesc = reportService.find(DetailedReportType.DELIVERY_RECEIPT, user,
+                new DetailedReportFilter(), false, PageRequest.of(0, 50, Sort.by(Sort.Order.desc("itemName"))));
+
+        assertThat(byItemDesc.getContent()).extracting(TransactionDetailedReportRow::getItemName)
+                .containsExactly("Report Item Two", "Report Item One");
+    }
+
+    @Test
+    void everyReportSortsByEveryCommonColumnAndRunsUnpagedForTotals() {
+        for (DetailedReportType type : DetailedReportType.values()) {
+            for (String key : List.of("company", "referenceNumber", "sheetNumber", "date", "warehouse",
+                    "itemCode", "itemName", "lineNumber", "quantity", "voided")) {
+                reportService.find(type, user, new DetailedReportFilter(), false, PageRequest.of(0, 5, Sort.by(key)));
+            }
+            reportService.find(type, user, new DetailedReportFilter(), false, Pageable.unpaged(Sort.by("date")));
+        }
+    }
+
+    @Test
+    void unknownSortColumnIsRejected() {
+        assertThatThrownBy(() -> reportService.find(DetailedReportType.DELIVERY_RECEIPT, user,
+                new DetailedReportFilter(), false, PageRequest.of(0, 50, Sort.by("price"))))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

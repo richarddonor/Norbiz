@@ -10,6 +10,7 @@ import com.chardizard.Norbiz.dto.PurchaseReceiptResponse;
 import com.chardizard.Norbiz.models.PurchaseReceipt;
 import com.chardizard.Norbiz.models.PurchaseReceiptLine;
 import com.chardizard.Norbiz.services.PurchaseReceiptService;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -40,6 +41,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PurchaseReceiptController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "referenceNumber", "referenceNumber",
+            "sheetNumber", "sheetNumber",
+            "voided", "voided",
+            "warehouse", "warehouse.name",
+            "supplier", "supplier.name",
+            "date", "receiptDate");
+
     private final PurchaseReceiptService purchaseReceiptService;
 
     @Operation(summary = "List purchase receipts", description = "Returns receipts belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
@@ -57,6 +68,7 @@ public class PurchaseReceiptController {
             @Parameter(description = "Filter by receipt date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
             @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.CREATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
@@ -66,7 +78,7 @@ public class PurchaseReceiptController {
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
 
         var receipts = purchaseReceiptService.findAllForUser(userDetails.getUsername(), warehouseId, supplierId,
-                        filters, fromInstant, toInstant, pageable)
+                        filters, fromInstant, toInstant, sorted)
                 .map(this::toResponse);
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(receipts)));
     }

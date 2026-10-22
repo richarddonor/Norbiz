@@ -3,6 +3,8 @@ package com.chardizard.Norbiz.controllers;
 import com.chardizard.Norbiz.dto.*;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.services.OutletPullOutService;
+import com.chardizard.Norbiz.util.ListSort;
+import com.chardizard.Norbiz.util.ListTotals;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -33,6 +35,16 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OutletPullOutController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "referenceNumber", "referenceNumber",
+            "sheetNumber", "sheetNumber",
+            "voided", "voided",
+            "outlet", "customer.name",
+            "reason", "reason.name",
+            "date", "pullOutDate");
+
     private final OutletPullOutService outletPullOutService;
 
     @Operation(summary = "List outlet pull-outs", description = "Returns outlet pull-outs belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
@@ -49,7 +61,9 @@ public class OutletPullOutController {
             @Parameter(description = "Filter by pull-out date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
             @Parameter(description = "Filter by pull-out date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
             @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.CREATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
@@ -58,9 +72,15 @@ public class OutletPullOutController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
 
-        var page = outletPullOutService.findAllForUser(userDetails.getUsername(), customerId, pullOutReasonId, filters, fromInstant, toInstant, pageable)
+        var page = outletPullOutService.findAllForUser(userDetails.getUsername(), customerId, pullOutReasonId, filters, fromInstant, toInstant, sorted)
                 .map(this::toResponse);
-        return ResponseEntity.ok(AppResponse.of(PageResponse.of(page)));
+        var response = PageResponse.of(page);
+        if (totals) {
+            response.withTotals(ListTotals.within(page.getTotalElements(), () -> outletPullOutService.findAllForUser(userDetails.getUsername(), customerId, pullOutReasonId, filters, fromInstant, toInstant, ListSort.unpaged(sorted))
+                    .map(this::toResponse).getContent(),
+                    ListTotals.column("total", OutletPullOutResponse::getTotalAmount)));
+        }
+        return ResponseEntity.ok(AppResponse.of(response));
     }
 
     @Operation(summary = "Get Outlet pull-out by ID")

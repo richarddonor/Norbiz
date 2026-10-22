@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.dto.PurchaseOrderResponse;
 import com.chardizard.Norbiz.models.PurchaseOrder;
 import com.chardizard.Norbiz.models.PurchaseOrderLine;
 import com.chardizard.Norbiz.services.PurchaseOrderService;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,6 +38,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PurchaseOrderController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "referenceNumber", "referenceNumber",
+            "sheetNumber", "sheetNumber",
+            "voided", "voided",
+            "warehouse", "warehouse.name",
+            "supplier", "supplier.name",
+            "date", "orderDate");
+
     private final PurchaseOrderService purchaseOrderService;
 
     @Operation(summary = "List purchase orders", description = "Returns orders belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
@@ -54,6 +65,7 @@ public class PurchaseOrderController {
             @Parameter(description = "Filter by order date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
             @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.CREATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
@@ -64,7 +76,7 @@ public class PurchaseOrderController {
 
         boolean canViewCostPrice = hasCostPriceAuthority(userDetails);
         var orders = purchaseOrderService.findAllForUser(userDetails.getUsername(), warehouseId, supplierId,
-                        filters, fromInstant, toInstant, pageable)
+                        filters, fromInstant, toInstant, sorted)
                 .map(o -> toResponse(o, canViewCostPrice));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(orders)));
     }

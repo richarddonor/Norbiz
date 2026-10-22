@@ -48,4 +48,7 @@ public class ItemRequest {
     private List<@NotNull PriceRequest> prices;
 
     private Set<@NotNull ItemTag> tags;
+
+    /** Omitted = true on create, unchanged on update. Inactive records can't be newly picked in forms. */
+    private Boolean active;
 }

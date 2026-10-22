@@ -10,6 +10,7 @@ import com.chardizard.Norbiz.dto.TransactionActionDefinitionResponse;
 import com.chardizard.Norbiz.models.TransactionActionDefinition;
 import com.chardizard.Norbiz.models.TransactionType;
 import com.chardizard.Norbiz.services.TransactionActionDefinitionService;
+import com.chardizard.Norbiz.util.ListSort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -36,6 +37,16 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TransactionActionDefinitionController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "transactionType", "transactionType",
+            "code", "code",
+            "name", "name",
+            "sortOrder", "sortOrder",
+            "active", "active",
+            "updatedAt", "updatedAt");
+
     private final TransactionActionDefinitionService definitionService;
     private final QueryCache queryCache;
     private final CacheScopeResolver cacheScopes;
@@ -52,14 +63,15 @@ public class TransactionActionDefinitionController {
             @Parameter(description = "Filter by name (contains)") @RequestParam(required = false) String name,
             @Parameter(description = "Filter by active flag") @RequestParam(required = false) Boolean active,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(code)) filters.put("code", code);
         if (StringUtils.hasText(name)) filters.put("name", name);
 
         var definitions = queryCache.page(CacheRegion.LIST_TRANSACTION_ACTION_DEFINITION, cacheScopes.forUser(userDetails.getUsername()),
-                QueryCache.params("filters", filters, "transactionType", transactionType, "active", active), pageable,
+                QueryCache.params("filters", filters, "transactionType", transactionType, "active", active), sorted,
                 TransactionActionDefinitionResponse.class,
-                () -> definitionService.findAllForUser(userDetails.getUsername(), transactionType, filters, active, pageable)
+                () -> definitionService.findAllForUser(userDetails.getUsername(), transactionType, filters, active, sorted)
                         .map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(definitions)));
     }

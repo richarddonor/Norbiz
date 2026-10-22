@@ -9,6 +9,7 @@ import com.chardizard.Norbiz.dto.RoleRequest;
 import com.chardizard.Norbiz.dto.RoleResponse;
 import com.chardizard.Norbiz.models.Role;
 import com.chardizard.Norbiz.services.RoleService;
+import com.chardizard.Norbiz.util.ListSort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -32,6 +33,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RoleController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "displayName", "displayName",
+            "name", "name");
+
     private final RoleService roleService;
     private final QueryCache queryCache;
 
@@ -45,13 +51,14 @@ public class RoleController {
             @Parameter(description = "Filter by name (contains)") @RequestParam(required = false) String name,
             @Parameter(description = "Filter by permission name (contains)") @RequestParam(required = false) String permissions,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.UPDATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(displayName)) filters.put("displayName", displayName);
         if (StringUtils.hasText(name)) filters.put("name", name);
         if (StringUtils.hasText(permissions)) filters.put("permissions", permissions);
 
-        var roles = queryCache.page(CacheRegion.LIST_ROLE, CacheScope.global(), QueryCache.params("filters", filters), pageable,
-                RoleResponse.class, () -> roleService.findAll(filters, pageable).map(this::toResponse));
+        var roles = queryCache.page(CacheRegion.LIST_ROLE, CacheScope.global(), QueryCache.params("filters", filters), sorted,
+                RoleResponse.class, () -> roleService.findAll(filters, sorted).map(this::toResponse));
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(roles)));
     }
 

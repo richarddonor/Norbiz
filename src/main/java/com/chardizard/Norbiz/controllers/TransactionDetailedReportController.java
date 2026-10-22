@@ -6,7 +6,10 @@ import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.dto.TransactionDetailedReportRow;
 import com.chardizard.Norbiz.models.DetailedReportType;
 import com.chardizard.Norbiz.services.TransactionDetailedReportService;
+import com.chardizard.Norbiz.util.ListSort;
+import com.chardizard.Norbiz.util.ListTotals;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -19,6 +22,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -32,7 +36,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class TransactionDetailedReportController {
 
-    private static final String DESCRIPTION = "Line items with their transaction header, newest transaction first, lines in entry order. " +
+    private static final String DESCRIPTION = "Line items with their transaction header, newest transaction first (by posting time), lines in entry order; " +
+            "?sort= takes company, referenceNumber, sheetNumber, date, warehouse, counterparty, itemCode, itemName, lineNumber, quantity or voided. " +
             "Scoped to the caller's companies (SUPER_ADMIN sees all). Cost prices/amounts on purchase reports are null without VIEW_COST_PRICE.";
 
     private final TransactionDetailedReportService reportService;
@@ -43,8 +48,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/inventory-adjustments")
     @PreAuthorize("hasAuthority('VIEW_INVENTORY_ADJUSTMENT_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> inventoryAdjustments(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.INVENTORY_ADJUSTMENT, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.INVENTORY_ADJUSTMENT, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Outlet Receipt - Detailed", description = DESCRIPTION)
@@ -53,8 +59,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/outlet-receipts")
     @PreAuthorize("hasAuthority('VIEW_OUTLET_RECEIPT_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletReceipts(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.OUTLET_RECEIPT, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.OUTLET_RECEIPT, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Purchase Order - Detailed", description = DESCRIPTION)
@@ -63,8 +70,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/purchase-orders")
     @PreAuthorize("hasAuthority('VIEW_PURCHASE_ORDER_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> purchaseOrders(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.PURCHASE_ORDER, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.PURCHASE_ORDER, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Purchase Invoice - Detailed", description = DESCRIPTION)
@@ -73,8 +81,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/purchase-invoices")
     @PreAuthorize("hasAuthority('VIEW_PURCHASE_INVOICE_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> purchaseInvoices(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.PURCHASE_INVOICE, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.PURCHASE_INVOICE, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Purchase Receipt - Detailed", description = DESCRIPTION)
@@ -83,8 +92,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/purchase-receipts")
     @PreAuthorize("hasAuthority('VIEW_PURCHASE_RECEIPT_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> purchaseReceipts(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.PURCHASE_RECEIPT, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.PURCHASE_RECEIPT, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Delivery Receipt - Detailed", description = DESCRIPTION)
@@ -93,8 +103,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/delivery-receipts")
     @PreAuthorize("hasAuthority('VIEW_DELIVERY_RECEIPT_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> deliveryReceipts(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.DELIVERY_RECEIPT, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.DELIVERY_RECEIPT, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Outlet Delivery Receipt - Detailed", description = DESCRIPTION)
@@ -103,8 +114,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/outlet-delivery-receipts")
     @PreAuthorize("hasAuthority('VIEW_OUTLET_DELIVERY_RECEIPT_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletDeliveryReceipts(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.OUTLET_DELIVERY_RECEIPT, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.OUTLET_DELIVERY_RECEIPT, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Outlet Delivery Return - Detailed", description = DESCRIPTION)
@@ -113,8 +125,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/outlet-delivery-returns")
     @PreAuthorize("hasAuthority('VIEW_OUTLET_DELIVERY_RETURN_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletDeliveryReturns(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.OUTLET_DELIVERY_RETURN, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.OUTLET_DELIVERY_RETURN, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Stock Transfer - Detailed", description = DESCRIPTION)
@@ -123,8 +136,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/stock-transfers")
     @PreAuthorize("hasAuthority('VIEW_STOCK_TRANSFER_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> stockTransfers(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.STOCK_TRANSFER, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.STOCK_TRANSFER, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Outlet Pull-out - Detailed", description = DESCRIPTION)
@@ -133,8 +147,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/outlet-pull-outs")
     @PreAuthorize("hasAuthority('VIEW_OUTLET_PULL_OUT_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> outletPullOuts(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.OUTLET_PULL_OUT, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.OUTLET_PULL_OUT, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Pull-out Receipt - Detailed", description = DESCRIPTION)
@@ -143,8 +158,9 @@ public class TransactionDetailedReportController {
     @GetMapping("/pull-out-receipts")
     @PreAuthorize("hasAuthority('VIEW_PULL_OUT_RECEIPT_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> pullOutReceipts(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.PULL_OUT_RECEIPT, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.PULL_OUT_RECEIPT, userDetails, filter, pageable, totals);
     }
 
     @Operation(summary = "Assembly - Detailed", description = DESCRIPTION)
@@ -153,15 +169,24 @@ public class TransactionDetailedReportController {
     @GetMapping("/assemblies")
     @PreAuthorize("hasAuthority('VIEW_ASSEMBLY_DETAILED_REPORT')")
     public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> assemblies(
-            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable) {
-        return report(DetailedReportType.ASSEMBLY, userDetails, filter, pageable);
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.ASSEMBLY, userDetails, filter, pageable, totals);
     }
 
     private ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> report(
-            DetailedReportType type, UserDetails userDetails, DetailedReportFilter filter, Pageable pageable) {
+            DetailedReportType type, UserDetails userDetails, DetailedReportFilter filter, Pageable pageable, boolean totals) {
         boolean canViewCostPrice = userDetails.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("VIEW_COST_PRICE"));
         var rows = reportService.find(type, userDetails.getUsername(), filter, canViewCostPrice, pageable);
-        return ResponseEntity.ok(AppResponse.of(PageResponse.of(rows)));
+        var response = PageResponse.of(rows);
+        if (totals) {
+            response.withTotals(ListTotals.within(rows.getTotalElements(), () -> reportService
+                    .find(type, userDetails.getUsername(), filter, canViewCostPrice, ListSort.unpaged(pageable)).getContent(),
+                    ListTotals.column("quantity", TransactionDetailedReportRow::getQuantity),
+                    ListTotals.column("quantityLoaded", TransactionDetailedReportRow::getQuantityLoaded),
+                    ListTotals.column("amount", TransactionDetailedReportRow::getAmount)));
+        }
+        return ResponseEntity.ok(AppResponse.of(response));
     }
 }

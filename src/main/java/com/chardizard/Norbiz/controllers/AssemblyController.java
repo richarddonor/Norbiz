@@ -3,6 +3,7 @@ package com.chardizard.Norbiz.controllers;
 import com.chardizard.Norbiz.dto.*;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.services.AssemblyService;
+import com.chardizard.Norbiz.util.ListSort;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -33,6 +34,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AssemblyController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "referenceNumber", "referenceNumber",
+            "sheetNumber", "sheetNumber",
+            "voided", "voided",
+            "warehouse", "warehouse.name",
+            "date", "assemblyDate");
+
     private final AssemblyService assemblyService;
 
     @Operation(summary = "List assemblies", description = "Returns assemblies belonging to the caller's accessible companies. SUPER_ADMIN sees all.")
@@ -48,6 +58,7 @@ public class AssemblyController {
             @Parameter(description = "Filter by assembly date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
             @Parameter(description = "Filter by origin: NATIVE, MIGRATED (copied from legacy) or RECONSTRUCTED (created by the migration)") @RequestParam(required = false) TransactionOrigin origin,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.CREATED_FIRST);
         Map<String, String> filters = new LinkedHashMap<>();
         if (StringUtils.hasText(referenceNumber)) filters.put("referenceNumber", referenceNumber);
         if (StringUtils.hasText(sheetNumber)) filters.put("sheetNumber", sheetNumber);
@@ -56,7 +67,7 @@ public class AssemblyController {
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
 
-        var page = assemblyService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, pageable)
+        var page = assemblyService.findAllForUser(userDetails.getUsername(), filters, fromInstant, toInstant, sorted)
                 .map(this::toResponse);
         return ResponseEntity.ok(AppResponse.of(PageResponse.of(page)));
     }

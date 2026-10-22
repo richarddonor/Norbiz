@@ -12,8 +12,8 @@ import com.chardizard.Norbiz.repositories.UserRepository;
 import com.chardizard.Norbiz.util.SpecificationUtils;
 import com.chardizard.Norbiz.util.ForeignKeyViolations;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +71,7 @@ public class ItemService {
                 idScope,
                 SpecificationUtils.containsIgnoreCase("itemCode", filters.get("itemCode")),
                 SpecificationUtils.containsIgnoreCase("name", filters.get("name")),
+                SpecificationUtils.booleanEquals("active", filters.get("active")),
                 SpecificationUtils.containsIgnoreCase("itemCategory.name", filters.get("category")),
                 SpecificationUtils.containsIgnoreCase("itemGroup.name", filters.get("group")),
                 SpecificationUtils.containsIgnoreCase("company.name", filters.get("company")),
@@ -82,17 +83,20 @@ public class ItemService {
     }
 
     /** Item.unitPrice isn't a direct column — it's the amount of whichever
-     * child ItemPrice row has priceType == UNIT_PRICE. */
+     * child ItemPrice row has priceType == UNIT_PRICE. Matched in an EXISTS subquery so the
+     * list query needs no DISTINCT (which would break sorting by a joined column). */
     private Specification<Item> unitPriceContains(String value) {
         if (!StringUtils.hasText(value)) return null;
         String pattern = "%" + value.trim().toLowerCase() + "%";
         return (root, query, cb) -> {
-            query.distinct(true);
-            Join<Item, ItemPrice> prices = root.join("prices", JoinType.LEFT);
-            return cb.and(
-                    cb.equal(prices.get("priceType"), PriceType.UNIT_PRICE),
-                    cb.like(cb.lower(prices.get("amount").as(String.class)), pattern)
+            Subquery<Integer> sub = query.subquery(Integer.class);
+            Root<ItemPrice> price = sub.from(ItemPrice.class);
+            sub.select(cb.literal(1)).where(
+                    cb.equal(price.get("item"), root),
+                    cb.equal(price.get("priceType"), PriceType.UNIT_PRICE),
+                    cb.like(cb.lower(price.get("amount").as(String.class)), pattern)
             );
+            return cb.exists(sub);
         };
     }
 
@@ -118,6 +122,7 @@ public class ItemService {
         item.setName(request.getName());
         item.setImagePath(request.getImagePath());
         item.setTags(request.getTags() != null ? request.getTags() : new HashSet<>());
+        if (request.getActive() != null) item.setActive(request.getActive());
         applySkus(item, request);
         applyPrices(item, request, canViewCostPrice, null);
 
@@ -150,6 +155,7 @@ public class ItemService {
         item.setItemGroup(group);
         item.setName(request.getName());
         item.setTags(request.getTags() != null ? request.getTags() : new HashSet<>());
+        if (request.getActive() != null) item.setActive(request.getActive());
         // imagePath is managed exclusively by ItemImageController — do not overwrite here
 
         item.getPrices().clear();

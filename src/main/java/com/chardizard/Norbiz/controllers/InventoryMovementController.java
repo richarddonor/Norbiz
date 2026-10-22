@@ -1,10 +1,13 @@
 package com.chardizard.Norbiz.controllers;
 
+import java.util.Map;
 import com.chardizard.Norbiz.dto.AppResponse;
 import com.chardizard.Norbiz.dto.InventoryMovementResponse;
 import com.chardizard.Norbiz.dto.PageResponse;
 import com.chardizard.Norbiz.models.InventoryMovement;
 import com.chardizard.Norbiz.services.InventoryMovementService;
+import com.chardizard.Norbiz.util.ListSort;
+import com.chardizard.Norbiz.util.ListTotals;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,6 +29,21 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class InventoryMovementController {
 
+    // Column key → entity path for ?sort= (ListSort); anything else is a 400.
+    private static final Map<String, String> SORTABLE = ListSort.fields(
+            "company", "company.name",
+            "warehouse", "warehouse.name",
+            "itemCode", "item.itemCode",
+            "itemName", "item.name",
+            "sourceType", "sourceType",
+            "referenceNumber", "referenceNumber",
+            "sheetNumber", "sheetNumber",
+            "quantityDelta", "quantityDelta",
+            "transitQuantityDelta", "transitQuantityDelta",
+            "date", "movementDate",
+            "createdBy", "createdBy",
+            "notes", "notes");
+
     private final InventoryMovementService inventoryMovementService;
 
     @Operation(summary = "Inventory Ledger report", description = "Returns the raw ledger entries (quantity/transit quantity deltas) that contributed to the Inventory Balance report.")
@@ -39,13 +57,20 @@ public class InventoryMovementController {
             @Parameter(description = "Filter by item ID") @RequestParam(required = false) Long itemId,
             @Parameter(description = "Filter by movement date, range start (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateFrom,
             @Parameter(description = "Filter by movement date, range end (yyyy-MM-dd, inclusive)") @RequestParam(required = false) String dateTo,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals,
             Pageable pageable) {
+        Pageable sorted = ListSort.apply(pageable, SORTABLE, ListSort.CREATED_FIRST);
         Instant fromInstant = DateRangeUtils.startOfDayUtc(dateFrom);
         Instant toInstant = DateRangeUtils.endOfDayUtc(dateTo);
 
-        var movements = inventoryMovementService.findAllForUser(userDetails.getUsername(), warehouseId, itemId, fromInstant, toInstant, pageable)
+        var movements = inventoryMovementService.findAllForUser(userDetails.getUsername(), warehouseId, itemId, fromInstant, toInstant, sorted)
                 .map(this::toResponse);
-        return ResponseEntity.ok(AppResponse.of(PageResponse.of(movements)));
+        var response = PageResponse.of(movements);
+        if (totals) {
+            // Stored columns: one SQL SUM over the same filter, however many movements match.
+            response.withTotals(inventoryMovementService.totals(userDetails.getUsername(), warehouseId, itemId, fromInstant, toInstant));
+        }
+        return ResponseEntity.ok(AppResponse.of(response));
     }
 
     private InventoryMovementResponse toResponse(InventoryMovement movement) {
