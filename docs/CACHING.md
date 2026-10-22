@@ -8,6 +8,7 @@ Lookup (`/lookups/*`) and master-data list endpoints are served through a read-t
 |---|---|
 | Every company-scoped `/lookups/*` list, plus users and roles lookups (`LookupService.search` and friends) | `/lookups/*/{id}` (primary-key reads) |
 | Master-data lists: brands, item categories, items, item SKUs, warehouses, suppliers, customers, banks, bank accounts, employees, document templates, transaction action definitions, roles, permissions, users | Single-record `GET /{id}` detail endpoints; `/lookups/open-items` (balances change with every posting) |
+| Dashboard widgets (`/dashboard/widgets/*`), as TTL-only snapshots (see below) | |
 | | Transaction lists (PO/PI/PR/adjustments/events), inventory balances, audit logs, anything under `/auth/**` (phase 2 candidates, except audit/auth) |
 
 Only response DTOs are cached, never entities.
@@ -34,6 +35,10 @@ Hibernate write ─▶ CacheInvalidationListener ─▶ (entity, companyId) coll
   - Bumps happen only after commit, so a rollback invalidates nothing.
   - A reader that loaded pre-commit data stores it under the old generation, which nobody reads once the bump lands.
 
+## Snapshots (dashboard widgets)
+
+`QueryCache.snapshot(name, companyId, params, ttl, type, loader)` caches one computed value with **no generation counters**: it is never invalidated by writes and simply expires after `ttl` (`app.cache.ttl.dashboard`, default 2 min). Use it only for aggregates over high-churn data where a slightly old answer is fine. Dashboard widgets depend on `InventoryBalance`, `OpenItem` and every transaction table, so counters would invalidate them on almost every posting. Key: `norbiz:c:v2:SNAPSHOT_{name}:sha256(company | params)`. `DashboardService` wraps every widget after `begin()` (the access check) and passes the resolved `asOf`, `days`, `timeZone` and cost-price flag as params. Rules 1 and 2 below apply unchanged.
+
 ## Rules
 
 1. **Check access before calling `QueryCache.page`.** The cache knows nothing about permissions. `LookupService.search` runs `assertCompanyAccess` first, and list endpoints rely on `@PreAuthorize` and a scope built from the caller's own memberships.
@@ -49,7 +54,7 @@ Redis is optional at runtime:
 - Read or write errors log a WARN and fall back to Postgres.
 - Command timeout is 200 ms and connect timeout is 500 ms.
 - `management.health.redis.enabled=false` keeps Redis out of the overall health status.
-- A failed bump after commit logs a WARN. The affected entries may be stale until their TTL (10 min lookups, 2 min lists).
+- A failed bump after commit logs a WARN. The affected entries may be stale until their TTL (10 min lookups, 2 min lists). Dashboard snapshots are always up to their TTL (2 min) old.
 
 **Redis must use a `volatile-*` eviction policy** (docker-compose: `volatile-lru`). Generation counters have no TTL, and an evicted counter would restart at 0, which could resurrect an old entry. Persistence is off (`--save ""`), so a restart drops counters and entries together, which is safe.
 

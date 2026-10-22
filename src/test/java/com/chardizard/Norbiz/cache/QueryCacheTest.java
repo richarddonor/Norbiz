@@ -202,6 +202,94 @@ class QueryCacheTest {
         }
     }
 
+    @Test
+    void snapshotIsServedFromCacheUntilItExpires() {
+        AtomicInteger loads = new AtomicInteger();
+        for (int i = 0; i < 2; i++) {
+            LookupResponse r = cache.snapshot("DASHBOARD_X", 7L, Map.of("days", 30), Duration.ofMinutes(2), LookupResponse.class, () -> {
+                loads.incrementAndGet();
+                return new LookupResponse(1L, 7L, "A", "Acme", true);
+            });
+            assertThat(r.getName()).isEqualTo("Acme");
+        }
+        assertThat(loads).hasValue(1);
+        // No generation counters: writes never invalidate a snapshot, only its TTL does.
+        verifyNoInteractions(generations);
+    }
+
+    @Test
+    void snapshotKeyDependsOnNameCompanyAndParams() {
+        String base = QueryCache.snapshotKey("DASHBOARD_X", 1L, Map.of("days", 30, "canViewCostPrice", true));
+
+        assertThat(QueryCache.snapshotKey("DASHBOARD_Y", 1L, Map.of("days", 30, "canViewCostPrice", true))).isNotEqualTo(base);
+        assertThat(QueryCache.snapshotKey("DASHBOARD_X", 2L, Map.of("days", 30, "canViewCostPrice", true))).isNotEqualTo(base);
+        assertThat(QueryCache.snapshotKey("DASHBOARD_X", 1L, Map.of("days", 7, "canViewCostPrice", true))).isNotEqualTo(base);
+        assertThat(QueryCache.snapshotKey("DASHBOARD_X", 1L, Map.of("days", 30, "canViewCostPrice", false))).isNotEqualTo(base);
+        assertThat(QueryCache.snapshotKey("DASHBOARD_X", 1L, Map.of("canViewCostPrice", true, "days", 30))).isEqualTo(base);
+    }
+
+    @Test
+    void snapshotRedisFailureFallsBackToTheLoader() {
+        when(redis.opsForValue()).thenThrow(new RedisConnectionFailureException("down"));
+        assertThat(cache.snapshot("DASHBOARD_X", 7L, Map.of(), Duration.ofMinutes(2), String.class, () -> "live")).isEqualTo("live");
+    }
+
+    // Every dashboard widget response is cached as a snapshot, so each must survive a Redis round trip.
+    @Test
+    void dashboardDtosRoundTrip() {
+        for (Class<?> type : List.of(BacklogResponse.class, StockInTransitResponse.class, OutletStockHealthResponse.class,
+                InventoryAdjustmentTrendResponse.class, OutletSalesResponse.class, AgentLeaderboardResponse.class,
+                TransactionActivityResponse.class, SubledgerSummaryResponse.class, CashAndChecksResponse.class)) {
+            assertSnapshotRoundTrip(type);
+        }
+    }
+
+    private <T> void assertSnapshotRoundTrip(Class<T> type) {
+        T dto = type.cast(sample(type, type));
+        store.clear();
+        cache.snapshot("T", 7L, Map.of(), Duration.ofMinutes(2), type, () -> dto);
+        T hit = cache.snapshot("T", 7L, Map.of(), Duration.ofMinutes(2), type,
+                () -> { throw new AssertionError("expected a cache hit for " + type.getSimpleName()); });
+        assertThat(hit).as(type.getSimpleName()).isEqualTo(dto);
+    }
+
+    /** A record with every component filled in (one element per list), so nested records and value types are exercised. */
+    private static Object sample(java.lang.reflect.Type type, Class<?> owner) {
+        if (type instanceof java.lang.reflect.ParameterizedType pt) {
+            Class<?> raw = (Class<?>) pt.getRawType();
+            java.lang.reflect.Type[] args = pt.getActualTypeArguments();
+            if (List.class.isAssignableFrom(raw)) return List.of(sample(args[0], owner));
+            if (Set.class.isAssignableFrom(raw)) return Set.of(sample(args[0], owner));
+            if (Map.class.isAssignableFrom(raw)) return Map.of(sample(args[0], owner), sample(args[1], owner));
+            throw new IllegalArgumentException("Unsupported generic type " + type + " in " + owner.getSimpleName());
+        }
+        Class<?> c = (Class<?>) type;
+        if (c == long.class || c == Long.class) return 3L;
+        if (c == int.class || c == Integer.class) return 4;
+        if (c == double.class || c == Double.class) return 1.5d;
+        if (c == boolean.class || c == Boolean.class) return true;
+        if (c == String.class) return "x";
+        if (c == BigDecimal.class) return new BigDecimal("12.50");
+        if (c == Instant.class) return Instant.parse("2026-01-02T00:00:00Z");
+        if (c == java.time.LocalDate.class) return java.time.LocalDate.parse("2026-01-02");
+        if (c.isEnum()) return c.getEnumConstants()[0];
+        if (c.isRecord()) {
+            var components = c.getRecordComponents();
+            Object[] values = new Object[components.length];
+            Class<?>[] types = new Class<?>[components.length];
+            for (int i = 0; i < components.length; i++) {
+                values[i] = sample(components[i].getGenericType(), c);
+                types[i] = components[i].getType();
+            }
+            try {
+                return c.getDeclaredConstructor(types).newInstance(values);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+        throw new IllegalArgumentException("Unsupported type " + c.getName() + " in " + owner.getSimpleName());
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private <T> T roundTrip(CacheRegion region, Class<T> type, Object dto) {
         store.clear();

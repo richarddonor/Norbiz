@@ -35,7 +35,7 @@ The dashboard is a per-user board of **widgets**: small live reports (KPI tiles,
 Every widget endpoint:
 - is scoped to **one** company: the `companyId` param, else the `X-Company-Id` header (required). `assertCompanyAccess` runs first.
 - takes `asOf` (`yyyy-MM-dd`), the caller's local date. Aging and periods are measured against it, since business dates are UTC-midnight instants and the server's UTC "today" lags the Philippines by 8 hours. It defaults to today in UTC.
-- is computed live and is **not cached**, like the inventory and detailed reports. All SQL lives in `repositories/DashboardQueries` (JPQL tuple queries, one native query for the time-zone bucketing).
+- is served from a short-lived Redis **snapshot** (`app.cache.ttl.dashboard`, default 2 min) taken after the company-access check. Snapshots are not invalidated by writes, so a widget can lag a posting by up to the TTL. Everything that shapes the response (`asOf`, `days`, `timeZone`, cost-price visibility) is in the cache key, see `docs/CACHING.md`. All SQL lives in `repositories/DashboardQueries` (JPQL tuple queries, one native query for the time-zone bucketing).
 
 ## Adding a widget
 

@@ -23,7 +23,7 @@ import java.util.TreeMap;
 import java.util.function.Supplier;
 
 /**
- * Read-through Redis cache for paginated list/lookup results (see docs/CACHING.md).
+ * Read-through Redis cache for paginated list/lookup results and TTL-only snapshots (see docs/CACHING.md).
  *
  * Callers must do their authorization and company-access checks <b>before</b> calling {@link #page},
  * and must put everything that changes the response shape into {@code scope}/{@code params}
@@ -57,19 +57,37 @@ public class QueryCache {
     public <T> Page<T> page(CacheRegion region, CacheScope scope, Map<String, ?> params, Pageable pageable,
                             Class<T> elementType, Supplier<Page<T>> loader) {
         if (!properties.isEnabled()) return loader.get();
+        JavaType type = mapper.getTypeFactory().constructParametricType(CachedPage.class, elementType);
+        CachedPage<T> page = readThrough(region.name(),
+                () -> key(region, scope, generations.current(region, scope), params, pageable),
+                type, ttl(region), () -> CachedPage.of(loader.get()));
+        return page.toPage(pageable);
+    }
 
+    /**
+     * Read-through cache for one computed value that is <b>not</b> invalidated by writes — it simply expires
+     * after {@code ttl}. For aggregates over high-churn data (dashboard widgets), where generation counters
+     * would invalidate on nearly every posting and callers accept a result up to {@code ttl} old.
+     * {@code name} is a low-cardinality label (it becomes the {@code cache.region} metric tag).
+     */
+    public <T> T snapshot(String name, Long companyId, Map<String, ?> params, Duration ttl,
+                          Class<T> type, Supplier<T> loader) {
+        if (!properties.isEnabled()) return loader.get();
+        return readThrough(name, () -> snapshotKey(name, companyId, params),
+                mapper.getTypeFactory().constructType(type), ttl, loader);
+    }
+
+    private <S> S readThrough(String region, Supplier<String> keyFn, JavaType type, Duration ttl, Supplier<S> loader) {
         Observation observation = Observation.createNotStarted("norbiz.cache", observationRegistry)
-                .contextualName("cache " + region.name().toLowerCase())
-                .lowCardinalityKeyValue("cache.region", region.name());
+                .contextualName("cache " + region.toLowerCase())
+                .lowCardinalityKeyValue("cache.region", region);
         observation.start();
         String result = "error";
         try (Observation.Scope ignored = observation.openScope()) {
-            JavaType type = mapper.getTypeFactory().constructParametricType(CachedPage.class, elementType);
-
             String key;
             String cached;
             try {
-                key = key(region, scope, generations.current(region, scope), params, pageable);
+                key = keyFn.get();
                 observation.highCardinalityKeyValue("cache.key", key);
                 cached = redis.opsForValue().get(key);
             } catch (RuntimeException ex) {
@@ -79,25 +97,25 @@ public class QueryCache {
 
             if (cached != null) {
                 try {
-                    CachedPage<T> hit = mapper.readValue(cached, type);
+                    S hit = mapper.readValue(cached, type);
                     result = "hit";
                     log.debug("Cache hit {} {}", region, key);
-                    return hit.toPage(pageable);
+                    return hit;
                 } catch (RuntimeException ex) {
                     // Unreadable entry (e.g. a DTO changed shape): treat as a miss and overwrite it.
                     log.warn("Discarding unreadable cache entry {}: {}", key, ex.getMessage());
                 }
             }
 
-            Page<T> page = loader.get();
+            S value = loader.get();
             result = "miss";
             log.debug("Cache miss {} {}", region, key);
             try {
-                redis.opsForValue().set(key, mapper.writeValueAsString(CachedPage.of(page)), ttl(region));
+                redis.opsForValue().set(key, mapper.writeValueAsString(value), ttl);
             } catch (RuntimeException ex) {
                 log.warn("Cache write failed for {}: {}", key, ex.getMessage());
             }
-            return page;
+            return value;
         } catch (RuntimeException ex) {
             observation.error(ex);
             throw ex;
@@ -130,6 +148,10 @@ public class QueryCache {
         canonical.put("~sort", pageable.getSort().toString());
         String material = scope + "|" + generations + "|" + canonical;
         return KEY_PREFIX + region.name() + ":" + sha256(material);
+    }
+
+    static String snapshotKey(String name, Long companyId, Map<String, ?> params) {
+        return KEY_PREFIX + "SNAPSHOT_" + name + ":" + sha256("company:" + companyId + "|" + canonical(params));
     }
 
     // Sorted, null-free and recursively sorted for nested maps (e.g. a controller's filters map),

@@ -1,5 +1,7 @@
 package com.chardizard.Norbiz.services;
 
+import com.chardizard.Norbiz.cache.CacheProperties;
+import com.chardizard.Norbiz.cache.QueryCache;
 import com.chardizard.Norbiz.dto.*;
 import com.chardizard.Norbiz.models.AccountSide;
 import com.chardizard.Norbiz.models.DashboardWidget;
@@ -28,13 +30,15 @@ import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Data behind the dashboard widgets (see {@link DashboardWidget}). Every widget is scoped to one company and
- * computed live — not cached, like the inventory and detailed reports. Business dates are UTC-midnight instants,
- * and "today" is the caller's {@code asOf} date so aging/periods follow the user's calendar day, not the server's.
+ * served from a short-lived Redis snapshot (app.cache.ttl.dashboard, not invalidated by writes; see docs/CACHING.md).
+ * Business dates are UTC-midnight instants, and "today" is the caller's {@code asOf} date so aging/periods follow
+ * the user's calendar day, not the server's.
  */
 @Service
 @RequiredArgsConstructor
@@ -73,6 +77,8 @@ public class DashboardService {
 
     private final DashboardQueries queries;
     private final UserRepository userRepository;
+    private final QueryCache queryCache;
+    private final CacheProperties cacheProperties;
 
     /** The widgets the caller may pin: those whose VIEW_DASHBOARD_ permission they hold. */
     public List<DashboardWidgetResponse> catalog(Authentication authentication) {
@@ -90,21 +96,27 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public BacklogResponse pendingOutletReceipts(String username, Long companyId, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.PENDING_OUTLET_RECEIPTS);
-        return backlog(queries.pendingOutletReceipts(companyId), today, SHORT_AGING, Rank.QUANTITY, true, true, true);
+        return cached(DashboardWidget.PENDING_OUTLET_RECEIPTS, companyId, BacklogResponse.class, () ->
+                backlog(queries.pendingOutletReceipts(companyId), today, SHORT_AGING, Rank.QUANTITY, true, true, true),
+                "asOf", today);
     }
 
     /** Amounts are cost-based, so null without VIEW_COST_PRICE. Breakdown = destination warehouse. */
     @Transactional(readOnly = true)
     public BacklogResponse pendingPurchaseOrders(String username, Long companyId, LocalDate asOf, boolean canViewCostPrice) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.PENDING_PURCHASE_ORDERS);
-        return backlog(queries.pendingPurchaseOrders(companyId), today, LONG_AGING, Rank.QUANTITY, true, canViewCostPrice, true);
+        return cached(DashboardWidget.PENDING_PURCHASE_ORDERS, companyId, BacklogResponse.class, () ->
+                backlog(queries.pendingPurchaseOrders(companyId), today, LONG_AGING, Rank.QUANTITY, true, canViewCostPrice, true),
+                "asOf", today, "canViewCostPrice", canViewCostPrice);
     }
 
     /** Breakdown = pull-out reason. Amounts use the pull-out line's selling price (not gated). */
     @Transactional(readOnly = true)
     public BacklogResponse pullOutsAwaitingReceipt(String username, Long companyId, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.PULL_OUTS_AWAITING_RECEIPT);
-        return backlog(queries.pullOutsAwaitingReceipt(companyId), today, SHORT_AGING, Rank.QUANTITY, true, true, true);
+        return cached(DashboardWidget.PULL_OUTS_AWAITING_RECEIPT, companyId, BacklogResponse.class, () ->
+                backlog(queries.pullOutsAwaitingReceipt(companyId), today, SHORT_AGING, Rank.QUANTITY, true, true, true),
+                "asOf", today);
     }
 
     /**
@@ -115,11 +127,13 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public BacklogResponse unpaidPurchaseInvoices(String username, Long companyId, LocalDate asOf, boolean canViewCostPrice) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.UNPAID_PURCHASE_INVOICES);
-        List<BacklogRow> rows = queries.unpaidPurchaseInvoices(companyId).stream()
-                .map(i -> new BacklogRow(i.id(), i.referenceNumber(), i.date(), i.supplierId(), i.supplierName(),
-                        statusLabel(i.paymentStatus()), null, null, nz(i.outstanding()).setScale(2, RoundingMode.HALF_UP)))
-                .toList();
-        return backlog(rows, today, LONG_AGING, canViewCostPrice ? Rank.AMOUNT : Rank.COUNT, false, canViewCostPrice, true);
+        return cached(DashboardWidget.UNPAID_PURCHASE_INVOICES, companyId, BacklogResponse.class, () -> {
+            List<BacklogRow> rows = queries.unpaidPurchaseInvoices(companyId).stream()
+                    .map(i -> new BacklogRow(i.id(), i.referenceNumber(), i.date(), i.supplierId(), i.supplierName(),
+                            statusLabel(i.paymentStatus()), null, null, nz(i.outstanding()).setScale(2, RoundingMode.HALF_UP)))
+                    .toList();
+            return backlog(rows, today, LONG_AGING, canViewCostPrice ? Rank.AMOUNT : Rank.COUNT, false, canViewCostPrice, true);
+        }, "asOf", today, "canViewCostPrice", canViewCostPrice);
     }
 
     private BacklogResponse backlog(List<BacklogRow> rows, LocalDate today, List<Bucket> buckets, Rank rank,
@@ -199,91 +213,95 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public StockInTransitResponse stockInTransit(String username, Long companyId) {
         begin(username, companyId, null, DashboardWidget.STOCK_IN_TRANSIT);
-        List<DashboardQueries.WarehouseStockRow> rows = queries.stockByWarehouse(companyId);
+        return cached(DashboardWidget.STOCK_IN_TRANSIT, companyId, StockInTransitResponse.class, () -> {
+            List<DashboardQueries.WarehouseStockRow> rows = queries.stockByWarehouse(companyId);
 
-        Function<DashboardQueries.WarehouseStockRow, String> kind = w -> w.main() ? "MAIN" : w.outlet() ? "OUTLET" : "OTHER";
-        List<StockInTransitResponse.KindTotal> byKind = List.of("MAIN", "OUTLET", "OTHER").stream()
-                .map(k -> {
-                    List<DashboardQueries.WarehouseStockRow> in = rows.stream().filter(w -> kind.apply(w).equals(k)).toList();
-                    return new StockInTransitResponse.KindTotal(k, in.size(),
-                            sum(in, DashboardQueries.WarehouseStockRow::transit), sum(in, DashboardQueries.WarehouseStockRow::onHand));
-                })
-                .filter(k -> k.warehouseCount() > 0)
-                .toList();
+            Function<DashboardQueries.WarehouseStockRow, String> kind = w -> w.main() ? "MAIN" : w.outlet() ? "OUTLET" : "OTHER";
+            List<StockInTransitResponse.KindTotal> byKind = List.of("MAIN", "OUTLET", "OTHER").stream()
+                    .map(k -> {
+                        List<DashboardQueries.WarehouseStockRow> in = rows.stream().filter(w -> kind.apply(w).equals(k)).toList();
+                        return new StockInTransitResponse.KindTotal(k, in.size(),
+                                sum(in, DashboardQueries.WarehouseStockRow::transit), sum(in, DashboardQueries.WarehouseStockRow::onHand));
+                    })
+                    .filter(k -> k.warehouseCount() > 0)
+                    .toList();
 
-        List<DashboardQueries.WarehouseStockRow> withTransit = rows.stream()
-                .filter(w -> nz(w.transit()).signum() != 0)
-                .sorted(Comparator.comparing((DashboardQueries.WarehouseStockRow w) -> nz(w.transit()).abs()).reversed())
-                .toList();
-        List<StockInTransitResponse.WarehouseTotal> warehouses = new ArrayList<>(withTransit.stream().limit(TOP_SLICES)
-                .map(w -> new StockInTransitResponse.WarehouseTotal(w.id(), w.name(), kind.apply(w), w.itemsInTransit(), nz(w.transit()), nz(w.onHand())))
-                .toList());
-        if (withTransit.size() > TOP_SLICES) {
-            List<DashboardQueries.WarehouseStockRow> rest = withTransit.subList(TOP_SLICES, withTransit.size());
-            warehouses.add(new StockInTransitResponse.WarehouseTotal(null, OTHERS + " (" + rest.size() + ")", null,
-                    rest.stream().mapToLong(DashboardQueries.WarehouseStockRow::itemsInTransit).sum(),
-                    sum(rest, DashboardQueries.WarehouseStockRow::transit), sum(rest, DashboardQueries.WarehouseStockRow::onHand)));
-        }
+            List<DashboardQueries.WarehouseStockRow> withTransit = rows.stream()
+                    .filter(w -> nz(w.transit()).signum() != 0)
+                    .sorted(Comparator.comparing((DashboardQueries.WarehouseStockRow w) -> nz(w.transit()).abs()).reversed())
+                    .toList();
+            List<StockInTransitResponse.WarehouseTotal> warehouses = new ArrayList<>(withTransit.stream().limit(TOP_SLICES)
+                    .map(w -> new StockInTransitResponse.WarehouseTotal(w.id(), w.name(), kind.apply(w), w.itemsInTransit(), nz(w.transit()), nz(w.onHand())))
+                    .toList());
+            if (withTransit.size() > TOP_SLICES) {
+                List<DashboardQueries.WarehouseStockRow> rest = withTransit.subList(TOP_SLICES, withTransit.size());
+                warehouses.add(new StockInTransitResponse.WarehouseTotal(null, OTHERS + " (" + rest.size() + ")", null,
+                        rest.stream().mapToLong(DashboardQueries.WarehouseStockRow::itemsInTransit).sum(),
+                        sum(rest, DashboardQueries.WarehouseStockRow::transit), sum(rest, DashboardQueries.WarehouseStockRow::onHand)));
+            }
 
-        return new StockInTransitResponse(sum(rows, DashboardQueries.WarehouseStockRow::transit),
-                sum(rows, DashboardQueries.WarehouseStockRow::onHand), withTransit.size(),
-                queries.distinctItemsInTransit(companyId), byKind, warehouses);
+            return new StockInTransitResponse(sum(rows, DashboardQueries.WarehouseStockRow::transit),
+                    sum(rows, DashboardQueries.WarehouseStockRow::onHand), withTransit.size(),
+                    queries.distinctItemsInTransit(companyId), byKind, warehouses);
+        });
     }
 
     @Transactional(readOnly = true)
     public OutletStockHealthResponse outletStockHealth(String username, Long companyId, int days, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.OUTLET_STOCK_HEALTH);
-        Period period = period(today, days);
-        List<OutletItemSalesRow> sales = queries.outletItemSales(companyId, period.from(), period.to());
+        return cached(DashboardWidget.OUTLET_STOCK_HEALTH, companyId, OutletStockHealthResponse.class, () -> {
+            Period period = period(today, days);
+            List<OutletItemSalesRow> sales = queries.outletItemSales(companyId, period.from(), period.to());
 
-        Set<Long> warehouseIds = sales.stream().map(OutletItemSalesRow::warehouseId).collect(Collectors.toSet());
-        Map<String, BigDecimal> onHand = new HashMap<>();
-        for (Object[] b : queries.onHand(warehouseIds)) {
-            onHand.put(b[0] + ":" + b[1], nz((BigDecimal) b[2]));
-        }
-        BigDecimal dayCount = BigDecimal.valueOf(days);
-
-        // Every outlet × item pair the outlet actually sold in the period.
-        record Pair(OutletItemSalesRow sale, BigDecimal onHand, BigDecimal cover) {
-        }
-        List<Pair> pairs = sales.stream().map(s -> {
-            BigDecimal qty = onHand.getOrDefault(s.warehouseId() + ":" + s.itemId(), BigDecimal.ZERO);
-            return new Pair(s, qty, cover(qty, s.sold(), dayCount));
-        }).toList();
-        long stockOuts = pairs.stream().filter(p -> p.onHand().signum() <= 0).count();
-        long lowCover = pairs.stream().filter(p -> p.onHand().signum() > 0 && p.cover() != null
-                && p.cover().compareTo(BigDecimal.valueOf(LOW_COVER_DAYS)) < 0).count();
-
-        List<OutletStockHealthResponse.Ref> outlets = topBySold(sales, OutletItemSalesRow::outletId, GRID_OUTLETS).stream()
-                .map(s -> new OutletStockHealthResponse.Ref(s.outletId(), s.outletCode(), s.outletName())).toList();
-        List<OutletStockHealthResponse.Ref> items = topBySold(sales, OutletItemSalesRow::itemId, GRID_ITEMS).stream()
-                .map(s -> new OutletStockHealthResponse.Ref(s.itemId(), s.itemCode(), s.itemName())).toList();
-
-        Map<Long, Long> warehouseOf = sales.stream()
-                .collect(Collectors.toMap(OutletItemSalesRow::outletId, OutletItemSalesRow::warehouseId, (a, b) -> a));
-        Map<String, BigDecimal> soldByPair = sales.stream()
-                .collect(Collectors.toMap(s -> s.outletId() + ":" + s.itemId(), OutletItemSalesRow::sold, BigDecimal::add));
-        List<OutletStockHealthResponse.Cell> cells = new ArrayList<>();
-        for (OutletStockHealthResponse.Ref outlet : outlets) {
-            for (OutletStockHealthResponse.Ref item : items) {
-                BigDecimal qty = onHand.getOrDefault(warehouseOf.get(outlet.id()) + ":" + item.id(), BigDecimal.ZERO);
-                BigDecimal sold = soldByPair.getOrDefault(outlet.id() + ":" + item.id(), BigDecimal.ZERO);
-                cells.add(new OutletStockHealthResponse.Cell(outlet.id(), item.id(), qty, sold, cover(qty, sold, dayCount)));
+            Set<Long> warehouseIds = sales.stream().map(OutletItemSalesRow::warehouseId).collect(Collectors.toSet());
+            Map<String, BigDecimal> onHand = new HashMap<>();
+            for (Object[] b : queries.onHand(warehouseIds)) {
+                onHand.put(b[0] + ":" + b[1], nz((BigDecimal) b[2]));
             }
-        }
+            BigDecimal dayCount = BigDecimal.valueOf(days);
 
-        // Stock-outs of the fastest sellers first, then the thinnest cover.
-        List<OutletStockHealthResponse.Alert> alerts = pairs.stream()
-                .filter(p -> p.onHand().signum() <= 0 || (p.cover() != null && p.cover().compareTo(BigDecimal.valueOf(LOW_COVER_DAYS)) < 0))
-                .sorted(Comparator.comparing((Pair p) -> p.onHand().signum() > 0)
-                        .thenComparing(p -> p.onHand().signum() > 0 ? p.cover() : p.sale().sold().negate()))
-                .limit(STOCK_ALERTS)
-                .map(p -> new OutletStockHealthResponse.Alert(p.sale().outletId(), p.sale().outletName(), p.sale().itemId(),
-                        p.sale().itemCode(), p.sale().itemName(), p.onHand(), p.sale().sold(), p.cover()))
-                .toList();
+            // Every outlet × item pair the outlet actually sold in the period.
+            record Pair(OutletItemSalesRow sale, BigDecimal onHand, BigDecimal cover) {
+            }
+            List<Pair> pairs = sales.stream().map(s -> {
+                BigDecimal qty = onHand.getOrDefault(s.warehouseId() + ":" + s.itemId(), BigDecimal.ZERO);
+                return new Pair(s, qty, cover(qty, s.sold(), dayCount));
+            }).toList();
+            long stockOuts = pairs.stream().filter(p -> p.onHand().signum() <= 0).count();
+            long lowCover = pairs.stream().filter(p -> p.onHand().signum() > 0 && p.cover() != null
+                    && p.cover().compareTo(BigDecimal.valueOf(LOW_COVER_DAYS)) < 0).count();
 
-        return new OutletStockHealthResponse(days, period.from(), startOfDay(today), pairs.size(), stockOuts, lowCover,
-                LOW_COVER_DAYS, outlets, items, cells, alerts);
+            List<OutletStockHealthResponse.Ref> outlets = topBySold(sales, OutletItemSalesRow::outletId, GRID_OUTLETS).stream()
+                    .map(s -> new OutletStockHealthResponse.Ref(s.outletId(), s.outletCode(), s.outletName())).toList();
+            List<OutletStockHealthResponse.Ref> items = topBySold(sales, OutletItemSalesRow::itemId, GRID_ITEMS).stream()
+                    .map(s -> new OutletStockHealthResponse.Ref(s.itemId(), s.itemCode(), s.itemName())).toList();
+
+            Map<Long, Long> warehouseOf = sales.stream()
+                    .collect(Collectors.toMap(OutletItemSalesRow::outletId, OutletItemSalesRow::warehouseId, (a, b) -> a));
+            Map<String, BigDecimal> soldByPair = sales.stream()
+                    .collect(Collectors.toMap(s -> s.outletId() + ":" + s.itemId(), OutletItemSalesRow::sold, BigDecimal::add));
+            List<OutletStockHealthResponse.Cell> cells = new ArrayList<>();
+            for (OutletStockHealthResponse.Ref outlet : outlets) {
+                for (OutletStockHealthResponse.Ref item : items) {
+                    BigDecimal qty = onHand.getOrDefault(warehouseOf.get(outlet.id()) + ":" + item.id(), BigDecimal.ZERO);
+                    BigDecimal sold = soldByPair.getOrDefault(outlet.id() + ":" + item.id(), BigDecimal.ZERO);
+                    cells.add(new OutletStockHealthResponse.Cell(outlet.id(), item.id(), qty, sold, cover(qty, sold, dayCount)));
+                }
+            }
+
+            // Stock-outs of the fastest sellers first, then the thinnest cover.
+            List<OutletStockHealthResponse.Alert> alerts = pairs.stream()
+                    .filter(p -> p.onHand().signum() <= 0 || (p.cover() != null && p.cover().compareTo(BigDecimal.valueOf(LOW_COVER_DAYS)) < 0))
+                    .sorted(Comparator.comparing((Pair p) -> p.onHand().signum() > 0)
+                            .thenComparing(p -> p.onHand().signum() > 0 ? p.cover() : p.sale().sold().negate()))
+                    .limit(STOCK_ALERTS)
+                    .map(p -> new OutletStockHealthResponse.Alert(p.sale().outletId(), p.sale().outletName(), p.sale().itemId(),
+                            p.sale().itemCode(), p.sale().itemName(), p.onHand(), p.sale().sold(), p.cover()))
+                    .toList();
+
+            return new OutletStockHealthResponse(days, period.from(), startOfDay(today), pairs.size(), stockOuts, lowCover,
+                    LOW_COVER_DAYS, outlets, items, cells, alerts);
+        }, "asOf", today, "days", days);
     }
 
     /** One representative row per key (outlet or item), highest total units sold first. */
@@ -308,31 +326,33 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public InventoryAdjustmentTrendResponse inventoryAdjustmentTrend(String username, Long companyId, int days, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.INVENTORY_ADJUSTMENT_TREND);
-        Period period = period(today, days);
-        Map<Instant, AdjustmentTotal> byDay = queries.adjustmentsByDay(companyId, period.from(), period.to()).stream()
-                .collect(Collectors.toMap(AdjustmentTotal::date, Function.identity()));
+        return cached(DashboardWidget.INVENTORY_ADJUSTMENT_TREND, companyId, InventoryAdjustmentTrendResponse.class, () -> {
+            Period period = period(today, days);
+            Map<Instant, AdjustmentTotal> byDay = queries.adjustmentsByDay(companyId, period.from(), period.to()).stream()
+                    .collect(Collectors.toMap(AdjustmentTotal::date, Function.identity()));
 
-        List<InventoryAdjustmentTrendResponse.DailyPoint> daily = period.days().stream().map(d -> {
-            AdjustmentTotal t = byDay.get(d);
-            return t == null ? new InventoryAdjustmentTrendResponse.DailyPoint(d, BigDecimal.ZERO, BigDecimal.ZERO, 0)
-                    : new InventoryAdjustmentTrendResponse.DailyPoint(d, nz(t.added()), nz(t.removed()), t.documents());
-        }).toList();
+            List<InventoryAdjustmentTrendResponse.DailyPoint> daily = period.days().stream().map(d -> {
+                AdjustmentTotal t = byDay.get(d);
+                return t == null ? new InventoryAdjustmentTrendResponse.DailyPoint(d, BigDecimal.ZERO, BigDecimal.ZERO, 0)
+                        : new InventoryAdjustmentTrendResponse.DailyPoint(d, nz(t.added()), nz(t.removed()), t.documents());
+            }).toList();
 
-        List<InventoryAdjustmentTrendResponse.WarehouseTotal> byWarehouse = queries.adjustmentsByWarehouse(companyId, period.from(), period.to()).stream()
-                .sorted(Comparator.comparing((AdjustmentTotal t) -> nz(t.added()).add(nz(t.removed()))).reversed())
-                .limit(TOP_RANKED)
-                .map(t -> new InventoryAdjustmentTrendResponse.WarehouseTotal(t.warehouseId(), t.warehouseName(), nz(t.added()), nz(t.removed())))
-                .toList();
+            List<InventoryAdjustmentTrendResponse.WarehouseTotal> byWarehouse = queries.adjustmentsByWarehouse(companyId, period.from(), period.to()).stream()
+                    .sorted(Comparator.comparing((AdjustmentTotal t) -> nz(t.added()).add(nz(t.removed()))).reversed())
+                    .limit(TOP_RANKED)
+                    .map(t -> new InventoryAdjustmentTrendResponse.WarehouseTotal(t.warehouseId(), t.warehouseName(), nz(t.added()), nz(t.removed())))
+                    .toList();
 
-        List<InventoryAdjustmentTrendResponse.ReasonCount> reasons = queries.topAdjustmentReasons(companyId, period.from(), period.to(), TOP_REASONS).stream()
-                .map(r -> new InventoryAdjustmentTrendResponse.ReasonCount((String) r[0], ((Number) r[1]).longValue()))
-                .toList();
+            List<InventoryAdjustmentTrendResponse.ReasonCount> reasons = queries.topAdjustmentReasons(companyId, period.from(), period.to(), TOP_REASONS).stream()
+                    .map(r -> new InventoryAdjustmentTrendResponse.ReasonCount((String) r[0], ((Number) r[1]).longValue()))
+                    .toList();
 
-        return new InventoryAdjustmentTrendResponse(days, period.from(), startOfDay(today),
-                sum(daily, InventoryAdjustmentTrendResponse.DailyPoint::added),
-                sum(daily, InventoryAdjustmentTrendResponse.DailyPoint::removed),
-                daily.stream().mapToLong(InventoryAdjustmentTrendResponse.DailyPoint::documents).sum(),
-                daily, byWarehouse, reasons);
+            return new InventoryAdjustmentTrendResponse(days, period.from(), startOfDay(today),
+                    sum(daily, InventoryAdjustmentTrendResponse.DailyPoint::added),
+                    sum(daily, InventoryAdjustmentTrendResponse.DailyPoint::removed),
+                    daily.stream().mapToLong(InventoryAdjustmentTrendResponse.DailyPoint::documents).sum(),
+                    daily, byWarehouse, reasons);
+        }, "asOf", today, "days", days);
     }
 
     // ---- outlet sales -----------------------------------------------------------------------------------------
@@ -340,36 +360,38 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public OutletSalesResponse outletSales(String username, Long companyId, int days, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.OUTLET_SALES);
-        Period period = period(today, days);
-        Period previous = period(today.minusDays(days), days);
+        return cached(DashboardWidget.OUTLET_SALES, companyId, OutletSalesResponse.class, () -> {
+            Period period = period(today, days);
+            Period previous = period(today.minusDays(days), days);
 
-        List<DatedAmount> sales = queries.outletSalesByDay(companyId, period.from(), period.to());
-        List<DatedAmount> returns = queries.outletReturnsByDay(companyId, period.from(), period.to());
-        Map<Instant, BigDecimal> salesByDay = byDay(sales);
-        Map<Instant, BigDecimal> returnsByDay = byDay(returns);
+            List<DatedAmount> sales = queries.outletSalesByDay(companyId, period.from(), period.to());
+            List<DatedAmount> returns = queries.outletReturnsByDay(companyId, period.from(), period.to());
+            Map<Instant, BigDecimal> salesByDay = byDay(sales);
+            Map<Instant, BigDecimal> returnsByDay = byDay(returns);
 
-        List<OutletSalesResponse.DailyPoint> daily = period.days().stream().map(day -> {
-            BigDecimal s = salesByDay.getOrDefault(day, BigDecimal.ZERO);
-            BigDecimal r = returnsByDay.getOrDefault(day, BigDecimal.ZERO);
-            return new OutletSalesResponse.DailyPoint(day, s, r, s.subtract(r));
-        }).toList();
+            List<OutletSalesResponse.DailyPoint> daily = period.days().stream().map(day -> {
+                BigDecimal s = salesByDay.getOrDefault(day, BigDecimal.ZERO);
+                BigDecimal r = returnsByDay.getOrDefault(day, BigDecimal.ZERO);
+                return new OutletSalesResponse.DailyPoint(day, s, r, s.subtract(r));
+            }).toList();
 
-        BigDecimal grossSales = sum(sales, DatedAmount::amount);
-        BigDecimal returnTotal = sum(returns, DatedAmount::amount);
-        BigDecimal previousNet = sum(queries.outletSalesByDay(companyId, previous.from(), previous.to()), DatedAmount::amount)
-                .subtract(sum(queries.outletReturnsByDay(companyId, previous.from(), previous.to()), DatedAmount::amount));
+            BigDecimal grossSales = sum(sales, DatedAmount::amount);
+            BigDecimal returnTotal = sum(returns, DatedAmount::amount);
+            BigDecimal previousNet = sum(queries.outletSalesByDay(companyId, previous.from(), previous.to()), DatedAmount::amount)
+                    .subtract(sum(queries.outletReturnsByDay(companyId, previous.from(), previous.to()), DatedAmount::amount));
 
-        List<OutletSalesResponse.Ranked> topOutlets = netById(
-                queries.outletSalesByOutlet(companyId, period.from(), period.to()),
-                queries.outletReturnsByOutlet(companyId, period.from(), period.to())).values().stream()
-                .sorted(Comparator.comparing(OutletSalesResponse.Ranked::netSales).reversed()).limit(TOP_RANKED).toList();
-        List<OutletSalesResponse.Ranked> topAgents = netById(
-                queries.agentSalesByDay(companyId, period.from(), period.to()),
-                queries.agentReturnsByDay(companyId, period.from(), period.to())).values().stream()
-                .sorted(Comparator.comparing(OutletSalesResponse.Ranked::netSales).reversed()).limit(TOP_RANKED).toList();
+            List<OutletSalesResponse.Ranked> topOutlets = netById(
+                    queries.outletSalesByOutlet(companyId, period.from(), period.to()),
+                    queries.outletReturnsByOutlet(companyId, period.from(), period.to())).values().stream()
+                    .sorted(Comparator.comparing(OutletSalesResponse.Ranked::netSales).reversed()).limit(TOP_RANKED).toList();
+            List<OutletSalesResponse.Ranked> topAgents = netById(
+                    queries.agentSalesByDay(companyId, period.from(), period.to()),
+                    queries.agentReturnsByDay(companyId, period.from(), period.to())).values().stream()
+                    .sorted(Comparator.comparing(OutletSalesResponse.Ranked::netSales).reversed()).limit(TOP_RANKED).toList();
 
-        return new OutletSalesResponse(days, period.from(), startOfDay(today), grossSales, returnTotal, grossSales.subtract(returnTotal),
-                sales.stream().mapToLong(DatedAmount::documents).sum(), previousNet, daily, topOutlets, topAgents);
+            return new OutletSalesResponse(days, period.from(), startOfDay(today), grossSales, returnTotal, grossSales.subtract(returnTotal),
+                    sales.stream().mapToLong(DatedAmount::documents).sum(), previousNet, daily, topOutlets, topAgents);
+        }, "asOf", today, "days", days);
     }
 
     /** Sales minus returns per id (rows may repeat an id across days). */
@@ -389,49 +411,51 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public AgentLeaderboardResponse agentLeaderboard(String username, Long companyId, int days, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.AGENT_LEADERBOARD);
-        Period period = period(today, days);
-        Period previous = period(today.minusDays(days), days);
+        return cached(DashboardWidget.AGENT_LEADERBOARD, companyId, AgentLeaderboardResponse.class, () -> {
+            Period period = period(today, days);
+            Period previous = period(today.minusDays(days), days);
 
-        List<DatedAmount> sales = queries.agentSalesByDay(companyId, period.from(), period.to());
-        List<DatedAmount> returns = queries.agentReturnsByDay(companyId, period.from(), period.to());
-        Map<Long, OutletSalesResponse.Ranked> net = netById(sales, returns);
+            List<DatedAmount> sales = queries.agentSalesByDay(companyId, period.from(), period.to());
+            List<DatedAmount> returns = queries.agentReturnsByDay(companyId, period.from(), period.to());
+            Map<Long, OutletSalesResponse.Ranked> net = netById(sales, returns);
 
-        Collection<OutletSalesResponse.Ranked> previousTotals = netById(queries.agentSalesByDay(companyId, previous.from(), previous.to()),
-                queries.agentReturnsByDay(companyId, previous.from(), previous.to())).values();
-        List<Long> previousOrder = previousTotals.stream()
-                .sorted(Comparator.comparing(OutletSalesResponse.Ranked::netSales).reversed())
-                .map(OutletSalesResponse.Ranked::id)
-                .toList();
-        Map<Long, BigDecimal> previousNet = previousTotals.stream()
-                .collect(Collectors.toMap(OutletSalesResponse.Ranked::id, OutletSalesResponse.Ranked::netSales));
-
-        Map<Long, List<DatedAmount>> salesByAgent = sales.stream().collect(Collectors.groupingBy(DatedAmount::id));
-        Map<Long, List<DatedAmount>> returnsByAgent = returns.stream().collect(Collectors.groupingBy(DatedAmount::id));
-
-        List<OutletSalesResponse.Ranked> ranked = net.values().stream()
-                .sorted(Comparator.comparing(OutletSalesResponse.Ranked::netSales).reversed())
-                .limit(TOP_AGENTS)
-                .toList();
-        List<AgentLeaderboardResponse.Agent> agents = new ArrayList<>();
-        for (int i = 0; i < ranked.size(); i++) {
-            OutletSalesResponse.Ranked r = ranked.get(i);
-            List<DatedAmount> s = salesByAgent.getOrDefault(r.id(), List.of());
-            List<DatedAmount> ret = returnsByAgent.getOrDefault(r.id(), List.of());
-            Map<Instant, BigDecimal> sDay = byDay(s);
-            Map<Instant, BigDecimal> rDay = byDay(ret);
-            List<BigDecimal> dailyNet = period.days().stream()
-                    .map(d -> sDay.getOrDefault(d, BigDecimal.ZERO).subtract(rDay.getOrDefault(d, BigDecimal.ZERO)))
+            Collection<OutletSalesResponse.Ranked> previousTotals = netById(queries.agentSalesByDay(companyId, previous.from(), previous.to()),
+                    queries.agentReturnsByDay(companyId, previous.from(), previous.to())).values();
+            List<Long> previousOrder = previousTotals.stream()
+                    .sorted(Comparator.comparing(OutletSalesResponse.Ranked::netSales).reversed())
+                    .map(OutletSalesResponse.Ranked::id)
                     .toList();
-            int prevIndex = previousOrder.indexOf(r.id());
-            agents.add(new AgentLeaderboardResponse.Agent(i + 1, r.id(), r.name(), r.netSales(),
-                    sum(s, DatedAmount::amount), sum(ret, DatedAmount::amount),
-                    s.stream().mapToLong(DatedAmount::documents).sum(),
-                    previousNet.getOrDefault(r.id(), BigDecimal.ZERO),
-                    prevIndex >= 0 ? prevIndex + 1 : null, dailyNet));
-        }
+            Map<Long, BigDecimal> previousNet = previousTotals.stream()
+                    .collect(Collectors.toMap(OutletSalesResponse.Ranked::id, OutletSalesResponse.Ranked::netSales));
 
-        return new AgentLeaderboardResponse(days, period.from(), startOfDay(today), salesByAgent.size(),
-                net.values().stream().map(OutletSalesResponse.Ranked::netSales).reduce(BigDecimal.ZERO, BigDecimal::add), agents);
+            Map<Long, List<DatedAmount>> salesByAgent = sales.stream().collect(Collectors.groupingBy(DatedAmount::id));
+            Map<Long, List<DatedAmount>> returnsByAgent = returns.stream().collect(Collectors.groupingBy(DatedAmount::id));
+
+            List<OutletSalesResponse.Ranked> ranked = net.values().stream()
+                    .sorted(Comparator.comparing(OutletSalesResponse.Ranked::netSales).reversed())
+                    .limit(TOP_AGENTS)
+                    .toList();
+            List<AgentLeaderboardResponse.Agent> agents = new ArrayList<>();
+            for (int i = 0; i < ranked.size(); i++) {
+                OutletSalesResponse.Ranked r = ranked.get(i);
+                List<DatedAmount> s = salesByAgent.getOrDefault(r.id(), List.of());
+                List<DatedAmount> ret = returnsByAgent.getOrDefault(r.id(), List.of());
+                Map<Instant, BigDecimal> sDay = byDay(s);
+                Map<Instant, BigDecimal> rDay = byDay(ret);
+                List<BigDecimal> dailyNet = period.days().stream()
+                        .map(d -> sDay.getOrDefault(d, BigDecimal.ZERO).subtract(rDay.getOrDefault(d, BigDecimal.ZERO)))
+                        .toList();
+                int prevIndex = previousOrder.indexOf(r.id());
+                agents.add(new AgentLeaderboardResponse.Agent(i + 1, r.id(), r.name(), r.netSales(),
+                        sum(s, DatedAmount::amount), sum(ret, DatedAmount::amount),
+                        s.stream().mapToLong(DatedAmount::documents).sum(),
+                        previousNet.getOrDefault(r.id(), BigDecimal.ZERO),
+                        prevIndex >= 0 ? prevIndex + 1 : null, dailyNet));
+            }
+
+            return new AgentLeaderboardResponse(days, period.from(), startOfDay(today), salesByAgent.size(),
+                    net.values().stream().map(OutletSalesResponse.Ranked::netSales).reduce(BigDecimal.ZERO, BigDecimal::add), agents);
+        }, "asOf", today, "days", days);
     }
 
     // ---- transaction activity ---------------------------------------------------------------------------------
@@ -439,41 +463,38 @@ public class DashboardService {
     /** Days are calendar days in {@code timeZone} (the caller's IANA zone, default UTC). */
     @Transactional(readOnly = true)
     public TransactionActivityResponse transactionActivity(String username, Long companyId, int days, LocalDate asOf, String timeZone) {
-        ZoneId zone;
-        try {
-            zone = timeZone == null || timeZone.isBlank() ? ZoneOffset.UTC : ZoneId.of(timeZone);
-        } catch (DateTimeException e) {
-            throw new IllegalArgumentException("Unknown time zone: " + timeZone);
-        }
+        ZoneId zone = zone(timeZone);
         assertCompanyAccess(username, requireCompany(companyId));
         LocalDate today = asOf != null ? asOf : LocalDate.now(zone);
         log.debug("User '{}' loading {} widget (companyId={}, asOf={})", username, DashboardWidget.TRANSACTION_ACTIVITY, companyId, today);
+        return cached(DashboardWidget.TRANSACTION_ACTIVITY, companyId, TransactionActivityResponse.class, () -> {
 
-        LocalDate first = today.minusDays(days - 1L);
-        List<LocalDate> dates = first.datesUntil(today.plusDays(1)).toList();
-        List<DashboardQueries.ActivityRow> rows = queries.transactionActivity(companyId,
-                first.atStartOfDay(zone).toInstant(), today.plusDays(1).atStartOfDay(zone).toInstant(), zone.getId());
+            LocalDate first = today.minusDays(days - 1L);
+            List<LocalDate> dates = first.datesUntil(today.plusDays(1)).toList();
+            List<DashboardQueries.ActivityRow> rows = queries.transactionActivity(companyId,
+                    first.atStartOfDay(zone).toInstant(), today.plusDays(1).atStartOfDay(zone).toInstant(), zone.getId());
 
-        Map<String, List<DashboardQueries.ActivityRow>> byType = rows.stream()
-                .collect(Collectors.groupingBy(DashboardQueries.ActivityRow::transactionType));
-        List<TransactionActivityResponse.TypeRow> types = byType.entrySet().stream().map(e -> {
-            Map<LocalDate, Long> created = e.getValue().stream().filter(r -> r.eventType().equals("CREATED"))
-                    .collect(Collectors.toMap(DashboardQueries.ActivityRow::day, DashboardQueries.ActivityRow::count, Long::sum));
-            long voided = e.getValue().stream().filter(r -> r.eventType().equals("VOIDED")).mapToLong(DashboardQueries.ActivityRow::count).sum();
-            List<Long> counts = dates.stream().map(d -> created.getOrDefault(d, 0L)).toList();
-            return new TransactionActivityResponse.TypeRow(e.getKey(), counts.stream().mapToLong(Long::longValue).sum(), voided, counts);
-        }).sorted(Comparator.comparingLong(TransactionActivityResponse.TypeRow::created).reversed()).toList();
+            Map<String, List<DashboardQueries.ActivityRow>> byType = rows.stream()
+                    .collect(Collectors.groupingBy(DashboardQueries.ActivityRow::transactionType));
+            List<TransactionActivityResponse.TypeRow> types = byType.entrySet().stream().map(e -> {
+                Map<LocalDate, Long> created = e.getValue().stream().filter(r -> r.eventType().equals("CREATED"))
+                        .collect(Collectors.toMap(DashboardQueries.ActivityRow::day, DashboardQueries.ActivityRow::count, Long::sum));
+                long voided = e.getValue().stream().filter(r -> r.eventType().equals("VOIDED")).mapToLong(DashboardQueries.ActivityRow::count).sum();
+                List<Long> counts = dates.stream().map(d -> created.getOrDefault(d, 0L)).toList();
+                return new TransactionActivityResponse.TypeRow(e.getKey(), counts.stream().mapToLong(Long::longValue).sum(), voided, counts);
+            }).sorted(Comparator.comparingLong(TransactionActivityResponse.TypeRow::created).reversed()).toList();
 
-        long[] perDay = new long[dates.size()];
-        types.forEach(t -> { for (int i = 0; i < perDay.length; i++) perDay[i] += t.counts().get(i); });
-        int busiest = 0;
-        for (int i = 1; i < perDay.length; i++) if (perDay[i] > perDay[busiest]) busiest = i;
+            long[] perDay = new long[dates.size()];
+            types.forEach(t -> { for (int i = 0; i < perDay.length; i++) perDay[i] += t.counts().get(i); });
+            int busiest = 0;
+            for (int i = 1; i < perDay.length; i++) if (perDay[i] > perDay[busiest]) busiest = i;
 
-        return new TransactionActivityResponse(days, first, today,
-                types.stream().mapToLong(TransactionActivityResponse.TypeRow::created).sum(),
-                types.stream().mapToLong(TransactionActivityResponse.TypeRow::voided).sum(),
-                perDay.length > 0 && perDay[busiest] > 0 ? dates.get(busiest) : null,
-                perDay.length > 0 ? perDay[busiest] : 0, dates, types);
+            return new TransactionActivityResponse(days, first, today,
+                    types.stream().mapToLong(TransactionActivityResponse.TypeRow::created).sum(),
+                    types.stream().mapToLong(TransactionActivityResponse.TypeRow::voided).sum(),
+                    perDay.length > 0 && perDay[busiest] > 0 ? dates.get(busiest) : null,
+                    perDay.length > 0 ? perDay[busiest] : 0, dates, types);
+        }, "asOf", today, "days", days, "timeZone", zone.getId());
     }
 
     // ---- accounting -------------------------------------------------------------------------------------------
@@ -505,11 +526,13 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public SubledgerSummaryResponse receivablesAging(String username, Long companyId, int days, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.RECEIVABLES_AGING);
-        Period period = period(today, days);
-        return subledger(AccountSide.RECEIVABLE, queries.openItems(companyId, AccountSide.RECEIVABLE), today, days,
-                queries.billed(companyId, List.of(OpenItemSourceType.SALES_INVOICE, OpenItemSourceType.CUSTOMER_DEBIT_MEMO),
-                        period.from(), period.to()),
-                queries.customerPaymentsTotal(companyId, period.from(), period.to()), RECEIVABLE_BUCKETS);
+        return cached(DashboardWidget.RECEIVABLES_AGING, companyId, SubledgerSummaryResponse.class, () -> {
+            Period period = period(today, days);
+            return subledger(AccountSide.RECEIVABLE, queries.openItems(companyId, AccountSide.RECEIVABLE), today, days,
+                    queries.billed(companyId, List.of(OpenItemSourceType.SALES_INVOICE, OpenItemSourceType.CUSTOMER_DEBIT_MEMO),
+                            period.from(), period.to()),
+                    queries.customerPaymentsTotal(companyId, period.from(), period.to()), RECEIVABLE_BUCKETS);
+        }, "asOf", today, "days", days);
     }
 
     /**
@@ -520,11 +543,13 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public SubledgerSummaryResponse payablesDue(String username, Long companyId, int days, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.PAYABLES_DUE);
-        Period period = period(today, days);
-        return subledger(AccountSide.PAYABLE, queries.openItems(companyId, AccountSide.PAYABLE), today, days,
-                queries.billed(companyId, List.of(OpenItemSourceType.PURCHASE_INVOICE, OpenItemSourceType.SUPPLIER_CREDIT_MEMO),
-                        period.from(), period.to()),
-                queries.supplierPaymentsTotal(companyId, period.from(), period.to()), PAYABLE_BUCKETS);
+        return cached(DashboardWidget.PAYABLES_DUE, companyId, SubledgerSummaryResponse.class, () -> {
+            Period period = period(today, days);
+            return subledger(AccountSide.PAYABLE, queries.openItems(companyId, AccountSide.PAYABLE), today, days,
+                    queries.billed(companyId, List.of(OpenItemSourceType.PURCHASE_INVOICE, OpenItemSourceType.SUPPLIER_CREDIT_MEMO),
+                            period.from(), period.to()),
+                    queries.supplierPaymentsTotal(companyId, period.from(), period.to()), PAYABLE_BUCKETS);
+        }, "asOf", today, "days", days);
     }
 
     private SubledgerSummaryResponse subledger(AccountSide side, List<OpenItemRow> rows, LocalDate today, int days,
@@ -585,35 +610,37 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public CashAndChecksResponse cashAndChecks(String username, Long companyId, LocalDate asOf) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.CASH_AND_CHECKS);
-        Instant asOfInstant = startOfDay(today);
+        return cached(DashboardWidget.CASH_AND_CHECKS, companyId, CashAndChecksResponse.class, () -> {
+            Instant asOfInstant = startOfDay(today);
 
-        List<CashAndChecksResponse.Account> accounts = queries.bankAccounts(companyId, asOfInstant).stream()
-                .map(a -> new CashAndChecksResponse.Account(a.id(), a.name(), a.accountNumber(), a.bankName(), a.active(),
-                        nz(a.openingBalance()).add(nz(a.entries())), nz(a.unclearedIn()), nz(a.unclearedOut()), a.lastReconciled()))
-                // An inactive account only matters while money is still on it or in flight.
-                .filter(a -> a.active() || a.bookBalance().signum() != 0 || a.depositsInTransit().signum() != 0
-                        || a.outstandingDisbursements().signum() != 0)
-                .sorted(Comparator.comparing(CashAndChecksResponse.Account::bookBalance).reversed())
-                .toList();
+            List<CashAndChecksResponse.Account> accounts = queries.bankAccounts(companyId, asOfInstant).stream()
+                    .map(a -> new CashAndChecksResponse.Account(a.id(), a.name(), a.accountNumber(), a.bankName(), a.active(),
+                            nz(a.openingBalance()).add(nz(a.entries())), nz(a.unclearedIn()), nz(a.unclearedOut()), a.lastReconciled()))
+                    // An inactive account only matters while money is still on it or in flight.
+                    .filter(a -> a.active() || a.bookBalance().signum() != 0 || a.depositsInTransit().signum() != 0
+                            || a.outstandingDisbursements().signum() != 0)
+                    .sorted(Comparator.comparing(CashAndChecksResponse.Account::bookBalance).reversed())
+                    .toList();
 
-        List<TenderRow> received = queries.receivedTenders(companyId, startOfDay(today.minusDays(BOUNCED_WINDOW_DAYS - 1L)));
-        List<TenderRow> cash = received.stream().filter(t -> t.status().equals("ON_HAND") && t.mode().equals("CASH")).toList();
-        List<TenderRow> checksOnHand = received.stream().filter(t -> t.status().equals("ON_HAND") && t.mode().equals("CHECK")).toList();
-        List<TenderRow> postDated = checksOnHand.stream()
-                .filter(t -> t.checkDate() != null && t.checkDate().isAfter(asOfInstant)).toList();
-        List<TenderRow> deposited = received.stream().filter(t -> t.status().equals("DEPOSITED")).toList();
-        List<TenderRow> bounced = received.stream().filter(t -> t.status().equals("BOUNCED")).toList();
-        List<TenderRow> issued = queries.issuedChecksOutstanding(companyId);
+            List<TenderRow> received = queries.receivedTenders(companyId, startOfDay(today.minusDays(BOUNCED_WINDOW_DAYS - 1L)));
+            List<TenderRow> cash = received.stream().filter(t -> t.status().equals("ON_HAND") && t.mode().equals("CASH")).toList();
+            List<TenderRow> checksOnHand = received.stream().filter(t -> t.status().equals("ON_HAND") && t.mode().equals("CHECK")).toList();
+            List<TenderRow> postDated = checksOnHand.stream()
+                    .filter(t -> t.checkDate() != null && t.checkDate().isAfter(asOfInstant)).toList();
+            List<TenderRow> deposited = received.stream().filter(t -> t.status().equals("DEPOSITED")).toList();
+            List<TenderRow> bounced = received.stream().filter(t -> t.status().equals("BOUNCED")).toList();
+            List<TenderRow> issued = queries.issuedChecksOutstanding(companyId);
 
-        Comparator<TenderRow> byCheckDate = Comparator.comparing(TenderRow::checkDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(TenderRow::id);
-        return new CashAndChecksResponse(asOfInstant, sum(accounts, CashAndChecksResponse.Account::bookBalance),
-                stat(cash), stat(checksOnHand), stat(postDated), stat(deposited), stat(issued), stat(bounced), BOUNCED_WINDOW_DAYS,
-                accounts,
-                checks(checksOnHand.stream().sorted(byCheckDate), today),
-                checks(issued.stream().sorted(byCheckDate), today),
-                checks(bounced.stream().sorted(Comparator.comparing(TenderRow::statusDate, Comparator.nullsFirst(Comparator.naturalOrder()))
-                        .reversed()), today));
+            Comparator<TenderRow> byCheckDate = Comparator.comparing(TenderRow::checkDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(TenderRow::id);
+            return new CashAndChecksResponse(asOfInstant, sum(accounts, CashAndChecksResponse.Account::bookBalance),
+                    stat(cash), stat(checksOnHand), stat(postDated), stat(deposited), stat(issued), stat(bounced), BOUNCED_WINDOW_DAYS,
+                    accounts,
+                    checks(checksOnHand.stream().sorted(byCheckDate), today),
+                    checks(issued.stream().sorted(byCheckDate), today),
+                    checks(bounced.stream().sorted(Comparator.comparing(TenderRow::statusDate, Comparator.nullsFirst(Comparator.naturalOrder()))
+                            .reversed()), today));
+        }, "asOf", today);
     }
 
     private static CashAndChecksResponse.Stat stat(List<TenderRow> tenders) {
@@ -639,6 +666,24 @@ public class DashboardService {
         LocalDate first = lastDay.minusDays(days - 1L);
         return new Period(startOfDay(first), startOfDay(lastDay.plusDays(1)),
                 first.datesUntil(lastDay.plusDays(1)).map(DashboardService::startOfDay).toList());
+    }
+
+    private static ZoneId zone(String timeZone) {
+        try {
+            return timeZone == null || timeZone.isBlank() ? ZoneOffset.UTC : ZoneId.of(timeZone);
+        } catch (DateTimeException e) {
+            throw new IllegalArgumentException("Unknown time zone: " + timeZone);
+        }
+    }
+
+    /**
+     * Serves a widget from a short-lived Redis snapshot (app.cache.ttl.dashboard). Callers run the company-access
+     * check first and pass everything that shapes the response (asOf, days, cost-price visibility, …) as params.
+     */
+    private <T> T cached(DashboardWidget widget, Long companyId, Class<T> type, Supplier<T> loader,
+                         Object... params) {
+        return queryCache.snapshot("DASHBOARD_" + widget.name(), companyId, QueryCache.params(params),
+                cacheProperties.getTtl().getDashboard(), type, loader);
     }
 
     /** Access check first (always), then resolves the caller's "today". */
