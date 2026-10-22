@@ -84,6 +84,8 @@ public class MasterDataHistoryService {
     private final CustomerService customerService;
     private final PullOutReasonService pullOutReasonService;
     private final BillOfMaterialService billOfMaterialService;
+    private final BankService bankService;
+    private final BankAccountService bankAccountService;
 
     @Transactional(readOnly = true)
     public Page<ChangeHistoryEntryResponse> findHistory(MasterDataType type, Long id, String username, Pageable pageable) {
@@ -275,6 +277,8 @@ public class MasterDataHistoryService {
             case CUSTOMER -> customerService.findById(id, username);
             case PULL_OUT_REASON -> pullOutReasonService.findById(id, username);
             case BILL_OF_MATERIAL -> billOfMaterialService.findById(id, username);
+            case BANK -> bankService.findById(id, username);
+            case BANK_ACCOUNT -> bankAccountService.findById(id, username);
             case USER -> {
                 if (!userRepository.existsById(id)) throw new IllegalArgumentException("User not found: " + id);
             }

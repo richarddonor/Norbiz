@@ -490,7 +490,8 @@ CREATE TABLE IF NOT EXISTS purchase_order_lines (
 
 -- ============================================================
 -- Purchase Invoices — Supplier is the counterparty. Optionally based on a Purchase Order
--- (loaded in full, 1:1 — see PURCHASE_INVOICES_PURCHASE_ORDER_UQ), otherwise "Direct" mode
+-- (loaded in full, 1:1 — one non-voided invoice per PO: the partial unique index
+-- PURCHASE_INVOICES_PURCHASE_ORDER_UQ in the AR/AP section below), otherwise "Direct" mode
 -- posts its own Transit Quantity increase, same as Purchase Order does.
 -- See docs/TRANSACTIONS.md "Purchase Invoice" / "Voiding".
 -- ============================================================
@@ -514,7 +515,6 @@ CREATE TABLE IF NOT EXISTS purchase_invoices (
     voided_by           VARCHAR(100),
     loaded              BOOLEAN     NOT NULL DEFAULT FALSE,
     CONSTRAINT PURCHASE_INVOICES_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
-    CONSTRAINT PURCHASE_INVOICES_PURCHASE_ORDER_UQ     UNIQUE (purchase_order_id),
     CONSTRAINT PURCHASE_INVOICES_COMPANY_ID_FK        FOREIGN KEY (company_id)        REFERENCES companies(id),
     CONSTRAINT PURCHASE_INVOICES_WAREHOUSE_ID_FK      FOREIGN KEY (warehouse_id)      REFERENCES warehouses(id),
     CONSTRAINT PURCHASE_INVOICES_SUPPLIER_ID_FK       FOREIGN KEY (supplier_id)       REFERENCES suppliers(id),
@@ -1261,4 +1261,755 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'item_skus_brand_id_fk') THEN
         ALTER TABLE item_skus ADD CONSTRAINT ITEM_SKUS_BRAND_ID_FK FOREIGN KEY (brand_id) REFERENCES brands(id);
     END IF;
+END $$;
+
+-- ============================================================
+-- AR/AP subledger — docs/ACCOUNTING.md. Same statements as db/migrations/007_accounting.sql.
+-- ============================================================
+
+-- ---- existing tables --------------------------------------------------------------------------------------------
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS term_days INTEGER NOT NULL DEFAULT 0;
+UPDATE customers SET term_days = 0 WHERE term_days IS NULL;
+ALTER TABLE customers ALTER COLUMN term_days SET DEFAULT 0;
+ALTER TABLE customers ALTER COLUMN term_days SET NOT NULL;
+
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS term_days INTEGER NOT NULL DEFAULT 0;
+UPDATE suppliers SET term_days = 0 WHERE term_days IS NULL;
+ALTER TABLE suppliers ALTER COLUMN term_days SET DEFAULT 0;
+ALTER TABLE suppliers ALTER COLUMN term_days SET NOT NULL;
+
+-- True while a non-voided Sales Invoice bills the receipt.
+ALTER TABLE delivery_receipts ADD COLUMN IF NOT EXISTS billed BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE delivery_receipts SET billed = FALSE WHERE billed IS NULL;
+ALTER TABLE delivery_receipts ALTER COLUMN billed SET DEFAULT FALSE;
+ALTER TABLE delivery_receipts ALTER COLUMN billed SET NOT NULL;
+
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS net_amount   NUMERIC(19, 2) NOT NULL DEFAULT 0;
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS term_days    INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS due_date     TIMESTAMPTZ;
+ALTER TABLE purchase_invoices ADD COLUMN IF NOT EXISTS open_item_id BIGINT;
+UPDATE purchase_invoices SET net_amount = 0 WHERE net_amount IS NULL;
+UPDATE purchase_invoices SET term_days = 0 WHERE term_days IS NULL;
+ALTER TABLE purchase_invoices ALTER COLUMN net_amount SET DEFAULT 0;
+ALTER TABLE purchase_invoices ALTER COLUMN net_amount SET NOT NULL;
+ALTER TABLE purchase_invoices ALTER COLUMN term_days SET DEFAULT 0;
+ALTER TABLE purchase_invoices ALTER COLUMN term_days SET NOT NULL;
+
+-- Net payable is now stored (PurchaseInvoiceAmounts): items less header discount plus fees, rounded half-up to 2
+-- decimals — the figure the invoice screen computed. Only rows not yet backfilled (still 0) are touched.
+UPDATE purchase_invoices pi
+SET net_amount = ROUND(t.items - t.items * pi.discount_percentage / 100 + t.fees, 2)
+FROM (
+    SELECT p.id,
+           COALESCE((SELECT SUM(l.quantity * l.cost_price * (1 - l.discount_percentage / 100))
+                     FROM purchase_invoice_lines l WHERE l.purchase_invoice_id = p.id), 0) AS items,
+           COALESCE((SELECT SUM(f.amount) FROM purchase_invoice_fees f WHERE f.purchase_invoice_id = p.id), 0) AS fees
+    FROM purchase_invoices p
+) t
+WHERE t.id = pi.id AND pi.net_amount = 0;
+UPDATE purchase_invoices SET due_date = invoice_date WHERE due_date IS NULL;
+
+-- One non-voided invoice per PO (a voided invoice no longer blocks invoicing the PO again).
+ALTER TABLE purchase_invoices DROP CONSTRAINT IF EXISTS purchase_invoices_purchase_order_uq;
+CREATE UNIQUE INDEX IF NOT EXISTS PURCHASE_INVOICES_PURCHASE_ORDER_UQ ON purchase_invoices (purchase_order_id) WHERE NOT voided;
+
+-- ---- new tables -------------------------------------------------------------------------------------------------
+
+
+CREATE TABLE IF NOT EXISTS banks (
+    id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    active     BOOLEAN NOT NULL DEFAULT TRUE,
+    company_id BIGINT NOT NULL,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    code       VARCHAR(50) NOT NULL,
+    created_by VARCHAR(100),
+    updated_by VARCHAR(100),
+    name       VARCHAR(255) NOT NULL,
+    CONSTRAINT BANKS_COMPANY_CODE_UQ UNIQUE (company_id, code),
+    CONSTRAINT BANKS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+CREATE TABLE IF NOT EXISTS bank_accounts (
+    id                   BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    active               BOOLEAN NOT NULL DEFAULT TRUE,
+    opening_balance      NUMERIC(19, 2) NOT NULL DEFAULT 0,
+    bank_id              BIGINT NOT NULL,
+    company_id           BIGINT NOT NULL,
+    created_at           TIMESTAMPTZ,
+    opening_balance_date TIMESTAMPTZ,
+    updated_at           TIMESTAMPTZ,
+    account_number       VARCHAR(50) NOT NULL,
+    created_by           VARCHAR(100),
+    updated_by           VARCHAR(100),
+    name                 VARCHAR(255) NOT NULL,
+    CONSTRAINT BANK_ACCOUNTS_COMPANY_NUMBER_UQ UNIQUE (company_id, account_number),
+    CONSTRAINT BANK_ACCOUNTS_BANK_ID_FK FOREIGN KEY (bank_id) REFERENCES banks(id),
+    CONSTRAINT BANK_ACCOUNTS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+CREATE TABLE IF NOT EXISTS accounting_settings (
+    id                  BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    check_clearing_days INTEGER NOT NULL DEFAULT 3,
+    company_id          BIGINT NOT NULL,
+    created_at          TIMESTAMPTZ,
+    start_date          TIMESTAMPTZ NOT NULL,
+    updated_at          TIMESTAMPTZ,
+    created_by          VARCHAR(100),
+    updated_by          VARCHAR(100),
+    CONSTRAINT ACCOUNTING_SETTINGS_COMPANY_UQ UNIQUE (company_id),
+    CONSTRAINT ACCOUNTING_SETTINGS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+CREATE TABLE IF NOT EXISTS open_items (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount           NUMERIC(19, 2) NOT NULL,
+    applied_amount   NUMERIC(19, 2) NOT NULL DEFAULT 0,
+    balance          NUMERIC(19, 2) NOT NULL,
+    bounced_amount   NUMERIC(19, 2) NOT NULL DEFAULT 0,
+    cleared          BOOLEAN NOT NULL DEFAULT TRUE,
+    pending_amount   NUMERIC(19, 2) NOT NULL DEFAULT 0,
+    company_id       BIGINT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    customer_id      BIGINT,
+    document_date    TIMESTAMPTZ NOT NULL,
+    due_date         TIMESTAMPTZ,
+    source_id        BIGINT NOT NULL,
+    supplier_id      BIGINT,
+    voided_date      TIMESTAMPTZ,
+    direction        VARCHAR(20) NOT NULL,
+    side             VARCHAR(20) NOT NULL,
+    status           VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    void_reason      VARCHAR(20),
+    source_type      VARCHAR(40) NOT NULL,
+    created_by       VARCHAR(100),
+    reference_number VARCHAR(100) NOT NULL,
+    CONSTRAINT OPEN_ITEMS_SOURCE_UQ UNIQUE (source_type, source_id),
+    CONSTRAINT OPEN_ITEMS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT OPEN_ITEMS_CUSTOMER_ID_FK FOREIGN KEY (customer_id) REFERENCES customers(id),
+    CONSTRAINT OPEN_ITEMS_SUPPLIER_ID_FK FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+);
+CREATE INDEX IF NOT EXISTS OPEN_ITEMS_CUSTOMER_IDX ON open_items (company_id, customer_id, status);
+CREATE INDEX IF NOT EXISTS OPEN_ITEMS_SUPPLIER_IDX ON open_items (company_id, supplier_id, status);
+
+CREATE TABLE IF NOT EXISTS open_item_allocations (
+    id              BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount          NUMERIC(19, 2) NOT NULL,
+    pending         BOOLEAN NOT NULL DEFAULT FALSE,
+    reversed        BOOLEAN NOT NULL DEFAULT FALSE,
+    allocation_date TIMESTAMPTZ NOT NULL,
+    charge_item_id  BIGINT NOT NULL,
+    company_id      BIGINT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    credit_item_id  BIGINT NOT NULL,
+    reversed_at     TIMESTAMPTZ,
+    reversed_date   TIMESTAMPTZ,
+    source_id       BIGINT NOT NULL,
+    reversal_reason VARCHAR(20),
+    source_type     VARCHAR(40) NOT NULL,
+    created_by      VARCHAR(100),
+    reversed_by     VARCHAR(100),
+    CONSTRAINT OPEN_ITEM_ALLOCATIONS_CHARGE_ITEM_ID_FK FOREIGN KEY (charge_item_id) REFERENCES open_items(id),
+    CONSTRAINT OPEN_ITEM_ALLOCATIONS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT OPEN_ITEM_ALLOCATIONS_CREDIT_ITEM_ID_FK FOREIGN KEY (credit_item_id) REFERENCES open_items(id)
+);
+CREATE INDEX IF NOT EXISTS OPEN_ITEM_ALLOCATIONS_CREDIT_IDX ON open_item_allocations (credit_item_id);
+CREATE INDEX IF NOT EXISTS OPEN_ITEM_ALLOCATIONS_CHARGE_IDX ON open_item_allocations (charge_item_id);
+CREATE INDEX IF NOT EXISTS OPEN_ITEM_ALLOCATIONS_SOURCE_IDX ON open_item_allocations (source_type, source_id);
+
+CREATE TABLE IF NOT EXISTS bank_reconciliations (
+    id                       BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    adjustments_total        NUMERIC(19, 2) NOT NULL,
+    book_balance             NUMERIC(19, 2) NOT NULL,
+    cleared_total            NUMERIC(19, 2) NOT NULL,
+    outstanding_total        NUMERIC(19, 2) NOT NULL,
+    previous_balance         NUMERIC(19, 2) NOT NULL,
+    statement_ending_balance NUMERIC(19, 2) NOT NULL,
+    voided                   BOOLEAN NOT NULL DEFAULT FALSE,
+    bank_account_id          BIGINT NOT NULL,
+    company_id               BIGINT NOT NULL,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    statement_date           TIMESTAMPTZ NOT NULL,
+    voided_at                TIMESTAMPTZ,
+    origin                   VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reference_number         VARCHAR(50) NOT NULL,
+    created_by               VARCHAR(100),
+    sheet_number             VARCHAR(100),
+    voided_by                VARCHAR(100),
+    remarks                  VARCHAR(255),
+    CONSTRAINT BANK_RECONCILIATIONS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT BANK_RECONCILIATIONS_BANK_ACCOUNT_ID_FK FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+    CONSTRAINT BANK_RECONCILIATIONS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+CREATE TABLE IF NOT EXISTS bank_entries (
+    id                     BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount                 NUMERIC(19, 2) NOT NULL,
+    cleared                BOOLEAN NOT NULL DEFAULT FALSE,
+    voided                 BOOLEAN NOT NULL DEFAULT FALSE,
+    bank_account_id        BIGINT NOT NULL,
+    bank_reconciliation_id BIGINT,
+    check_date             TIMESTAMPTZ,
+    cleared_date           TIMESTAMPTZ,
+    company_id             BIGINT NOT NULL,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    entry_date             TIMESTAMPTZ NOT NULL,
+    source_id              BIGINT NOT NULL,
+    source_line_id         BIGINT,
+    entry_type             VARCHAR(30) NOT NULL,
+    source_type            VARCHAR(40) NOT NULL,
+    check_number           VARCHAR(50),
+    reference_number       VARCHAR(50) NOT NULL,
+    created_by             VARCHAR(100),
+    description            VARCHAR(255),
+    CONSTRAINT BANK_ENTRIES_BANK_ACCOUNT_ID_FK FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+    CONSTRAINT BANK_ENTRIES_BANK_RECONCILIATION_ID_FK FOREIGN KEY (bank_reconciliation_id) REFERENCES bank_reconciliations(id),
+    CONSTRAINT BANK_ENTRIES_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+CREATE INDEX IF NOT EXISTS BANK_ENTRIES_ACCOUNT_IDX ON bank_entries (bank_account_id, entry_date);
+CREATE INDEX IF NOT EXISTS BANK_ENTRIES_SOURCE_IDX ON bank_entries (source_type, source_id);
+
+CREATE TABLE IF NOT EXISTS bank_reconciliation_lines (
+    id                     BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount                 NUMERIC(19, 2) NOT NULL,
+    line_number            INTEGER NOT NULL,
+    bank_entry_id          BIGINT NOT NULL,
+    bank_reconciliation_id BIGINT NOT NULL,
+    entry_date             TIMESTAMPTZ NOT NULL,
+    adjustment_type        VARCHAR(20),
+    kind                   VARCHAR(20) NOT NULL,
+    check_number           VARCHAR(50),
+    reference_number       VARCHAR(50) NOT NULL,
+    description            VARCHAR(255),
+    CONSTRAINT BANK_RECONCILIATION_LINES_BANK_ENTRY_ID_FK FOREIGN KEY (bank_entry_id) REFERENCES bank_entries(id),
+    CONSTRAINT BANK_RECONCILIATION_LINES_BANK_RECONCILIATION_ID_FK FOREIGN KEY (bank_reconciliation_id) REFERENCES bank_reconciliations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS sales_invoices (
+    id                  BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    discount_percentage NUMERIC(19, 2) NOT NULL DEFAULT 0,
+    net_amount          NUMERIC(19, 2) NOT NULL,
+    term_days           INTEGER NOT NULL DEFAULT 0,
+    voided              BOOLEAN NOT NULL DEFAULT FALSE,
+    company_id          BIGINT NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    customer_id         BIGINT NOT NULL,
+    delivery_receipt_id BIGINT,
+    due_date            TIMESTAMPTZ NOT NULL,
+    invoice_date        TIMESTAMPTZ NOT NULL,
+    open_item_id        BIGINT unique,
+    voided_at           TIMESTAMPTZ,
+    warehouse_id        BIGINT NOT NULL,
+    origin              VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    payment_status      VARCHAR(20) NOT NULL,
+    reference_number    VARCHAR(50) NOT NULL,
+    created_by          VARCHAR(100),
+    sheet_number        VARCHAR(100),
+    voided_by           VARCHAR(100),
+    remarks             VARCHAR(255),
+    CONSTRAINT SALES_INVOICES_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT SALES_INVOICES_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT SALES_INVOICES_CUSTOMER_ID_FK FOREIGN KEY (customer_id) REFERENCES customers(id),
+    CONSTRAINT SALES_INVOICES_DELIVERY_RECEIPT_ID_FK FOREIGN KEY (delivery_receipt_id) REFERENCES delivery_receipts(id),
+    CONSTRAINT SALES_INVOICES_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id),
+    CONSTRAINT SALES_INVOICES_WAREHOUSE_ID_FK FOREIGN KEY (warehouse_id) REFERENCES warehouses(id)
+);
+
+CREATE TABLE IF NOT EXISTS sales_invoice_lines (
+    id                       BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    discount_percentage      NUMERIC(19, 2) NOT NULL DEFAULT 0,
+    line_number              INTEGER NOT NULL,
+    quantity                 NUMERIC(19, 4) NOT NULL,
+    unit_price               NUMERIC(19, 4) NOT NULL DEFAULT 0,
+    delivery_receipt_line_id BIGINT,
+    item_id                  BIGINT NOT NULL,
+    sales_invoice_id         BIGINT NOT NULL,
+    CONSTRAINT SALES_INVOICE_LINES_DELIVERY_RECEIPT_LINE_ID_FK FOREIGN KEY (delivery_receipt_line_id) REFERENCES delivery_receipt_lines(id),
+    CONSTRAINT SALES_INVOICE_LINES_ITEM_ID_FK FOREIGN KEY (item_id) REFERENCES items(id),
+    CONSTRAINT SALES_INVOICE_LINES_SALES_INVOICE_ID_FK FOREIGN KEY (sales_invoice_id) REFERENCES sales_invoices(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS customer_memos (
+    id                 BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount             NUMERIC(19, 2) NOT NULL,
+    term_days          INTEGER NOT NULL DEFAULT 0,
+    voided             BOOLEAN NOT NULL DEFAULT FALSE,
+    company_id         BIGINT NOT NULL,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    customer_id        BIGINT NOT NULL,
+    due_date           TIMESTAMPTZ,
+    memo_date          TIMESTAMPTZ NOT NULL,
+    open_item_id       BIGINT unique,
+    voided_at          TIMESTAMPTZ,
+    memo_type          VARCHAR(10) NOT NULL,
+    origin             VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reason             VARCHAR(30) NOT NULL,
+    reference_number   VARCHAR(50) NOT NULL,
+    created_by         VARCHAR(100),
+    original_reference VARCHAR(100),
+    sheet_number       VARCHAR(100),
+    voided_by          VARCHAR(100),
+    remarks            VARCHAR(255),
+    CONSTRAINT CUSTOMER_MEMOS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT CUSTOMER_MEMOS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT CUSTOMER_MEMOS_CUSTOMER_ID_FK FOREIGN KEY (customer_id) REFERENCES customers(id),
+    CONSTRAINT CUSTOMER_MEMOS_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_memo_lines (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount           NUMERIC(19, 2) NOT NULL,
+    line_number      INTEGER NOT NULL,
+    customer_memo_id BIGINT NOT NULL,
+    description      VARCHAR(255) NOT NULL,
+    CONSTRAINT CUSTOMER_MEMO_LINES_CUSTOMER_MEMO_ID_FK FOREIGN KEY (customer_memo_id) REFERENCES customer_memos(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS supplier_memos (
+    id                 BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount             NUMERIC(19, 2) NOT NULL,
+    term_days          INTEGER NOT NULL DEFAULT 0,
+    voided             BOOLEAN NOT NULL DEFAULT FALSE,
+    company_id         BIGINT NOT NULL,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    due_date           TIMESTAMPTZ,
+    memo_date          TIMESTAMPTZ NOT NULL,
+    open_item_id       BIGINT unique,
+    supplier_id        BIGINT NOT NULL,
+    voided_at          TIMESTAMPTZ,
+    memo_type          VARCHAR(10) NOT NULL,
+    origin             VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reason             VARCHAR(30) NOT NULL,
+    reference_number   VARCHAR(50) NOT NULL,
+    created_by         VARCHAR(100),
+    original_reference VARCHAR(100),
+    sheet_number       VARCHAR(100),
+    voided_by          VARCHAR(100),
+    remarks            VARCHAR(255),
+    CONSTRAINT SUPPLIER_MEMOS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT SUPPLIER_MEMOS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT SUPPLIER_MEMOS_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id),
+    CONSTRAINT SUPPLIER_MEMOS_SUPPLIER_ID_FK FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+);
+
+CREATE TABLE IF NOT EXISTS supplier_memo_lines (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount           NUMERIC(19, 2) NOT NULL,
+    line_number      INTEGER NOT NULL,
+    supplier_memo_id BIGINT NOT NULL,
+    description      VARCHAR(255) NOT NULL,
+    CONSTRAINT SUPPLIER_MEMO_LINES_SUPPLIER_MEMO_ID_FK FOREIGN KEY (supplier_memo_id) REFERENCES supplier_memos(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS deposits (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    total_amount     NUMERIC(19, 2) NOT NULL,
+    voided           BOOLEAN NOT NULL DEFAULT FALSE,
+    bank_account_id  BIGINT NOT NULL,
+    company_id       BIGINT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deposit_date     TIMESTAMPTZ NOT NULL,
+    voided_at        TIMESTAMPTZ,
+    origin           VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reference_number VARCHAR(50) NOT NULL,
+    created_by       VARCHAR(100),
+    sheet_number     VARCHAR(100),
+    voided_by        VARCHAR(100),
+    remarks          VARCHAR(255),
+    CONSTRAINT DEPOSITS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT DEPOSITS_BANK_ACCOUNT_ID_FK FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+    CONSTRAINT DEPOSITS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_payments (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    total_amount     NUMERIC(19, 2) NOT NULL,
+    voided           BOOLEAN NOT NULL DEFAULT FALSE,
+    company_id       BIGINT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    customer_id      BIGINT NOT NULL,
+    payment_date     TIMESTAMPTZ NOT NULL,
+    voided_at        TIMESTAMPTZ,
+    origin           VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reference_number VARCHAR(50) NOT NULL,
+    created_by       VARCHAR(100),
+    sheet_number     VARCHAR(100),
+    voided_by        VARCHAR(100),
+    remarks          VARCHAR(255),
+    CONSTRAINT CUSTOMER_PAYMENTS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT CUSTOMER_PAYMENTS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT CUSTOMER_PAYMENTS_CUSTOMER_ID_FK FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_payment_tenders (
+    id                         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount                     NUMERIC(19, 2) NOT NULL,
+    line_number                INTEGER NOT NULL,
+    replaced_amount            NUMERIC(19, 2) NOT NULL DEFAULT 0,
+    bank_id                    BIGINT,
+    bank_reconciliation_id     BIGINT,
+    check_date                 TIMESTAMPTZ,
+    customer_payment_id        BIGINT NOT NULL,
+    deposit_bank_account_id    BIGINT,
+    deposit_id                 BIGINT,
+    open_item_id               BIGINT unique,
+    replaces_tender_id         BIGINT,
+    status_date                TIMESTAMPTZ,
+    mode                       VARCHAR(20) NOT NULL,
+    status                     VARCHAR(20) NOT NULL,
+    bounce_reason              VARCHAR(30),
+    check_number               VARCHAR(50),
+    official_receipt_number    VARCHAR(50),
+    provisional_receipt_number VARCHAR(50),
+    CONSTRAINT CUSTOMER_PAYMENT_TENDERS_BANK_ID_FK FOREIGN KEY (bank_id) REFERENCES banks(id),
+    CONSTRAINT CUSTOMER_PAYMENT_TENDERS_BANK_RECONCILIATION_ID_FK FOREIGN KEY (bank_reconciliation_id) REFERENCES bank_reconciliations(id),
+    CONSTRAINT CUSTOMER_PAYMENT_TENDERS_CUSTOMER_PAYMENT_ID_FK FOREIGN KEY (customer_payment_id) REFERENCES customer_payments(id) ON DELETE CASCADE,
+    CONSTRAINT CUSTOMER_PAYMENT_TENDERS_DEPOSIT_ID_FK FOREIGN KEY (deposit_id) REFERENCES deposits(id),
+    CONSTRAINT CUSTOMER_PAYMENT_TENDERS_DEPOSIT_BANK_ACCOUNT_ID_FK FOREIGN KEY (deposit_bank_account_id) REFERENCES bank_accounts(id),
+    CONSTRAINT CUSTOMER_PAYMENT_TENDERS_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id),
+    CONSTRAINT CUSTOMER_PAYMENT_TENDERS_REPLACES_TENDER_ID_FK FOREIGN KEY (replaces_tender_id) REFERENCES customer_payment_tenders(id)
+);
+
+CREATE TABLE IF NOT EXISTS deposit_lines (
+    id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount      NUMERIC(19, 2) NOT NULL,
+    line_number INTEGER NOT NULL,
+    deposit_id  BIGINT NOT NULL,
+    tender_id   BIGINT NOT NULL,
+    CONSTRAINT DEPOSIT_LINES_DEPOSIT_ID_FK FOREIGN KEY (deposit_id) REFERENCES deposits(id) ON DELETE CASCADE,
+    CONSTRAINT DEPOSIT_LINES_TENDER_ID_FK FOREIGN KEY (tender_id) REFERENCES customer_payment_tenders(id)
+);
+
+CREATE TABLE IF NOT EXISTS supplier_payments (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    total_amount     NUMERIC(19, 2) NOT NULL,
+    voided           BOOLEAN NOT NULL DEFAULT FALSE,
+    company_id       BIGINT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    payment_date     TIMESTAMPTZ NOT NULL,
+    supplier_id      BIGINT NOT NULL,
+    voided_at        TIMESTAMPTZ,
+    origin           VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reference_number VARCHAR(50) NOT NULL,
+    voucher_number   VARCHAR(50),
+    created_by       VARCHAR(100),
+    sheet_number     VARCHAR(100),
+    voided_by        VARCHAR(100),
+    remarks          VARCHAR(255),
+    CONSTRAINT SUPPLIER_PAYMENTS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT SUPPLIER_PAYMENTS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT SUPPLIER_PAYMENTS_SUPPLIER_ID_FK FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+);
+
+CREATE TABLE IF NOT EXISTS supplier_payment_tenders (
+    id                     BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount                 NUMERIC(19, 2) NOT NULL,
+    line_number            INTEGER NOT NULL,
+    bank_account_id        BIGINT,
+    bank_reconciliation_id BIGINT,
+    check_date             TIMESTAMPTZ,
+    open_item_id           BIGINT unique,
+    replaces_tender_id     BIGINT,
+    status_date            TIMESTAMPTZ,
+    supplier_payment_id    BIGINT NOT NULL,
+    mode                   VARCHAR(20) NOT NULL,
+    status                 VARCHAR(20) NOT NULL,
+    cancel_reason          VARCHAR(30),
+    check_number           VARCHAR(50),
+    CONSTRAINT SUPPLIER_PAYMENT_TENDERS_BANK_ACCOUNT_ID_FK FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+    CONSTRAINT SUPPLIER_PAYMENT_TENDERS_BANK_RECONCILIATION_ID_FK FOREIGN KEY (bank_reconciliation_id) REFERENCES bank_reconciliations(id),
+    CONSTRAINT SUPPLIER_PAYMENT_TENDERS_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id),
+    CONSTRAINT SUPPLIER_PAYMENT_TENDERS_REPLACES_TENDER_ID_FK FOREIGN KEY (replaces_tender_id) REFERENCES supplier_payment_tenders(id),
+    CONSTRAINT SUPPLIER_PAYMENT_TENDERS_SUPPLIER_PAYMENT_ID_FK FOREIGN KEY (supplier_payment_id) REFERENCES supplier_payments(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS customer_credit_applications (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    total_amount     NUMERIC(19, 2) NOT NULL,
+    voided           BOOLEAN NOT NULL DEFAULT FALSE,
+    application_date TIMESTAMPTZ NOT NULL,
+    company_id       BIGINT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    customer_id      BIGINT NOT NULL,
+    voided_at        TIMESTAMPTZ,
+    origin           VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reference_number VARCHAR(50) NOT NULL,
+    created_by       VARCHAR(100),
+    sheet_number     VARCHAR(100),
+    voided_by        VARCHAR(100),
+    remarks          VARCHAR(255),
+    CONSTRAINT CUSTOMER_CREDIT_APPLICATIONS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT CUSTOMER_CREDIT_APPLICATIONS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT CUSTOMER_CREDIT_APPLICATIONS_CUSTOMER_ID_FK FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_credit_application_lines (
+    id                             BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount                         NUMERIC(19, 2) NOT NULL,
+    line_number                    INTEGER NOT NULL,
+    charge_item_id                 BIGINT NOT NULL,
+    credit_item_id                 BIGINT NOT NULL,
+    customer_credit_application_id BIGINT NOT NULL,
+    CONSTRAINT CUSTOMER_CREDIT_APPLICATION_LINES_CHARGE_ITEM_ID_FK FOREIGN KEY (charge_item_id) REFERENCES open_items(id),
+    CONSTRAINT CUSTOMER_CREDIT_APPLICATION_LINES_CREDIT_ITEM_ID_FK FOREIGN KEY (credit_item_id) REFERENCES open_items(id),
+    CONSTRAINT CUSTOMER_CREDIT_APPLICATION_LINES_CUSTOMER_CREDIT_APPLICATION_ID_FK FOREIGN KEY (customer_credit_application_id) REFERENCES customer_credit_applications(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS supplier_credit_applications (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    total_amount     NUMERIC(19, 2) NOT NULL,
+    voided           BOOLEAN NOT NULL DEFAULT FALSE,
+    application_date TIMESTAMPTZ NOT NULL,
+    company_id       BIGINT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    supplier_id      BIGINT NOT NULL,
+    voided_at        TIMESTAMPTZ,
+    origin           VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reference_number VARCHAR(50) NOT NULL,
+    created_by       VARCHAR(100),
+    sheet_number     VARCHAR(100),
+    voided_by        VARCHAR(100),
+    remarks          VARCHAR(255),
+    CONSTRAINT SUPPLIER_CREDIT_APPLICATIONS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT SUPPLIER_CREDIT_APPLICATIONS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT SUPPLIER_CREDIT_APPLICATIONS_SUPPLIER_ID_FK FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+);
+
+CREATE TABLE IF NOT EXISTS supplier_credit_application_lines (
+    id                             BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount                         NUMERIC(19, 2) NOT NULL,
+    line_number                    INTEGER NOT NULL,
+    charge_item_id                 BIGINT NOT NULL,
+    credit_item_id                 BIGINT NOT NULL,
+    supplier_credit_application_id BIGINT NOT NULL,
+    CONSTRAINT SUPPLIER_CREDIT_APPLICATION_LINES_CHARGE_ITEM_ID_FK FOREIGN KEY (charge_item_id) REFERENCES open_items(id),
+    CONSTRAINT SUPPLIER_CREDIT_APPLICATION_LINES_CREDIT_ITEM_ID_FK FOREIGN KEY (credit_item_id) REFERENCES open_items(id),
+    CONSTRAINT SUPPLIER_CREDIT_APPLICATION_LINES_SUPPLIER_CREDIT_APPLICATION_ID_FK FOREIGN KEY (supplier_credit_application_id) REFERENCES supplier_credit_applications(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS customer_refunds (
+    id                     BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount                 NUMERIC(19, 2) NOT NULL,
+    voided                 BOOLEAN NOT NULL DEFAULT FALSE,
+    bank_account_id        BIGINT,
+    bank_reconciliation_id BIGINT,
+    check_date             TIMESTAMPTZ,
+    company_id             BIGINT NOT NULL,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    customer_id            BIGINT NOT NULL,
+    open_item_id           BIGINT unique,
+    refund_date            TIMESTAMPTZ NOT NULL,
+    status_date            TIMESTAMPTZ,
+    voided_at              TIMESTAMPTZ,
+    mode                   VARCHAR(20) NOT NULL,
+    origin                 VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    status                 VARCHAR(20) NOT NULL,
+    check_number           VARCHAR(50),
+    reference_number       VARCHAR(50) NOT NULL,
+    created_by             VARCHAR(100),
+    sheet_number           VARCHAR(100),
+    voided_by              VARCHAR(100),
+    remarks                VARCHAR(255),
+    CONSTRAINT CUSTOMER_REFUNDS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT CUSTOMER_REFUNDS_BANK_ACCOUNT_ID_FK FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+    CONSTRAINT CUSTOMER_REFUNDS_BANK_RECONCILIATION_ID_FK FOREIGN KEY (bank_reconciliation_id) REFERENCES bank_reconciliations(id),
+    CONSTRAINT CUSTOMER_REFUNDS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT CUSTOMER_REFUNDS_CUSTOMER_ID_FK FOREIGN KEY (customer_id) REFERENCES customers(id),
+    CONSTRAINT CUSTOMER_REFUNDS_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_refund_lines (
+    id                 BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount             NUMERIC(19, 2) NOT NULL,
+    line_number        INTEGER NOT NULL,
+    credit_item_id     BIGINT NOT NULL,
+    customer_refund_id BIGINT NOT NULL,
+    CONSTRAINT CUSTOMER_REFUND_LINES_CREDIT_ITEM_ID_FK FOREIGN KEY (credit_item_id) REFERENCES open_items(id),
+    CONSTRAINT CUSTOMER_REFUND_LINES_CUSTOMER_REFUND_ID_FK FOREIGN KEY (customer_refund_id) REFERENCES customer_refunds(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS supplier_refunds (
+    id               BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount           NUMERIC(19, 2) NOT NULL,
+    voided           BOOLEAN NOT NULL DEFAULT FALSE,
+    bank_account_id  BIGINT,
+    bank_id          BIGINT,
+    check_date       TIMESTAMPTZ,
+    company_id       BIGINT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    open_item_id     BIGINT unique,
+    refund_date      TIMESTAMPTZ NOT NULL,
+    supplier_id      BIGINT NOT NULL,
+    voided_at        TIMESTAMPTZ,
+    mode             VARCHAR(20) NOT NULL,
+    origin           VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    check_number     VARCHAR(50),
+    reference_number VARCHAR(50) NOT NULL,
+    created_by       VARCHAR(100),
+    sheet_number     VARCHAR(100),
+    voided_by        VARCHAR(100),
+    remarks          VARCHAR(255),
+    CONSTRAINT SUPPLIER_REFUNDS_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT SUPPLIER_REFUNDS_BANK_ID_FK FOREIGN KEY (bank_id) REFERENCES banks(id),
+    CONSTRAINT SUPPLIER_REFUNDS_BANK_ACCOUNT_ID_FK FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+    CONSTRAINT SUPPLIER_REFUNDS_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT SUPPLIER_REFUNDS_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id),
+    CONSTRAINT SUPPLIER_REFUNDS_SUPPLIER_ID_FK FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+);
+
+CREATE TABLE IF NOT EXISTS supplier_refund_lines (
+    id                 BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount             NUMERIC(19, 2) NOT NULL,
+    line_number        INTEGER NOT NULL,
+    credit_item_id     BIGINT NOT NULL,
+    supplier_refund_id BIGINT NOT NULL,
+    CONSTRAINT SUPPLIER_REFUND_LINES_CREDIT_ITEM_ID_FK FOREIGN KEY (credit_item_id) REFERENCES open_items(id),
+    CONSTRAINT SUPPLIER_REFUND_LINES_SUPPLIER_REFUND_ID_FK FOREIGN KEY (supplier_refund_id) REFERENCES supplier_refunds(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS statements_of_account (
+    id                BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    current_amount    NUMERIC(19, 2) NOT NULL,
+    days1_to30        NUMERIC(19, 2) NOT NULL,
+    days31_to60       NUMERIC(19, 2) NOT NULL,
+    days61_to90       NUMERIC(19, 2) NOT NULL,
+    days91_to120      NUMERIC(19, 2) NOT NULL,
+    over120           NUMERIC(19, 2) NOT NULL,
+    total_balance     NUMERIC(19, 2) NOT NULL,
+    unapplied_credits NUMERIC(19, 2) NOT NULL,
+    voided            BOOLEAN NOT NULL DEFAULT FALSE,
+    company_id        BIGINT NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    customer_id       BIGINT NOT NULL,
+    statement_date    TIMESTAMPTZ NOT NULL,
+    voided_at         TIMESTAMPTZ,
+    origin            VARCHAR(20) NOT NULL DEFAULT 'NATIVE',
+    reference_number  VARCHAR(50) NOT NULL,
+    created_by        VARCHAR(100),
+    sheet_number      VARCHAR(100),
+    voided_by         VARCHAR(100),
+    remarks           VARCHAR(255),
+    CONSTRAINT STATEMENTS_OF_ACCOUNT_COMPANY_REFERENCE_UQ UNIQUE (company_id, reference_number),
+    CONSTRAINT STATEMENTS_OF_ACCOUNT_COMPANY_ID_FK FOREIGN KEY (company_id) REFERENCES companies(id),
+    CONSTRAINT STATEMENTS_OF_ACCOUNT_CUSTOMER_ID_FK FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+CREATE TABLE IF NOT EXISTS statement_of_account_lines (
+    id                      BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    amount                  NUMERIC(19, 2) NOT NULL,
+    balance                 NUMERIC(19, 2) NOT NULL,
+    days_overdue            INTEGER NOT NULL,
+    line_number             INTEGER NOT NULL,
+    paid_amount             NUMERIC(19, 2) NOT NULL,
+    pending_amount          NUMERIC(19, 2) NOT NULL DEFAULT 0,
+    document_date           TIMESTAMPTZ NOT NULL,
+    due_date                TIMESTAMPTZ,
+    open_item_id            BIGINT NOT NULL,
+    statement_of_account_id BIGINT NOT NULL,
+    direction               VARCHAR(20) NOT NULL,
+    source_type             VARCHAR(40) NOT NULL,
+    reference_number        VARCHAR(100) NOT NULL,
+    CONSTRAINT STATEMENT_OF_ACCOUNT_LINES_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id),
+    CONSTRAINT STATEMENT_OF_ACCOUNT_LINES_STATEMENT_OF_ACCOUNT_ID_FK FOREIGN KEY (statement_of_account_id) REFERENCES statements_of_account(id) ON DELETE CASCADE
+);
+
+-- An item's amounts are a cache of its allocations; keep them consistent, and owned by exactly one party.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'open_items_amounts_ck') THEN
+        ALTER TABLE open_items ADD CONSTRAINT OPEN_ITEMS_AMOUNTS_CK
+            CHECK (amount > 0 AND applied_amount >= 0 AND applied_amount <= amount AND balance = amount - applied_amount
+                   AND pending_amount >= 0 AND pending_amount <= applied_amount);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'open_items_party_ck') THEN
+        ALTER TABLE open_items ADD CONSTRAINT OPEN_ITEMS_PARTY_CK CHECK ((customer_id IS NULL) <> (supplier_id IS NULL));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'open_item_allocations_amount_ck') THEN
+        ALTER TABLE open_item_allocations ADD CONSTRAINT OPEN_ITEM_ALLOCATIONS_AMOUNT_CK CHECK (amount > 0);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'purchase_invoices_open_item_id_fk') THEN
+        ALTER TABLE purchase_invoices ADD CONSTRAINT PURCHASE_INVOICES_OPEN_ITEM_ID_FK FOREIGN KEY (open_item_id) REFERENCES open_items(id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'purchase_invoices_open_item_uq') THEN
+        ALTER TABLE purchase_invoices ADD CONSTRAINT PURCHASE_INVOICES_OPEN_ITEM_UQ UNIQUE (open_item_id);
+    END IF;
+END $$;
+
+-- One non-voided Sales Invoice per Delivery Receipt.
+CREATE UNIQUE INDEX IF NOT EXISTS SALES_INVOICES_DELIVERY_RECEIPT_UQ ON sales_invoices (delivery_receipt_id) WHERE NOT voided;
+
+-- ---- in case a ddl-auto=update backend created the new tables first ----------------------------------------------
+
+ALTER TABLE banks ALTER COLUMN active SET DEFAULT TRUE;
+ALTER TABLE bank_accounts ALTER COLUMN active SET DEFAULT TRUE;
+ALTER TABLE bank_accounts ALTER COLUMN opening_balance SET DEFAULT 0;
+ALTER TABLE accounting_settings ALTER COLUMN check_clearing_days SET DEFAULT 3;
+ALTER TABLE open_items ALTER COLUMN applied_amount SET DEFAULT 0;
+ALTER TABLE open_items ALTER COLUMN bounced_amount SET DEFAULT 0;
+ALTER TABLE open_items ALTER COLUMN cleared SET DEFAULT TRUE;
+ALTER TABLE open_items ALTER COLUMN pending_amount SET DEFAULT 0;
+ALTER TABLE open_items ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE open_items ALTER COLUMN status SET DEFAULT 'OPEN';
+ALTER TABLE open_item_allocations ALTER COLUMN pending SET DEFAULT FALSE;
+ALTER TABLE open_item_allocations ALTER COLUMN reversed SET DEFAULT FALSE;
+ALTER TABLE open_item_allocations ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE bank_reconciliations ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE bank_reconciliations ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE bank_reconciliations ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE bank_entries ALTER COLUMN cleared SET DEFAULT FALSE;
+ALTER TABLE bank_entries ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE bank_entries ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE sales_invoices ALTER COLUMN discount_percentage SET DEFAULT 0;
+ALTER TABLE sales_invoices ALTER COLUMN term_days SET DEFAULT 0;
+ALTER TABLE sales_invoices ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE sales_invoices ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE sales_invoices ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE sales_invoice_lines ALTER COLUMN discount_percentage SET DEFAULT 0;
+ALTER TABLE sales_invoice_lines ALTER COLUMN unit_price SET DEFAULT 0;
+ALTER TABLE customer_memos ALTER COLUMN term_days SET DEFAULT 0;
+ALTER TABLE customer_memos ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE customer_memos ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE customer_memos ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE supplier_memos ALTER COLUMN term_days SET DEFAULT 0;
+ALTER TABLE supplier_memos ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE supplier_memos ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE supplier_memos ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE deposits ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE deposits ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE deposits ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE customer_payments ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE customer_payments ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE customer_payments ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE customer_payment_tenders ALTER COLUMN replaced_amount SET DEFAULT 0;
+ALTER TABLE supplier_payments ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE supplier_payments ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE supplier_payments ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE customer_credit_applications ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE customer_credit_applications ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE customer_credit_applications ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE supplier_credit_applications ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE supplier_credit_applications ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE supplier_credit_applications ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE customer_refunds ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE customer_refunds ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE customer_refunds ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE supplier_refunds ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE supplier_refunds ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE supplier_refunds ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE statements_of_account ALTER COLUMN voided SET DEFAULT FALSE;
+ALTER TABLE statements_of_account ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE statements_of_account ALTER COLUMN origin SET DEFAULT 'NATIVE';
+ALTER TABLE statement_of_account_lines ALTER COLUMN pending_amount SET DEFAULT 0;
+
+DO $$
+DECLARE
+    c RECORD;
+BEGIN
+    FOR c IN SELECT conrelid::regclass::text AS tbl, conname FROM pg_constraint
+             WHERE contype = 'c' AND conname LIKE '%\_check'
+               AND conrelid::regclass::text IN ('banks', 'bank_accounts', 'accounting_settings', 'open_items', 'open_item_allocations', 'bank_reconciliations', 'bank_entries', 'bank_reconciliation_lines', 'sales_invoices', 'sales_invoice_lines', 'customer_memos', 'customer_memo_lines', 'supplier_memos', 'supplier_memo_lines', 'deposits', 'customer_payments', 'customer_payment_tenders', 'deposit_lines', 'supplier_payments', 'supplier_payment_tenders', 'customer_credit_applications', 'customer_credit_application_lines', 'supplier_credit_applications', 'supplier_credit_application_lines', 'customer_refunds', 'customer_refund_lines', 'supplier_refunds', 'supplier_refund_lines', 'statements_of_account', 'statement_of_account_lines')
+    LOOP
+        EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', c.tbl, c.conname);
+    END LOOP;
 END $$;

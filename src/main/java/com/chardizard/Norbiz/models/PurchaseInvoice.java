@@ -17,10 +17,10 @@ import java.util.List;
 @Entity
 @Table(
     name = "purchase_invoices",
-    uniqueConstraints = {
-        @UniqueConstraint(name = "PURCHASE_INVOICES_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"}),
-        @UniqueConstraint(name = "PURCHASE_INVOICES_PURCHASE_ORDER_UQ", columnNames = {"purchase_order_id"})
-    }
+    // One non-voided invoice per PO is enforced by the partial unique index PURCHASE_INVOICES_PURCHASE_ORDER_UQ
+    // (db/init.sql, WHERE NOT voided) — JPA can't declare a partial index, and a plain unique constraint would
+    // stop a PO from being invoiced again after its invoice was voided.
+    uniqueConstraints = @UniqueConstraint(name = "PURCHASE_INVOICES_COMPANY_REFERENCE_UQ", columnNames = {"company_id", "reference_number"})
 )
 public class PurchaseInvoice {
 
@@ -71,10 +71,33 @@ public class PurchaseInvoice {
     @Column(name = "discount_percentage", nullable = false, precision = 5, scale = 2)
     private BigDecimal discountPercentage = BigDecimal.ZERO;
 
-    // Set at creation only; changing it is future Supplier Payments module work.
+    // Kept in sync with the invoice's open item by OpenItemService as supplier payments/applications post and
+    // reverse. Untracked invoices (dated before the accounting start date, or migrated) keep the value they had.
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", nullable = false, length = 20)
     private PaymentStatus paymentStatus = PaymentStatus.UNPAID;
+
+    // Stored at posting: items less header discount plus fees, rounded HALF_UP to 2 decimals (PurchaseInvoiceAmounts).
+    // ColumnDefault: lets ddl-auto=update add the NOT NULL column to existing rows (db/migrations backfills it).
+    @ColumnDefault("0")
+    @Column(name = "net_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal netAmount = BigDecimal.ZERO;
+
+    // Payment terms in days, defaulted from Supplier.termDays.
+    @ColumnDefault("0")
+    @Column(name = "term_days", nullable = false)
+    private int termDays = 0;
+
+    // invoiceDate + termDays unless overridden on the request. Null only on rows from before the accounting module.
+    @Column(name = "due_date")
+    private Instant dueDate;
+
+    // The PAYABLE CHARGE this invoice opened. Null = untracked: dated before the company's accounting start
+    // date (or no start date set yet), or written by the legacy migration — see docs/ACCOUNTING.md.
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "open_item_id", unique = true,
+        foreignKey = @ForeignKey(name = "PURCHASE_INVOICES_OPEN_ITEM_ID_FK"))
+    private OpenItem openItem;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

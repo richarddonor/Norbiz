@@ -40,6 +40,11 @@ public class TransactionDetailedReportController {
             "?sort= takes company, referenceNumber, sheetNumber, date, warehouse, counterparty, itemCode, itemName, lineNumber, quantity or voided. " +
             "Scoped to the caller's companies (SUPER_ADMIN sees all). Cost prices/amounts on purchase reports are null without VIEW_COST_PRICE.";
 
+    private static final String ACCOUNTING_DESCRIPTION = "One row per document line (memo line, payment tender, application, refund line, deposited "
+            + "item, reconciliation line, statement line) with its transaction header, newest transaction first; description says what the "
+            + "line is and amount is its amount (item fields are null). ?sort= takes company, referenceNumber, sheetNumber, date, counterparty, "
+            + "lineNumber, amount or voided. Item and warehouse filters are rejected. Scoped to the caller's companies (SUPER_ADMIN sees all).";
+
     private final TransactionDetailedReportService reportService;
 
     @Operation(summary = "Inventory Adjustment - Detailed", description = DESCRIPTION)
@@ -172,6 +177,138 @@ public class TransactionDetailedReportController {
             @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
             @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
         return report(DetailedReportType.ASSEMBLY, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Sales Invoice - Detailed", description = DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_SALES_INVOICE_DETAILED_REPORT permission")
+    @GetMapping("/sales-invoices")
+    @PreAuthorize("hasAuthority('VIEW_SALES_INVOICE_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> salesInvoices(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.SALES_INVOICE, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Customer Memo - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_CUSTOMER_MEMO_DETAILED_REPORT permission")
+    @GetMapping("/customer-memos")
+    @PreAuthorize("hasAuthority('VIEW_CUSTOMER_MEMO_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> customerMemos(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.CUSTOMER_MEMO, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Supplier Memo - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_SUPPLIER_MEMO_DETAILED_REPORT permission")
+    @GetMapping("/supplier-memos")
+    @PreAuthorize("hasAuthority('VIEW_SUPPLIER_MEMO_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> supplierMemos(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.SUPPLIER_MEMO, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Customer Payment - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_CUSTOMER_PAYMENT_DETAILED_REPORT permission")
+    @GetMapping("/customer-payments")
+    @PreAuthorize("hasAuthority('VIEW_CUSTOMER_PAYMENT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> customerPayments(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.CUSTOMER_PAYMENT, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Supplier Payment - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_SUPPLIER_PAYMENT_DETAILED_REPORT permission")
+    @GetMapping("/supplier-payments")
+    @PreAuthorize("hasAuthority('VIEW_SUPPLIER_PAYMENT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> supplierPayments(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.SUPPLIER_PAYMENT, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Customer Credit Application - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_CUSTOMER_CREDIT_APPLICATION_DETAILED_REPORT permission")
+    @GetMapping("/customer-credit-applications")
+    @PreAuthorize("hasAuthority('VIEW_CUSTOMER_CREDIT_APPLICATION_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> customerCreditApplications(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.CUSTOMER_CREDIT_APPLICATION, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Supplier Credit Application - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_SUPPLIER_CREDIT_APPLICATION_DETAILED_REPORT permission")
+    @GetMapping("/supplier-credit-applications")
+    @PreAuthorize("hasAuthority('VIEW_SUPPLIER_CREDIT_APPLICATION_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> supplierCreditApplications(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.SUPPLIER_CREDIT_APPLICATION, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Customer Refund - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_CUSTOMER_REFUND_DETAILED_REPORT permission")
+    @GetMapping("/customer-refunds")
+    @PreAuthorize("hasAuthority('VIEW_CUSTOMER_REFUND_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> customerRefunds(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.CUSTOMER_REFUND, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Supplier Refund - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_SUPPLIER_REFUND_DETAILED_REPORT permission")
+    @GetMapping("/supplier-refunds")
+    @PreAuthorize("hasAuthority('VIEW_SUPPLIER_REFUND_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> supplierRefunds(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.SUPPLIER_REFUND, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Deposit - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_DEPOSIT_DETAILED_REPORT permission")
+    @GetMapping("/deposits")
+    @PreAuthorize("hasAuthority('VIEW_DEPOSIT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> deposits(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.DEPOSIT, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Bank Reconciliation - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_BANK_RECONCILIATION_DETAILED_REPORT permission")
+    @GetMapping("/bank-reconciliations")
+    @PreAuthorize("hasAuthority('VIEW_BANK_RECONCILIATION_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> bankReconciliations(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.BANK_RECONCILIATION, userDetails, filter, pageable, totals);
+    }
+
+    @Operation(summary = "Statement of Account - Detailed", description = ACCOUNTING_DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_STATEMENT_OF_ACCOUNT_DETAILED_REPORT permission")
+    @GetMapping("/statements-of-account")
+    @PreAuthorize("hasAuthority('VIEW_STATEMENT_OF_ACCOUNT_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> statementsOfAccount(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.STATEMENT_OF_ACCOUNT, userDetails, filter, pageable, totals);
     }
 
     private ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> report(

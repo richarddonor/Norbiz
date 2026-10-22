@@ -222,6 +222,9 @@ public class DeliveryReceiptService {
         if (receipt.isLoaded() || hasLoadedQuantity) {
             throw new IllegalArgumentException("Cannot void a delivery receipt that has been received by an outlet: " + id);
         }
+        if (receipt.isBilled()) {
+            throw new IllegalArgumentException("Cannot void a delivery receipt that a Sales Invoice bills — void the invoice first: " + id);
+        }
 
         Instant now = Instant.now();
         for (DeliveryReceiptLine line : receipt.getLines()) {

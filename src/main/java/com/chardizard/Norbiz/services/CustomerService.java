@@ -95,6 +95,7 @@ public class CustomerService {
         customer.setEmail(request.getEmail());
         customer.setPhone(request.getPhone());
         customer.setActive(request.isActive());
+        customer.setTermDays(request.getTermDays());
         if (customer.getType() == CustomerType.OUTLET) {
             customer.setWarehouse(createOutletWarehouse(customer, username));
         }
@@ -127,6 +128,7 @@ public class CustomerService {
         customer.setEmail(request.getEmail());
         customer.setPhone(request.getPhone());
         customer.setActive(request.isActive());
+        customer.setTermDays(request.getTermDays());
 
         if (customer.getType() == CustomerType.OUTLET) {
             if (customer.getWarehouse() == null) {

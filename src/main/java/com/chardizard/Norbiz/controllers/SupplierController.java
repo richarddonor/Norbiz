@@ -140,6 +140,7 @@ public class SupplierController {
         res.setEmail(supplier.getEmail());
         res.setPhone(supplier.getPhone());
         res.setActive(supplier.isActive());
+        res.setTermDays(supplier.getTermDays());
         res.setCreatedAt(supplier.getCreatedAt());
         res.setUpdatedAt(supplier.getUpdatedAt());
         res.setCreatedBy(supplier.getCreatedBy());

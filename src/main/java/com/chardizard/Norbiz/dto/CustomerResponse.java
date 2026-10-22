@@ -18,6 +18,7 @@ public class CustomerResponse {
     private String email;
     private String phone;
     private boolean active;
+    private int termDays;
     // OUTLET only: the auto-created outlet warehouse.
     private Long warehouseId;
     private String warehouseName;

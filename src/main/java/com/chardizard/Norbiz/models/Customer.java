@@ -2,6 +2,7 @@ package com.chardizard.Norbiz.models;
 
 import jakarta.persistence.*;
 import lombok.Getter;
+import org.hibernate.annotations.ColumnDefault;
 import lombok.Setter;
 
 @Getter
@@ -44,6 +45,12 @@ public class Customer extends Auditable {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    // Payment terms in days (legacy tblTerms): invoices and charge memos default their due date to
+    // document date + termDays. ColumnDefault: lets ddl-auto=update add the NOT NULL column to existing rows.
+    @ColumnDefault("0")
+    @Column(name = "term_days", nullable = false)
+    private int termDays = 0;
 
     // OUTLET only: the outlet's own warehouse, auto-created by CustomerService (own identity id, not the
     // customer id). Delivery Receipts post in-transit stock here; Outlet Receipts move it to on-hand.

@@ -167,6 +167,6 @@ Report checks, any failure fails the run:
 
 ## Known limitations
 
-- **Payables:** supplier invoice payment status is derived from legacy amount paid. Payments themselves aren't migrated (Norbiz has no supplier payments module yet).
-- **Customer and supplier details** (address, TIN, terms, credit limit) and item units, colour and size have no Norbiz fields and aren't migrated.
+- **Payables/receivables:** supplier invoice payment status is derived from legacy amount paid; payments themselves aren't migrated. Migrated invoices are never tracked by the AR/AP subledger (`docs/ACCOUNTING.md`) — carry open legacy balances in as `OPENING_BALANCE` memos dated before the company's accounting start date. Legacy's auto-generated customer debit memos per ODR are not migrated.
+- **Customer and supplier details** (address, TIN, credit limit; terms now exist as `termDays` but aren't migrated) and item units, colour and size have no Norbiz fields and aren't migrated.
 - **Unmigratable documents:** receipts with no lines, and receipts whose only lines name items not on their source, can't be migrated as documents. They are logged as skipped; any stock they moved is carried by reconstructed adjustments.

@@ -67,6 +67,25 @@ final class CompanyResolver {
             case TransactionActionDefinition t -> t.getCompany().getId();
             case TransactionEvent t -> t.getCompany().getId();
             case Warehouse w -> w.getCompany().getId();
+            // AR/AP subledger (docs/ACCOUNTING.md)
+            case AccountingSettings s -> s.getCompany().getId();
+            case Bank b -> b.getCompany().getId();
+            case BankAccount a -> a.getCompany().getId();
+            case BankEntry e -> e.getCompany().getId();
+            case OpenItem o -> o.getCompany().getId();
+            case OpenItemAllocation a -> a.getCompany().getId();
+            case SalesInvoice s -> s.getCompany().getId();
+            case CustomerMemo m -> m.getCompany().getId();
+            case SupplierMemo m -> m.getCompany().getId();
+            case CustomerPayment p -> p.getCompany().getId();
+            case SupplierPayment p -> p.getCompany().getId();
+            case CustomerCreditApplication a -> a.getCompany().getId();
+            case SupplierCreditApplication a -> a.getCompany().getId();
+            case CustomerRefund r -> r.getCompany().getId();
+            case SupplierRefund r -> r.getCompany().getId();
+            case Deposit d -> d.getCompany().getId();
+            case BankReconciliation r -> r.getCompany().getId();
+            case StatementOfAccount s -> s.getCompany().getId();
             // children: resolve through the parent
             case InventoryBalance b -> b.getWarehouse().getCompany().getId();
             case InventoryAdjustmentLine l -> l.getAdjustment().getCompany().getId();
@@ -85,6 +104,18 @@ final class CompanyResolver {
             case PurchaseInvoiceLine l -> l.getPurchaseInvoice().getCompany().getId();
             case PurchaseOrderLine l -> l.getPurchaseOrder().getCompany().getId();
             case PurchaseReceiptLine l -> l.getPurchaseReceipt().getCompany().getId();
+            case SalesInvoiceLine l -> l.getSalesInvoice().getCompany().getId();
+            case CustomerMemoLine l -> l.getCustomerMemo().getCompany().getId();
+            case SupplierMemoLine l -> l.getSupplierMemo().getCompany().getId();
+            case CustomerPaymentTender t -> t.getCustomerPayment().getCompany().getId();
+            case SupplierPaymentTender t -> t.getSupplierPayment().getCompany().getId();
+            case CustomerCreditApplicationLine l -> l.getCustomerCreditApplication().getCompany().getId();
+            case SupplierCreditApplicationLine l -> l.getSupplierCreditApplication().getCompany().getId();
+            case CustomerRefundLine l -> l.getCustomerRefund().getCompany().getId();
+            case SupplierRefundLine l -> l.getSupplierRefund().getCompany().getId();
+            case DepositLine l -> l.getDeposit().getCompany().getId();
+            case BankReconciliationLine l -> l.getBankReconciliation().getCompany().getId();
+            case StatementOfAccountLine l -> l.getStatementOfAccount().getCompany().getId();
             default -> throw new IllegalStateException("No company mapping for entity " + entity.getClass().getSimpleName()
                     + " — add it to CompanyResolver");
         };

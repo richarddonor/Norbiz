@@ -102,24 +102,16 @@ public class DashboardService {
     }
 
     /**
-     * Net payable per invoice = discounted line subtotal × (1 − header discount %) + fees, the same figure the
-     * invoice response computes. Cost-based, so amounts are null without VIEW_COST_PRICE and slices rank by count.
-     * Breakdown = payment status. No quantity.
+     * Outstanding per invoice = its open item's balance (what is still owed after supplier payments and
+     * applications), or the stored net amount for invoices the subledger doesn't track. Cost-based, so amounts
+     * are null without VIEW_COST_PRICE and slices rank by count. Breakdown = payment status. No quantity.
      */
     @Transactional(readOnly = true)
     public BacklogResponse unpaidPurchaseInvoices(String username, Long companyId, LocalDate asOf, boolean canViewCostPrice) {
         LocalDate today = begin(username, companyId, asOf, DashboardWidget.UNPAID_PURCHASE_INVOICES);
-        Map<Long, BigDecimal> fees = queries.unpaidPurchaseInvoiceFees(companyId).stream()
-                .collect(Collectors.toMap(r -> ((Number) r[0]).longValue(), r -> nz((BigDecimal) r[1])));
         List<BacklogRow> rows = queries.unpaidPurchaseInvoices(companyId).stream()
-                .map(i -> {
-                    BigDecimal net = i.lineSubtotal()
-                            .multiply(BigDecimal.ONE.subtract(nz(i.headerDiscountPercentage()).movePointLeft(2)))
-                            .add(fees.getOrDefault(i.id(), BigDecimal.ZERO))
-                            .setScale(2, RoundingMode.HALF_UP);
-                    return new BacklogRow(i.id(), i.referenceNumber(), i.date(), i.supplierId(), i.supplierName(),
-                            statusLabel(i.paymentStatus()), null, null, net);
-                })
+                .map(i -> new BacklogRow(i.id(), i.referenceNumber(), i.date(), i.supplierId(), i.supplierName(),
+                        statusLabel(i.paymentStatus()), null, null, nz(i.outstanding()).setScale(2, RoundingMode.HALF_UP)))
                 .toList();
         return backlog(rows, today, LONG_AGING, canViewCostPrice ? Rank.AMOUNT : Rank.COUNT, false, canViewCostPrice, true);
     }

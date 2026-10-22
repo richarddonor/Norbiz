@@ -8,6 +8,37 @@
 -- Drop tables in reverse dependency order.
 -- CASCADE is included as a safety net for any undeclared dependencies.
 
+-- AR/AP subledger (docs/ACCOUNTING.md)
+DROP TABLE IF EXISTS statement_of_account_lines                  CASCADE;
+DROP TABLE IF EXISTS statements_of_account                       CASCADE;
+DROP TABLE IF EXISTS supplier_refund_lines                       CASCADE;
+DROP TABLE IF EXISTS supplier_refunds                            CASCADE;
+DROP TABLE IF EXISTS customer_refund_lines                       CASCADE;
+DROP TABLE IF EXISTS customer_refunds                            CASCADE;
+DROP TABLE IF EXISTS supplier_credit_application_lines           CASCADE;
+DROP TABLE IF EXISTS supplier_credit_applications                CASCADE;
+DROP TABLE IF EXISTS customer_credit_application_lines           CASCADE;
+DROP TABLE IF EXISTS customer_credit_applications                CASCADE;
+DROP TABLE IF EXISTS supplier_payment_tenders                    CASCADE;
+DROP TABLE IF EXISTS supplier_payments                           CASCADE;
+DROP TABLE IF EXISTS deposit_lines                               CASCADE;
+DROP TABLE IF EXISTS customer_payment_tenders                    CASCADE;
+DROP TABLE IF EXISTS customer_payments                           CASCADE;
+DROP TABLE IF EXISTS deposits                                    CASCADE;
+DROP TABLE IF EXISTS supplier_memo_lines                         CASCADE;
+DROP TABLE IF EXISTS supplier_memos                              CASCADE;
+DROP TABLE IF EXISTS customer_memo_lines                         CASCADE;
+DROP TABLE IF EXISTS customer_memos                              CASCADE;
+DROP TABLE IF EXISTS sales_invoice_lines                         CASCADE;
+DROP TABLE IF EXISTS sales_invoices                              CASCADE;
+DROP TABLE IF EXISTS bank_reconciliation_lines                   CASCADE;
+DROP TABLE IF EXISTS bank_entries                                CASCADE;
+DROP TABLE IF EXISTS bank_reconciliations                        CASCADE;
+DROP TABLE IF EXISTS open_item_allocations                       CASCADE;
+DROP TABLE IF EXISTS open_items                                  CASCADE;
+DROP TABLE IF EXISTS accounting_settings                         CASCADE;
+DROP TABLE IF EXISTS bank_accounts                               CASCADE;
+DROP TABLE IF EXISTS banks                                       CASCADE;
 DROP TABLE IF EXISTS user_preferences                            CASCADE;
 DROP TABLE IF EXISTS assembly_lines                              CASCADE;
 DROP TABLE IF EXISTS assemblies                                  CASCADE;

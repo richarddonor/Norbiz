@@ -89,6 +89,7 @@ public class SupplierService {
         supplier.setEmail(request.getEmail());
         supplier.setPhone(request.getPhone());
         supplier.setActive(request.isActive());
+        supplier.setTermDays(request.getTermDays());
 
         Supplier saved = supplierRepository.save(supplier);
         log.info("User '{}' created supplier '{}' (id={}) for company {}", username, saved.getName(), saved.getId(), company.getId());
@@ -110,6 +111,7 @@ public class SupplierService {
         supplier.setEmail(request.getEmail());
         supplier.setPhone(request.getPhone());
         supplier.setActive(request.isActive());
+        supplier.setTermDays(request.getTermDays());
 
         Supplier saved = supplierRepository.save(supplier);
         log.info("User '{}' updated supplier '{}' (id={})", username, saved.getName(), saved.getId());

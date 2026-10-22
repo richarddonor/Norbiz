@@ -140,6 +140,46 @@ public class DataInitializer implements CommandLineRunner {
         List<Permission> reportPermissions = new ArrayList<>(detailedReportPermissions);
         reportPermissions.addAll(dashboardWidgetPermissions);
 
+        // AR/AP subledger (docs/ACCOUNTING.md). Everything goes to SYSTEM_ADMIN and SUPER_ADMIN except the master-data
+        // deletes, which (like the other masters) are SUPER_ADMIN only.
+        List<Permission> accountingPermissions = new ArrayList<>();
+        String[][] transactions = {
+                {"SALES_INVOICE", "Sales - Sales Invoice"},
+                {"CUSTOMER_MEMO", "Accounting - Customer Memo"},
+                {"SUPPLIER_MEMO", "Accounting - Supplier Memo"},
+                {"CUSTOMER_PAYMENT", "Accounting - Customer Payment"},
+                {"SUPPLIER_PAYMENT", "Accounting - Supplier Payment"},
+                {"CUSTOMER_CREDIT_APPLICATION", "Accounting - Customer Credit Application"},
+                {"SUPPLIER_CREDIT_APPLICATION", "Accounting - Supplier Credit Application"},
+                {"CUSTOMER_REFUND", "Accounting - Customer Refund"},
+                {"SUPPLIER_REFUND", "Accounting - Supplier Refund"},
+                {"DEPOSIT", "Accounting - Deposit"},
+                {"BANK_RECONCILIATION", "Accounting - Bank Reconciliation"},
+                {"STATEMENT_OF_ACCOUNT", "Accounting - Statement of Account"}};
+        for (String[] t : transactions) {
+            accountingPermissions.add(findOrCreate("VIEW_" + t[0], t[1] + " View"));
+            accountingPermissions.add(findOrCreate("CREATE_" + t[0], t[1] + " Create"));
+            accountingPermissions.add(findOrCreate("VOID_" + t[0], t[1] + " Void"));
+        }
+        for (String[] m : new String[][]{{"BANK", "Maintenance - Bank"}, {"BANK_ACCOUNT", "Maintenance - Bank Account"}}) {
+            accountingPermissions.add(findOrCreate("VIEW_" + m[0], m[1] + " View"));
+            accountingPermissions.add(findOrCreate("CREATE_" + m[0], m[1] + " Create"));
+            accountingPermissions.add(findOrCreate("UPDATE_" + m[0], m[1] + " Update"));
+        }
+        accountingPermissions.add(findOrCreate("UPDATE_RECEIVED_CHECK_STATUS", "Accounting - Received Check Clear/Bounce"));
+        accountingPermissions.add(findOrCreate("UPDATE_ISSUED_CHECK_STATUS", "Accounting - Issued Check Clear/Cancel"));
+        accountingPermissions.add(findOrCreate("MANAGE_ACCOUNTING_SETTINGS", "Configuration - Accounting Settings Manage"));
+        accountingPermissions.add(findOrCreate("VIEW_AR_REPORT", "Reports - Accounts Receivable (aging, customer ledger, open items)"));
+        accountingPermissions.add(findOrCreate("VIEW_AP_REPORT", "Reports - Accounts Payable (aging, supplier ledger, open items)"));
+        accountingPermissions.add(findOrCreate("VIEW_BANK_BOOK", "Reports - Bank Book"));
+        List<Permission> accountingDeletePermissions = List.of(
+                findOrCreate("DELETE_BANK", "Maintenance - Bank Delete"),
+                findOrCreate("DELETE_BANK_ACCOUNT", "Maintenance - Bank Account Delete"));
+        List<Permission> systemAdminExtras = new ArrayList<>(reportPermissions);
+        systemAdminExtras.addAll(accountingPermissions);
+        List<Permission> superAdminExtras = new ArrayList<>(systemAdminExtras);
+        superAdminExtras.addAll(accountingDeletePermissions);
+
         // Roles — permissions are always synced on startup
         Role adminRole = roleRepository.findByName("ADMIN").orElseGet(() -> {
             Role r = new Role();
@@ -157,7 +197,7 @@ public class DataInitializer implements CommandLineRunner {
             return r;
         });
         systemAdminRole.setDisplayName("System Administrator");
-        systemAdminRole.setPermissions(withAll(reportPermissions,
+        systemAdminRole.setPermissions(withAll(systemAdminExtras,
                 viewUserPermission, createUserPermission, viewRolePermission,
                 viewItemPermission, createItemPermission, updateItemPermission, reindexItemImagesPermission,
                 viewBrandPermission, createBrandPermission, updateBrandPermission,
@@ -191,7 +231,7 @@ public class DataInitializer implements CommandLineRunner {
             return r;
         });
         superAdminRole.setDisplayName("Super Administrator");
-        superAdminRole.setPermissions(withAll(reportPermissions, manageSystemPermission,
+        superAdminRole.setPermissions(withAll(superAdminExtras, manageSystemPermission,
                 viewUserPermission, createUserPermission, updateUserPermission, deleteUserPermission, resetUserPasswordPermission,
                 viewRolePermission, createRolePermission, updateRolePermission, deleteRolePermission,
                 viewItemPermission, createItemPermission, updateItemPermission, deleteItemPermission, viewCostPricePermission,

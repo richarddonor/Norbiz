@@ -5,6 +5,7 @@ import com.chardizard.Norbiz.dto.PurchaseInvoiceLineRequest;
 import com.chardizard.Norbiz.dto.PurchaseInvoiceRequest;
 import com.chardizard.Norbiz.models.*;
 import com.chardizard.Norbiz.repositories.*;
+import com.chardizard.Norbiz.util.AccountingAmounts;
 import com.chardizard.Norbiz.util.DateRangeUtils;
 import com.chardizard.Norbiz.util.SpecificationUtils;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,8 @@ public class PurchaseInvoiceService {
     private final UserRepository userRepository;
     private final TransactionReferenceService transactionReferenceService;
     private final TransactionEventService transactionEventService;
+    private final AccountingSettingsService accountingSettingsService;
+    private final OpenItemService openItemService;
 
     public Page<PurchaseInvoice> findAllForUser(String username, Long warehouseId, Long supplierId, PaymentStatus paymentStatus,
                                                  Map<String, String> filters, Instant dateFrom, Instant dateTo, Pageable pageable) {
@@ -210,11 +213,21 @@ public class PurchaseInvoiceService {
             }
         }
 
+        invoice.setNetAmount(AccountingAmounts.purchaseInvoiceNet(invoice));
+        invoice.setTermDays(request.getTermDays() != null ? request.getTermDays() : supplier.getTermDays());
+        Instant dueDate = DateRangeUtils.startOfDayUtc(request.getDueDate());
+        if (dueDate != null && dueDate.isBefore(invoiceDate)) {
+            throw new IllegalArgumentException("dueDate cannot be before invoiceDate");
+        }
+        invoice.setDueDate(dueDate != null ? dueDate : AccountingAmounts.dueDate(invoiceDate, invoice.getTermDays()));
+
         // Generated last, only once validation has fully passed, to avoid burning
         // reference numbers on requests that were always going to be rejected.
         invoice.setReferenceNumber(transactionReferenceService.next(company.getId(), TRANSACTION_TYPE, REFERENCE_PREFIX));
 
         PurchaseInvoice saved = purchaseInvoiceRepository.save(invoice);
+        // Opens its payable when dated on/after the company's accounting start date (docs/ACCOUNTING.md).
+        accountingSettingsService.trackPurchaseInvoice(saved, username);
         transactionEventService.recordSystemEvent(company, TransactionType.PURCHASE_INVOICE, saved.getId(), saved.getReferenceNumber(),
                 TransactionEventType.CREATED, username, saved.getCreatedAt());
 
@@ -293,6 +306,10 @@ public class PurchaseInvoiceService {
         if (invoice.isLoaded() || hasLoadedQuantity) {
             throw new IllegalArgumentException("Cannot void a purchase invoice that has been loaded: " + id);
         }
+        // A paid (even partly) invoice can't go: void the supplier payments/applications/memos applied to it first.
+        if (invoice.getOpenItem() != null) {
+            openItemService.voidItem(invoice.getOpenItem(), username);
+        }
 
         Instant now = Instant.now();
 
@@ -317,7 +334,9 @@ public class PurchaseInvoiceService {
         invoice.setVoidedAt(now);
         invoice.setVoidedBy(username);
 
-        PurchaseInvoice saved = purchaseInvoiceRepository.save(invoice);
+        // Flushed now: the partial unique index on purchase_order_id (WHERE NOT voided) must see it voided before the
+        // same transaction invoices the PO again (Hibernate would otherwise flush that insert first).
+        PurchaseInvoice saved = purchaseInvoiceRepository.saveAndFlush(invoice);
         transactionEventService.recordSystemEvent(saved.getCompany(), TransactionType.PURCHASE_INVOICE, saved.getId(), saved.getReferenceNumber(),
                 TransactionEventType.VOIDED, username, saved.getVoidedAt());
         log.info("User '{}' voided purchase invoice (id={})", username, id);

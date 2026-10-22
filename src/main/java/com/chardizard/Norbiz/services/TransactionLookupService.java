@@ -13,6 +13,18 @@ import com.chardizard.Norbiz.repositories.PurchaseInvoiceRepository;
 import com.chardizard.Norbiz.repositories.PurchaseOrderRepository;
 import com.chardizard.Norbiz.repositories.PurchaseReceiptRepository;
 import com.chardizard.Norbiz.repositories.StockTransferRepository;
+import com.chardizard.Norbiz.repositories.SalesInvoiceRepository;
+import com.chardizard.Norbiz.repositories.CustomerMemoRepository;
+import com.chardizard.Norbiz.repositories.SupplierMemoRepository;
+import com.chardizard.Norbiz.repositories.CustomerPaymentRepository;
+import com.chardizard.Norbiz.repositories.SupplierPaymentRepository;
+import com.chardizard.Norbiz.repositories.CustomerCreditApplicationRepository;
+import com.chardizard.Norbiz.repositories.SupplierCreditApplicationRepository;
+import com.chardizard.Norbiz.repositories.CustomerRefundRepository;
+import com.chardizard.Norbiz.repositories.SupplierRefundRepository;
+import com.chardizard.Norbiz.repositories.DepositRepository;
+import com.chardizard.Norbiz.repositories.BankReconciliationRepository;
+import com.chardizard.Norbiz.repositories.StatementOfAccountRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +48,18 @@ public class TransactionLookupService {
     private final OutletPullOutRepository outletPullOutRepository;
     private final PullOutReceiptRepository pullOutReceiptRepository;
     private final AssemblyRepository assemblyRepository;
+    private final SalesInvoiceRepository salesInvoiceRepository;
+    private final CustomerMemoRepository customerMemoRepository;
+    private final SupplierMemoRepository supplierMemoRepository;
+    private final CustomerPaymentRepository customerPaymentRepository;
+    private final SupplierPaymentRepository supplierPaymentRepository;
+    private final CustomerCreditApplicationRepository customerCreditApplicationRepository;
+    private final SupplierCreditApplicationRepository supplierCreditApplicationRepository;
+    private final CustomerRefundRepository customerRefundRepository;
+    private final SupplierRefundRepository supplierRefundRepository;
+    private final DepositRepository depositRepository;
+    private final BankReconciliationRepository bankReconciliationRepository;
+    private final StatementOfAccountRepository statementOfAccountRepository;
 
     public TransactionHeader resolve(TransactionType type, Long id) {
         return switch (type) {
@@ -73,6 +97,42 @@ public class TransactionLookupService {
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case ASSEMBLY -> assemblyRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case SALES_INVOICE -> salesInvoiceRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case CUSTOMER_MEMO -> customerMemoRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case SUPPLIER_MEMO -> supplierMemoRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case CUSTOMER_PAYMENT -> customerPaymentRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case SUPPLIER_PAYMENT -> supplierPaymentRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case CUSTOMER_CREDIT_APPLICATION -> customerCreditApplicationRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case SUPPLIER_CREDIT_APPLICATION -> supplierCreditApplicationRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case CUSTOMER_REFUND -> customerRefundRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case SUPPLIER_REFUND -> supplierRefundRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case DEPOSIT -> depositRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case BANK_RECONCILIATION -> bankReconciliationRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case STATEMENT_OF_ACCOUNT -> statementOfAccountRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
         };

@@ -59,6 +59,18 @@ public class TransactionDetailedReportService {
     private final OutletPullOutLineRepository outletPullOutLineRepository;
     private final PullOutReceiptLineRepository pullOutReceiptLineRepository;
     private final AssemblyLineRepository assemblyLineRepository;
+    private final SalesInvoiceLineRepository salesInvoiceLineRepository;
+    private final CustomerMemoLineRepository customerMemoLineRepository;
+    private final SupplierMemoLineRepository supplierMemoLineRepository;
+    private final CustomerPaymentTenderRepository customerPaymentTenderRepository;
+    private final SupplierPaymentTenderRepository supplierPaymentTenderRepository;
+    private final CustomerCreditApplicationLineRepository customerCreditApplicationLineRepository;
+    private final SupplierCreditApplicationLineRepository supplierCreditApplicationLineRepository;
+    private final CustomerRefundLineRepository customerRefundLineRepository;
+    private final SupplierRefundLineRepository supplierRefundLineRepository;
+    private final DepositLineRepository depositLineRepository;
+    private final BankReconciliationLineRepository bankReconciliationLineRepository;
+    private final StatementOfAccountLineRepository statementOfAccountLineRepository;
 
     /**
      * How a line entity reaches its header's fields: the line's header association, and the header's
@@ -107,6 +119,108 @@ public class TransactionDetailedReportService {
             case ASSEMBLY -> query(assemblyLineRepository,
                     new Shape("assembly", "assemblyDate", "remarks", null, null),
                     type, username, filter, pageable, this::fromAssembly);
+            case SALES_INVOICE -> query(salesInvoiceLineRepository,
+                    new Shape("salesInvoice", "invoiceDate", "remarks", "customer", null, "deliveryReceipt"),
+                    type, username, filter, pageable, this::fromSalesInvoice);
+            // Accounting documents have no items or warehouse: one row per memo line / tender / application / ...
+            case CUSTOMER_MEMO -> queryAmounts(customerMemoLineRepository,
+                    new Shape("customerMemo", "memoDate", "remarks", "customer", null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getCustomerMemo().getId(), l.getCustomerMemo().getCompany(),
+                            l.getCustomerMemo().getReferenceNumber(), l.getCustomerMemo().getSheetNumber(), l.getCustomerMemo().getMemoDate(),
+                            l.getCustomerMemo().getRemarks(), l.getCustomerMemo().isVoided(), l.getCustomerMemo().getVoidedAt(),
+                            l.getCustomerMemo().getVoidedBy(), l.getCustomerMemo().getCreatedAt(), l.getCustomerMemo().getCreatedBy(),
+                            l.getCustomerMemo().getOrigin(), l.getCustomerMemo().getCustomer().getId(), l.getCustomerMemo().getCustomer().getName(),
+                            l.getCustomerMemo().getMemoType() + " " + l.getCustomerMemo().getReason() + ": " + l.getDescription(),
+                            l.getCustomerMemo().getMemoType() == MemoType.DEBIT ? l.getAmount() : l.getAmount().negate()));
+            case SUPPLIER_MEMO -> queryAmounts(supplierMemoLineRepository,
+                    new Shape("supplierMemo", "memoDate", "remarks", "supplier", null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getSupplierMemo().getId(), l.getSupplierMemo().getCompany(),
+                            l.getSupplierMemo().getReferenceNumber(), l.getSupplierMemo().getSheetNumber(), l.getSupplierMemo().getMemoDate(),
+                            l.getSupplierMemo().getRemarks(), l.getSupplierMemo().isVoided(), l.getSupplierMemo().getVoidedAt(),
+                            l.getSupplierMemo().getVoidedBy(), l.getSupplierMemo().getCreatedAt(), l.getSupplierMemo().getCreatedBy(),
+                            l.getSupplierMemo().getOrigin(), l.getSupplierMemo().getSupplier().getId(), l.getSupplierMemo().getSupplier().getName(),
+                            l.getSupplierMemo().getMemoType() + " " + l.getSupplierMemo().getReason() + ": " + l.getDescription(),
+                            l.getSupplierMemo().getMemoType() == MemoType.CREDIT ? l.getAmount() : l.getAmount().negate()));
+            case CUSTOMER_PAYMENT -> queryAmounts(customerPaymentTenderRepository,
+                    new Shape("customerPayment", "paymentDate", "remarks", "customer", null), type, username, filter, pageable,
+                    t -> amountRow(t.getId(), t.getLineNumber(), t.getCustomerPayment().getId(), t.getCustomerPayment().getCompany(),
+                            t.getCustomerPayment().getReferenceNumber(), t.getCustomerPayment().getSheetNumber(), t.getCustomerPayment().getPaymentDate(),
+                            t.getCustomerPayment().getRemarks(), t.getCustomerPayment().isVoided(), t.getCustomerPayment().getVoidedAt(),
+                            t.getCustomerPayment().getVoidedBy(), t.getCustomerPayment().getCreatedAt(), t.getCustomerPayment().getCreatedBy(),
+                            t.getCustomerPayment().getOrigin(), t.getCustomerPayment().getCustomer().getId(), t.getCustomerPayment().getCustomer().getName(),
+                            t.getMode() + (t.getCheckNumber() != null ? " #" + t.getCheckNumber() : "") + " (" + t.getStatus() + ")", t.getAmount()));
+            case SUPPLIER_PAYMENT -> queryAmounts(supplierPaymentTenderRepository,
+                    new Shape("supplierPayment", "paymentDate", "remarks", "supplier", null), type, username, filter, pageable,
+                    t -> amountRow(t.getId(), t.getLineNumber(), t.getSupplierPayment().getId(), t.getSupplierPayment().getCompany(),
+                            t.getSupplierPayment().getReferenceNumber(), t.getSupplierPayment().getSheetNumber(), t.getSupplierPayment().getPaymentDate(),
+                            t.getSupplierPayment().getRemarks(), t.getSupplierPayment().isVoided(), t.getSupplierPayment().getVoidedAt(),
+                            t.getSupplierPayment().getVoidedBy(), t.getSupplierPayment().getCreatedAt(), t.getSupplierPayment().getCreatedBy(),
+                            t.getSupplierPayment().getOrigin(), t.getSupplierPayment().getSupplier().getId(), t.getSupplierPayment().getSupplier().getName(),
+                            t.getMode() + (t.getCheckNumber() != null ? " #" + t.getCheckNumber() : "") + " (" + t.getStatus() + ")", t.getAmount()));
+            case CUSTOMER_CREDIT_APPLICATION -> queryAmounts(customerCreditApplicationLineRepository,
+                    new Shape("customerCreditApplication", "applicationDate", "remarks", "customer", null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getCustomerCreditApplication().getId(), l.getCustomerCreditApplication().getCompany(),
+                            l.getCustomerCreditApplication().getReferenceNumber(), l.getCustomerCreditApplication().getSheetNumber(),
+                            l.getCustomerCreditApplication().getApplicationDate(), l.getCustomerCreditApplication().getRemarks(),
+                            l.getCustomerCreditApplication().isVoided(), l.getCustomerCreditApplication().getVoidedAt(),
+                            l.getCustomerCreditApplication().getVoidedBy(), l.getCustomerCreditApplication().getCreatedAt(),
+                            l.getCustomerCreditApplication().getCreatedBy(), l.getCustomerCreditApplication().getOrigin(),
+                            l.getCustomerCreditApplication().getCustomer().getId(), l.getCustomerCreditApplication().getCustomer().getName(),
+                            l.getCreditItem().getReferenceNumber() + " → " + l.getChargeItem().getReferenceNumber(), l.getAmount()));
+            case SUPPLIER_CREDIT_APPLICATION -> queryAmounts(supplierCreditApplicationLineRepository,
+                    new Shape("supplierCreditApplication", "applicationDate", "remarks", "supplier", null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getSupplierCreditApplication().getId(), l.getSupplierCreditApplication().getCompany(),
+                            l.getSupplierCreditApplication().getReferenceNumber(), l.getSupplierCreditApplication().getSheetNumber(),
+                            l.getSupplierCreditApplication().getApplicationDate(), l.getSupplierCreditApplication().getRemarks(),
+                            l.getSupplierCreditApplication().isVoided(), l.getSupplierCreditApplication().getVoidedAt(),
+                            l.getSupplierCreditApplication().getVoidedBy(), l.getSupplierCreditApplication().getCreatedAt(),
+                            l.getSupplierCreditApplication().getCreatedBy(), l.getSupplierCreditApplication().getOrigin(),
+                            l.getSupplierCreditApplication().getSupplier().getId(), l.getSupplierCreditApplication().getSupplier().getName(),
+                            l.getCreditItem().getReferenceNumber() + " → " + l.getChargeItem().getReferenceNumber(), l.getAmount()));
+            case CUSTOMER_REFUND -> queryAmounts(customerRefundLineRepository,
+                    new Shape("customerRefund", "refundDate", "remarks", "customer", null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getCustomerRefund().getId(), l.getCustomerRefund().getCompany(),
+                            l.getCustomerRefund().getReferenceNumber(), l.getCustomerRefund().getSheetNumber(), l.getCustomerRefund().getRefundDate(),
+                            l.getCustomerRefund().getRemarks(), l.getCustomerRefund().isVoided(), l.getCustomerRefund().getVoidedAt(),
+                            l.getCustomerRefund().getVoidedBy(), l.getCustomerRefund().getCreatedAt(), l.getCustomerRefund().getCreatedBy(),
+                            l.getCustomerRefund().getOrigin(), l.getCustomerRefund().getCustomer().getId(), l.getCustomerRefund().getCustomer().getName(),
+                            "Refund of " + l.getCreditItem().getReferenceNumber(), l.getAmount()));
+            case SUPPLIER_REFUND -> queryAmounts(supplierRefundLineRepository,
+                    new Shape("supplierRefund", "refundDate", "remarks", "supplier", null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getSupplierRefund().getId(), l.getSupplierRefund().getCompany(),
+                            l.getSupplierRefund().getReferenceNumber(), l.getSupplierRefund().getSheetNumber(), l.getSupplierRefund().getRefundDate(),
+                            l.getSupplierRefund().getRemarks(), l.getSupplierRefund().isVoided(), l.getSupplierRefund().getVoidedAt(),
+                            l.getSupplierRefund().getVoidedBy(), l.getSupplierRefund().getCreatedAt(), l.getSupplierRefund().getCreatedBy(),
+                            l.getSupplierRefund().getOrigin(), l.getSupplierRefund().getSupplier().getId(), l.getSupplierRefund().getSupplier().getName(),
+                            "Refund of " + l.getCreditItem().getReferenceNumber(), l.getAmount()));
+            case DEPOSIT -> queryAmounts(depositLineRepository,
+                    new Shape("deposit", "depositDate", "remarks", null, null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getDeposit().getId(), l.getDeposit().getCompany(),
+                            l.getDeposit().getReferenceNumber(), l.getDeposit().getSheetNumber(), l.getDeposit().getDepositDate(),
+                            l.getDeposit().getRemarks(), l.getDeposit().isVoided(), l.getDeposit().getVoidedAt(), l.getDeposit().getVoidedBy(),
+                            l.getDeposit().getCreatedAt(), l.getDeposit().getCreatedBy(), l.getDeposit().getOrigin(),
+                            l.getTender().getCustomerPayment().getCustomer().getId(), l.getTender().getCustomerPayment().getCustomer().getName(),
+                            l.getTender().getMode() + (l.getTender().getCheckNumber() != null ? " #" + l.getTender().getCheckNumber() : "")
+                                    + " of " + l.getTender().getCustomerPayment().getReferenceNumber(), l.getAmount()));
+            case BANK_RECONCILIATION -> queryAmounts(bankReconciliationLineRepository,
+                    new Shape("bankReconciliation", "statementDate", "remarks", null, null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getBankReconciliation().getId(), l.getBankReconciliation().getCompany(),
+                            l.getBankReconciliation().getReferenceNumber(), l.getBankReconciliation().getSheetNumber(),
+                            l.getBankReconciliation().getStatementDate(), l.getBankReconciliation().getRemarks(), l.getBankReconciliation().isVoided(),
+                            l.getBankReconciliation().getVoidedAt(), l.getBankReconciliation().getVoidedBy(), l.getBankReconciliation().getCreatedAt(),
+                            l.getBankReconciliation().getCreatedBy(), l.getBankReconciliation().getOrigin(), null, null,
+                            (l.getKind() == BankReconciliationLineKind.ADJUSTMENT ? l.getAdjustmentType() + ": " : l.getReferenceNumber() + " ")
+                                    + (l.getCheckNumber() != null ? "#" + l.getCheckNumber() + " " : "") + (l.getDescription() != null ? l.getDescription() : ""),
+                            l.getAmount()));
+            case STATEMENT_OF_ACCOUNT -> queryAmounts(statementOfAccountLineRepository,
+                    new Shape("statementOfAccount", "statementDate", "remarks", "customer", null), type, username, filter, pageable,
+                    l -> amountRow(l.getId(), l.getLineNumber(), l.getStatementOfAccount().getId(), l.getStatementOfAccount().getCompany(),
+                            l.getStatementOfAccount().getReferenceNumber(), l.getStatementOfAccount().getSheetNumber(),
+                            l.getStatementOfAccount().getStatementDate(), l.getStatementOfAccount().getRemarks(), l.getStatementOfAccount().isVoided(),
+                            l.getStatementOfAccount().getVoidedAt(), l.getStatementOfAccount().getVoidedBy(), l.getStatementOfAccount().getCreatedAt(),
+                            l.getStatementOfAccount().getCreatedBy(), l.getStatementOfAccount().getOrigin(),
+                            l.getStatementOfAccount().getCustomer().getId(), l.getStatementOfAccount().getCustomer().getName(),
+                            l.getReferenceNumber() + (l.getDaysOverdue() > 0 ? " (" + l.getDaysOverdue() + " days overdue)" : ""), l.getBalance()));
         };
     }
 
@@ -163,6 +277,67 @@ public class TransactionDetailedReportService {
         Sort sort = ListSort.resolve(pageable.getSort(), sortable(shape)).and(Sort.by(
                 Sort.Order.desc(shape.header() + ".createdAt"),
                 Sort.Order.desc(shape.header() + ".id"),
+                Sort.Order.asc("lineNumber"),
+                Sort.Order.asc("id")));
+        Pageable sorted = pageable.isPaged()
+                ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort)
+                : Pageable.unpaged(sort);
+        return repository.findAll(spec, sorted).map(mapper);
+    }
+
+    /**
+     * Like {@link #query} for the accounting documents, whose lines have no item and whose header has no warehouse:
+     * item/warehouse filters are rejected, and amount (not quantity) is sortable.
+     */
+    private <L> Page<TransactionDetailedReportRow> queryAmounts(JpaSpecificationExecutor<L> repository, Shape shape,
+                                                                DetailedReportType type, String username, DetailedReportFilter f,
+                                                                Pageable pageable, Function<L, TransactionDetailedReportRow> mapper) {
+        rejectInapplicableFilters(shape, type, f);
+        if (f.getWarehouseId() != null || f.getItemId() != null || StringUtils.hasText(f.getWarehouse())
+                || StringUtils.hasText(f.getItemCode()) || StringUtils.hasText(f.getItemName())) {
+            throw new IllegalArgumentException("Item and warehouse filters do not apply to " + type.getDisplayName());
+        }
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
+        boolean isSuperAdmin = user.getRoles().stream().anyMatch(r -> r.getName().equals("SUPER_ADMIN"));
+        List<Long> companyIds = isSuperAdmin ? null : user.getCompanies().stream().map(Company::getId).toList();
+        if (companyIds != null && companyIds.isEmpty()) return Page.empty(pageable);
+
+        Instant dateFrom = DateRangeUtils.startOfDayUtc(f.getDateFrom());
+        Instant dateTo = DateRangeUtils.endOfDayUtc(f.getDateTo());
+        Long counterpartyId = f.getSupplierId() != null ? f.getSupplierId() : f.getCustomerId();
+
+        Specification<L> spec = (root, query, cb) -> {
+            From<?, ?> header = root.join(shape.header());
+            List<Predicate> predicates = new ArrayList<>();
+            if (companyIds != null) predicates.add(header.get("company").get("id").in(companyIds));
+            if (counterpartyId != null) predicates.add(cb.equal(header.get(shape.counterparty()).get("id"), counterpartyId));
+            if (f.getVoided() != null) predicates.add(cb.equal(header.get("voided"), f.getVoided()));
+            if (f.getOrigin() != null) predicates.add(cb.equal(header.get("origin"), f.getOrigin()));
+            if (dateFrom != null) predicates.add(cb.greaterThanOrEqualTo(header.<Instant>get(shape.date()), dateFrom));
+            if (dateTo != null) predicates.add(cb.lessThanOrEqualTo(header.<Instant>get(shape.date()), dateTo));
+            addContains(cb, predicates, f.getReferenceNumber(), header.get("referenceNumber"));
+            addContains(cb, predicates, f.getSheetNumber(), header.get("sheetNumber"));
+            addContains(cb, predicates, f.getRemarks(), header.get(shape.remarks()));
+            if (StringUtils.hasText(f.getCounterparty())) {
+                addContains(cb, predicates, f.getCounterparty(), header.get(shape.counterparty()).get("name"));
+            }
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+
+        String h = shape.header() + ".";
+        Map<String, String> sortable = new HashMap<>(ListSort.fields(
+                "company", h + "company.name",
+                "referenceNumber", h + "referenceNumber",
+                "sheetNumber", h + "sheetNumber",
+                "date", h + shape.date(),
+                "lineNumber", "lineNumber",
+                "amount", "amount",
+                "voided", h + "voided"));
+        if (shape.counterparty() != null) sortable.put("counterparty", h + shape.counterparty() + ".name");
+        Sort sort = ListSort.resolve(pageable.getSort(), sortable).and(Sort.by(
+                Sort.Order.desc(h + "createdAt"),
+                Sort.Order.desc(h + "id"),
                 Sort.Order.asc("lineNumber"),
                 Sort.Order.asc("id")));
         Pageable sorted = pageable.isPaged()
@@ -356,6 +531,43 @@ public class TransactionDetailedReportService {
         TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), quantity, line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getAssemblyDate(), h.getWarehouse(), h.getRemarks());
         status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
+        return row;
+    }
+
+    private TransactionDetailedReportRow fromSalesInvoice(SalesInvoiceLine line) {
+        SalesInvoice h = line.getSalesInvoice();
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), BigDecimal.ZERO);
+        header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getInvoiceDate(), h.getWarehouse(), h.getRemarks());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
+        row.setCounterpartyId(h.getCustomer().getId());
+        row.setCounterpartyName(h.getCustomer().getName());
+        if (h.getDeliveryReceipt() != null) row.setSourceReferenceNumber(h.getDeliveryReceipt().getReferenceNumber());
+        row.setDiscountPercentage(line.getDiscountPercentage());
+        price(row, line.getUnitPrice(), line.getDiscountPercentage());
+        return row;
+    }
+
+    // One accounting-document line: header fields, the counterparty (null for deposits/reconciliations), a description
+    // and a signed amount (memos: negative when it lowers the balance).
+    private static TransactionDetailedReportRow amountRow(Long id, Integer lineNumber, Long transactionId, Company company, String referenceNumber,
+                                                          String sheetNumber, Instant date, String remarks, boolean voided, Instant voidedAt,
+                                                          String voidedBy, Instant createdAt, String createdBy, TransactionOrigin origin,
+                                                          Long counterpartyId, String counterpartyName, String description, BigDecimal amount) {
+        TransactionDetailedReportRow row = new TransactionDetailedReportRow();
+        row.setId(id);
+        row.setLineNumber(lineNumber);
+        row.setTransactionId(transactionId);
+        row.setCompanyId(company.getId());
+        row.setCompanyName(company.getName());
+        row.setReferenceNumber(referenceNumber);
+        row.setSheetNumber(sheetNumber);
+        row.setTransactionDate(date);
+        row.setRemarks(remarks);
+        status(row, voided, voidedAt, voidedBy, createdAt, createdBy, origin);
+        row.setCounterpartyId(counterpartyId);
+        row.setCounterpartyName(counterpartyName);
+        row.setDescription(description != null && description.length() > 255 ? description.substring(0, 255) : description);
+        row.setAmount(amount);
         return row;
     }
 

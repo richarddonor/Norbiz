@@ -165,6 +165,13 @@ public class PurchaseInvoiceController {
         res.setRemarks(invoice.getRemarks());
         res.setDiscountPercentage(invoice.getDiscountPercentage());
         res.setPaymentStatus(invoice.getPaymentStatus());
+        res.setTermDays(invoice.getTermDays());
+        res.setDueDate(invoice.getDueDate());
+        res.setTracked(invoice.getOpenItem() != null);
+        if (invoice.getOpenItem() != null) {
+            res.setBalance(invoice.getOpenItem().getBalance());
+            res.setPendingAmount(invoice.getOpenItem().getPendingAmount());
+        }
         res.setCreatedAt(invoice.getCreatedAt());
         res.setCreatedBy(invoice.getCreatedBy());
         res.setVoided(invoice.isVoided());
@@ -189,7 +196,8 @@ public class PurchaseInvoiceController {
                     .divide(BigDecimal.valueOf(100));
             res.setItemsSubtotal(itemsSubtotal);
             res.setDiscountAmount(discountAmount);
-            res.setNetPayable(itemsSubtotal.subtract(discountAmount).add(feesTotal));
+            // The figure stored at posting (rounded to 2 decimals) — the same one the payable was opened for.
+            res.setNetPayable(invoice.getNetAmount());
         }
 
         return res;

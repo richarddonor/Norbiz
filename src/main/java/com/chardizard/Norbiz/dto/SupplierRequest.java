@@ -1,6 +1,8 @@
 package com.chardizard.Norbiz.dto;
 
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -29,4 +31,9 @@ public class SupplierRequest {
     private String phone;
 
     private boolean active = true;
+
+    // Payment terms in days (due date = document date + termDays); defaults to 0 (due on the document date).
+    @Min(0)
+    @Max(365)
+    private int termDays;
 }

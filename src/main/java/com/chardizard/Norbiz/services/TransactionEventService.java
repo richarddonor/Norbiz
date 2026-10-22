@@ -37,6 +37,13 @@ public class TransactionEventService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordSystemEvent(Company company, TransactionType type, Long transactionId, String referenceNumber,
                                   TransactionEventType eventType, String username, Instant performedAt) {
+        recordSystemEvent(company, type, transactionId, referenceNumber, eventType, username, performedAt, null);
+    }
+
+    // remarks: what changed, for STATUS_CHANGED events (e.g. "Check #1234 BOUNCED (DAIF)").
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordSystemEvent(Company company, TransactionType type, Long transactionId, String referenceNumber,
+                                  TransactionEventType eventType, String username, Instant performedAt, String remarks) {
         if (eventType == TransactionEventType.ACTION) {
             throw new IllegalArgumentException("ACTION events must be recorded through takeAction");
         }
@@ -48,6 +55,7 @@ public class TransactionEventService {
         event.setEventType(eventType);
         event.setPerformedBy(username);
         event.setPerformedAt(performedAt);
+        event.setRemarks(remarks);
         transactionEventRepository.save(event);
     }
 

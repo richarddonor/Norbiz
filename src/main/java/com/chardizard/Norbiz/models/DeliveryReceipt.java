@@ -87,6 +87,12 @@ public class DeliveryReceipt {
     @Column(nullable = false)
     private boolean loaded = false;
 
+    // True while a non-voided Sales Invoice bills this receipt (plain-customer DRs only). Separate from loaded,
+    // which tracks Outlet Receipt. ColumnDefault: lets ddl-auto=update add the NOT NULL column to existing rows.
+    @ColumnDefault("false")
+    @Column(nullable = false)
+    private boolean billed = false;
+
     // NATIVE for everything posted through the API; MIGRATED/RECONSTRUCTED only from the legacy migration loader.
     // ColumnDefault: lets ddl-auto=update add the NOT NULL column to existing rows.
     @ColumnDefault("'NATIVE'")

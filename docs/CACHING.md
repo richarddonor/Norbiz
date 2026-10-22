@@ -7,7 +7,7 @@ Lookup (`/lookups/*`) and master-data list endpoints are served through a read-t
 | Cached | Not cached |
 |---|---|
 | Every company-scoped `/lookups/*` list, plus users and roles lookups (`LookupService.search` and friends) | `/lookups/*/{id}` (primary-key reads) |
-| Master-data lists: brands, item categories, items, item SKUs, warehouses, suppliers, customers, employees, document templates, transaction action definitions, roles, permissions, users | Single-record `GET /{id}` detail endpoints |
+| Master-data lists: brands, item categories, items, item SKUs, warehouses, suppliers, customers, banks, bank accounts, employees, document templates, transaction action definitions, roles, permissions, users | Single-record `GET /{id}` detail endpoints; `/lookups/open-items` (balances change with every posting) |
 | | Transaction lists (PO/PI/PR/adjustments/events), inventory balances, audit logs, anything under `/auth/**` (phase 2 candidates, except audit/auth) |
 
 Only response DTOs are cached, never entities.

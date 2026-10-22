@@ -18,6 +18,11 @@ public final class DateRangeUtils {
         return LocalDate.parse(isoDate.trim()).atStartOfDay(ZoneOffset.UTC).toInstant();
     }
 
+    /** Today's business date (server time zone) as its UTC-midnight instant, like the dates documents carry. */
+    public static Instant today() {
+        return LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant();
+    }
+
     public static Instant endOfDayUtc(String isoDate) {
         if (!StringUtils.hasText(isoDate)) return null;
         return LocalDate.parse(isoDate.trim()).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusMillis(1);

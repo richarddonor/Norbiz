@@ -144,6 +144,7 @@ public class CustomerController {
         res.setEmail(customer.getEmail());
         res.setPhone(customer.getPhone());
         res.setActive(customer.isActive());
+        res.setTermDays(customer.getTermDays());
         if (customer.getWarehouse() != null) {
             res.setWarehouseId(customer.getWarehouse().getId());
             res.setWarehouseName(customer.getWarehouse().getName());

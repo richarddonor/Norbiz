@@ -38,6 +38,17 @@ Company ──< TransactionActionDefinition (per transactionType; ──< prereq
 Company ──< TransactionEvent (append-only history keyed by transactionType+transactionId: CREATED / VOIDED / ACTION ──> TransactionActionDefinition)
 User ──< Role (many-to-many) ──< Permission (many-to-many)
 AuditLog  (append-only, references entities by type+id strings)
+
+AR/AP subledger (docs/ACCOUNTING.md):
+Company ──< Bank ──< BankAccount ──< BankEntry (signed book; cleared by BankReconciliation)
+Company ── AccountingSettings (start date)
+Company ──< OpenItem (customer XOR supplier; CHARGE | CREDIT) ──< OpenItemAllocation (credit item → charge item)
+SalesInvoice / PurchaseInvoice / CustomerMemo / SupplierMemo / CustomerRefund / SupplierRefund ── OpenItem (1:1)
+CustomerPayment ──< CustomerPaymentTender ── OpenItem (CREDIT)   ;  SupplierPayment ──< SupplierPaymentTender ── OpenItem
+Customer/SupplierCreditApplication ──< lines (credit OpenItem, charge OpenItem)
+Deposit ──< DepositLine >── CustomerPaymentTender ; BankReconciliation ──< BankReconciliationLine >── BankEntry
+StatementOfAccount ──< StatementOfAccountLine >── OpenItem
+SalesInvoice >── DeliveryReceipt (optional, billed in full)
 ```
 
 `PriceType` enum: `UNIT_PRICE`, `COST_PRICE`, `FOCAL_PRICE`, `MARKDOWN_PRICE`.

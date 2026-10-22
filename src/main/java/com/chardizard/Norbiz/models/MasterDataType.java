@@ -15,6 +15,8 @@ public enum MasterDataType {
     CUSTOMER("Customer", "VIEW_CUSTOMER"),
     PULL_OUT_REASON("PullOutReason", "VIEW_PULL_OUT_REASON"),
     BILL_OF_MATERIAL("BillOfMaterial", "VIEW_BILL_OF_MATERIAL"),
+    BANK("Bank", "VIEW_BANK"),
+    BANK_ACCOUNT("BankAccount", "VIEW_BANK_ACCOUNT"),
     USER("User", "VIEW_USER");
 
     private final String entityType;

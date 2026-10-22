@@ -37,10 +37,12 @@ Data in Norbiz is divided into two main categories: Master and Transactional (se
 
 ## Suppliers
 - These are entities where we buy goods or avail services
+- `termDays` (0–365, default 0): payment terms; a Purchase Invoice's due date defaults to invoice date + terms (`docs/ACCOUNTING.md`).
 
 ## Customers
 - Customers are entities we sell our goods or Outlets where we consign our products for selling
 - There are two Customers: Customers (Direct buyers of products) and Outlets (Branches where we deliver our goods for selling)
+- `termDays` (0–365, default 0): payment terms; a Sales Invoice's / debit memo's due date defaults to its date + terms.
 - Outlets maintain their own inventory count. So it is important the inventory side-by-side with the warehouses our main warehouse monitor
 
 **Implementation notes** (outlet warehouse):
@@ -64,3 +66,10 @@ Data in Norbiz is divided into two main categories: Master and Transactional (se
 - Components are replaced wholesale on update (cleared and re-added); the change history diffs them by line position.
 - An Assembly output may name the BOM it was built from (the BOM must produce that item). A BOM referenced by any assembly can't be deleted (`ENTITY_IN_USE`); deactivate it instead.
 - Endpoints `/bills-of-materials` (VIEW_/CREATE_/UPDATE_/DELETE_BILL_OF_MATERIAL), dropdown `/lookups/bills-of-materials` (carries the components).
+
+## Banks and Bank Accounts
+- **Banks** (`/banks`, `VIEW_/CREATE_/UPDATE_/DELETE_BANK`): code (unique per company) and name — the drawee bank of a
+  received check, and the bank behind each of our accounts.
+- **Bank Accounts** (`/bank-accounts`, `…_BANK_ACCOUNT`): the company's own accounts (bank, name, account number unique per
+  company, opening balance + date). Deposits, our checks and transfers post to their book; Bank Reconciliation reconciles
+  them. See `docs/ACCOUNTING.md`.

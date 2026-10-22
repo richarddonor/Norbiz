@@ -42,6 +42,9 @@ public class TransactionDetailedReportRow {
     private String createdBy;
 
     private Integer lineNumber;
+    // Accounting reports (memos, payments, applications, refunds, deposits, reconciliations, statements): what the
+    // line is — item fields, quantity and price are null for them; amount is the line's amount.
+    private String description;
     private Long itemId;
     private String itemCode;
     private String itemName;

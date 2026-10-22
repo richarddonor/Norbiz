@@ -67,38 +67,27 @@ public class DashboardQueries {
                 """, companyId);
     }
 
-    /** A not-yet-PAID invoice: discounted line subtotal, header discount % and fees, combined by the caller. */
+    /**
+     * A not-yet-PAID invoice with what is still owed on it: the open item's balance when the invoice is tracked
+     * by the AR/AP subledger, else its stored net amount (untracked: pre-start-date or migrated).
+     */
     public record InvoiceRow(Long id, String referenceNumber, Instant date, Long supplierId, String supplierName,
-                             String paymentStatus, BigDecimal lineSubtotal, BigDecimal headerDiscountPercentage) {
+                             String paymentStatus, BigDecimal outstanding) {
     }
 
     public List<InvoiceRow> unpaidPurchaseInvoices(Long companyId) {
         return em.createQuery("""
                         SELECT pi.id, pi.referenceNumber, pi.invoiceDate, s.id, s.name, pi.paymentStatus,
-                               COALESCE(SUM(l.quantity * l.costPrice * (1 - l.discountPercentage / 100)), 0), pi.discountPercentage
-                        FROM PurchaseInvoice pi JOIN pi.supplier s LEFT JOIN pi.lines l
+                               COALESCE(oi.balance, pi.netAmount)
+                        FROM PurchaseInvoice pi JOIN pi.supplier s LEFT JOIN pi.openItem oi
                         WHERE pi.company.id = :companyId AND pi.voided = false
                           AND pi.paymentStatus <> com.chardizard.Norbiz.models.PaymentStatus.PAID
-                        GROUP BY pi.id, pi.referenceNumber, pi.invoiceDate, s.id, s.name, pi.paymentStatus, pi.discountPercentage
                         """, Tuple.class)
                 .setParameter("companyId", companyId)
                 .getResultList().stream()
                 .map(t -> new InvoiceRow(lng(t.get(0)), (String) t.get(1), (Instant) t.get(2), lng(t.get(3)), (String) t.get(4),
-                        String.valueOf(t.get(5)), bd(t.get(6)), bd(t.get(7))))
+                        String.valueOf(t.get(5)), bd(t.get(6))))
                 .toList();
-    }
-
-    /** Fee totals per not-yet-PAID invoice: {invoiceId, total}. */
-    public List<Object[]> unpaidPurchaseInvoiceFees(Long companyId) {
-        return em.createQuery("""
-                        SELECT pi.id, SUM(f.amount)
-                        FROM PurchaseInvoiceFee f JOIN f.purchaseInvoice pi
-                        WHERE pi.company.id = :companyId AND pi.voided = false
-                          AND pi.paymentStatus <> com.chardizard.Norbiz.models.PaymentStatus.PAID
-                        GROUP BY pi.id
-                        """, Object[].class)
-                .setParameter("companyId", companyId)
-                .getResultList();
     }
 
     private List<BacklogRow> backlog(String jpql, Long companyId) {

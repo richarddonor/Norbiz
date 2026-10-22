@@ -30,6 +30,10 @@ public enum CacheRegion {
     LOOKUP_OUTLET_PULL_OUT(Kind.LOOKUP, OutletPullOut.class, OutletPullOutLine.class, Item.class, Customer.class, Warehouse.class),
     LOOKUP_PULL_OUT_REASON(Kind.LOOKUP, PullOutReason.class),
     LOOKUP_BILL_OF_MATERIAL(Kind.LOOKUP, BillOfMaterial.class, BillOfMaterialLine.class, Item.class),
+    LOOKUP_BANK(Kind.LOOKUP, Bank.class),
+    LOOKUP_BANK_ACCOUNT(Kind.LOOKUP, BankAccount.class, Bank.class),
+    // Plain-customer Delivery Receipts a Sales Invoice can still bill (not voided, not billed).
+    LOOKUP_BILLABLE_DELIVERY_RECEIPT(Kind.LOOKUP, DeliveryReceipt.class, DeliveryReceiptLine.class, Item.class, Customer.class, Warehouse.class),
 
     // ---- master-data list endpoints ----
     LIST_BRAND(Kind.LIST, Brand.class, Company.class),
@@ -41,6 +45,8 @@ public enum CacheRegion {
     LIST_ITEM_SKU(Kind.LIST, ItemSku.class, Item.class, ItemCategory.class, Brand.class),
     LIST_WAREHOUSE(Kind.LIST, Warehouse.class, Company.class),
     LIST_SUPPLIER(Kind.LIST, Supplier.class, Company.class),
+    LIST_BANK(Kind.LIST, Bank.class, Company.class),
+    LIST_BANK_ACCOUNT(Kind.LIST, BankAccount.class, Bank.class, Company.class),
     LIST_CUSTOMER(Kind.LIST, Customer.class, Company.class, Warehouse.class),
     LIST_EMPLOYEE(Kind.LIST, Employee.class, User.class, Company.class),
     LIST_DOCUMENT_TEMPLATE(Kind.LIST, DocumentTemplate.class, Company.class),

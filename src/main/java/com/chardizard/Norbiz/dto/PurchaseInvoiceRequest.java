@@ -3,7 +3,10 @@ package com.chardizard.Norbiz.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -42,6 +45,15 @@ public class PurchaseInvoiceRequest {
     @DecimalMin(value = "0")
     @DecimalMax(value = "100")
     private BigDecimal discountPercentage;
+
+    // Payment terms in days; defaults to the supplier's termDays.
+    @Min(0)
+    @Max(365)
+    private Integer termDays;
+
+    // yyyy-MM-dd; defaults to invoiceDate + termDays.
+    @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}$", message = "must be yyyy-MM-dd")
+    private String dueDate;
 
     @Valid
     private List<PurchaseInvoiceFeeRequest> fees;

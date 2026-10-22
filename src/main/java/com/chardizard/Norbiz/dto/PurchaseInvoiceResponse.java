@@ -36,6 +36,13 @@ public class PurchaseInvoiceResponse {
     // (itemsSubtotal - discountAmount) + feesTotal. Null when the caller lacks VIEW_COST_PRICE.
     private BigDecimal netPayable;
     private PaymentStatus paymentStatus;
+    private int termDays;
+    private Instant dueDate;
+    // True when the AR/AP subledger tracks this invoice (posted through Norbiz on/after the accounting start date).
+    private boolean tracked;
+    // Tracked invoices only: what is still owed, and the part of the paid amount still in uncleared checks.
+    private BigDecimal balance;
+    private BigDecimal pendingAmount;
     private Instant createdAt;
     private String createdBy;
     private boolean voided;

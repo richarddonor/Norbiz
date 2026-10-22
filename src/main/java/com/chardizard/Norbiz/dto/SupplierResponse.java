@@ -16,6 +16,7 @@ public class SupplierResponse {
     private String email;
     private String phone;
     private boolean active;
+    private int termDays;
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;

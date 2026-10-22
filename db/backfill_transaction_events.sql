@@ -21,7 +21,19 @@ BEGIN
         ('stock_transfers',          'STOCK_TRANSFER'),
         ('outlet_pull_outs',         'OUTLET_PULL_OUT'),
         ('pull_out_receipts',        'PULL_OUT_RECEIPT'),
-        ('assemblies',               'ASSEMBLY')
+        ('assemblies',               'ASSEMBLY'),
+        ('sales_invoices',           'SALES_INVOICE'),
+        ('customer_memos',           'CUSTOMER_MEMO'),
+        ('supplier_memos',           'SUPPLIER_MEMO'),
+        ('customer_payments',        'CUSTOMER_PAYMENT'),
+        ('supplier_payments',        'SUPPLIER_PAYMENT'),
+        ('customer_credit_applications', 'CUSTOMER_CREDIT_APPLICATION'),
+        ('supplier_credit_applications', 'SUPPLIER_CREDIT_APPLICATION'),
+        ('customer_refunds',         'CUSTOMER_REFUND'),
+        ('supplier_refunds',         'SUPPLIER_REFUND'),
+        ('deposits',                 'DEPOSIT'),
+        ('bank_reconciliations',     'BANK_RECONCILIATION'),
+        ('statements_of_account',    'STATEMENT_OF_ACCOUNT')
     ) AS v(table_name, transaction_type)
     LOOP
         EXECUTE format($sql$

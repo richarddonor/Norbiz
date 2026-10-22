@@ -139,8 +139,10 @@ class TransactionDetailedReportServiceTest {
     @Test
     void everyReportSortsByEveryCommonColumnAndRunsUnpagedForTotals() {
         for (DetailedReportType type : DetailedReportType.values()) {
-            for (String key : List.of("company", "referenceNumber", "sheetNumber", "date", "warehouse",
-                    "itemCode", "itemName", "lineNumber", "quantity", "voided")) {
+            List<String> keys = type.isItemized()
+                    ? List.of("company", "referenceNumber", "sheetNumber", "date", "warehouse", "itemCode", "itemName", "lineNumber", "quantity", "voided")
+                    : List.of("company", "referenceNumber", "sheetNumber", "date", "lineNumber", "amount", "voided");
+            for (String key : keys) {
                 reportService.find(type, user, new DetailedReportFilter(), false, PageRequest.of(0, 5, Sort.by(key)));
             }
             reportService.find(type, user, new DetailedReportFilter(), false, Pageable.unpaged(Sort.by("date")));
@@ -192,32 +194,48 @@ class TransactionDetailedReportServiceTest {
     void everyReportRunsWithEveryApplicableFilter() {
         for (DetailedReportType type : DetailedReportType.values()) {
             DetailedReportFilter filter = new DetailedReportFilter();
-            filter.setWarehouseId(1L);
-            filter.setItemId(1L);
+            if (type.isItemized()) {
+                filter.setWarehouseId(1L);
+                filter.setItemId(1L);
+                filter.setWarehouse("x");
+                filter.setItemCode("x");
+                filter.setItemName("x");
+            }
             filter.setVoided(false);
             filter.setOrigin(TransactionOrigin.NATIVE);
             filter.setReferenceNumber("x");
             filter.setSheetNumber("x");
-            filter.setWarehouse("x");
-            filter.setItemCode("x");
-            filter.setItemName("x");
             filter.setRemarks("x");
             filter.setDateFrom("2026-01-01");
             filter.setDateTo("2026-12-31");
             switch (type) {
-                case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIPT -> { filter.setSupplierId(1L); filter.setCounterparty("x"); }
-                case DELIVERY_RECEIPT, OUTLET_RECEIPT, STOCK_TRANSFER, OUTLET_PULL_OUT, PULL_OUT_RECEIPT -> { filter.setCustomerId(1L); filter.setCounterparty("x"); }
+                case PURCHASE_ORDER, PURCHASE_INVOICE, PURCHASE_RECEIPT,
+                     SUPPLIER_MEMO, SUPPLIER_PAYMENT, SUPPLIER_CREDIT_APPLICATION, SUPPLIER_REFUND -> { filter.setSupplierId(1L); filter.setCounterparty("x"); }
+                case DELIVERY_RECEIPT, OUTLET_RECEIPT, STOCK_TRANSFER, OUTLET_PULL_OUT, PULL_OUT_RECEIPT, SALES_INVOICE,
+                     CUSTOMER_MEMO, CUSTOMER_PAYMENT, CUSTOMER_CREDIT_APPLICATION, CUSTOMER_REFUND, STATEMENT_OF_ACCOUNT -> {
+                    filter.setCustomerId(1L);
+                    filter.setCounterparty("x");
+                }
                 case OUTLET_DELIVERY_RECEIPT, OUTLET_DELIVERY_RETURN -> { filter.setCustomerId(1L); filter.setCounterparty("x"); filter.setAgentId(1L); }
-                case INVENTORY_ADJUSTMENT, ASSEMBLY -> { }
+                case INVENTORY_ADJUSTMENT, ASSEMBLY, DEPOSIT, BANK_RECONCILIATION -> { }
             }
             if (type == DetailedReportType.PURCHASE_INVOICE || type == DetailedReportType.PURCHASE_RECEIPT
                     || type == DetailedReportType.OUTLET_RECEIPT || type == DetailedReportType.OUTLET_DELIVERY_RETURN
-                    || type == DetailedReportType.DELIVERY_RECEIPT || type == DetailedReportType.PULL_OUT_RECEIPT) {
+                    || type == DetailedReportType.DELIVERY_RECEIPT || type == DetailedReportType.PULL_OUT_RECEIPT
+                    || type == DetailedReportType.SALES_INVOICE) {
                 filter.setSourceReferenceNumber("x");
             }
             assertThat(reportService.find(type, user, filter, true, PageRequest.of(0, 50)).getContent())
                     .as(type.getDisplayName()).isEmpty();
         }
+    }
+
+    @Test
+    void itemFiltersAreRejectedOnAccountingReports() {
+        DetailedReportFilter filter = new DetailedReportFilter();
+        filter.setItemId(1L);
+        assertThatThrownBy(() -> reportService.find(DetailedReportType.CUSTOMER_PAYMENT, user, filter, true, PageRequest.of(0, 50)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Customer Payment - Detailed");
     }
 
     @Test
