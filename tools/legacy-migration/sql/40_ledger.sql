@@ -15,65 +15,78 @@ CREATE TABLE migration.movement (
 -- Inventory Adjustment: signed on-hand change in its warehouse.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, l.quantity, 0, h.adjustment_date, 'INVENTORY_ADJUSTMENT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM inventory_adjustments h JOIN inventory_adjustment_lines l ON l.adjustment_id = h.id WHERE NOT h.voided;
+FROM inventory_adjustments h JOIN inventory_adjustment_lines l ON l.adjustment_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 -- Stock Transfer: holds stock as negative transit in the main warehouse.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, 0, -l.quantity, h.transfer_date, 'STOCK_TRANSFER', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM stock_transfers h JOIN stock_transfer_lines l ON l.stock_transfer_id = h.id WHERE NOT h.voided;
+FROM stock_transfers h JOIN stock_transfer_lines l ON l.stock_transfer_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 -- Delivery Receipt: main on-hand out (+ releases a delivered transfer's hold); outlet transit in.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, -l.quantity, CASE WHEN h.stock_transfer_id IS NOT NULL THEN l.quantity ELSE 0 END,
        h.delivery_date, 'DELIVERY_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM delivery_receipts h JOIN delivery_receipt_lines l ON l.delivery_receipt_id = h.id WHERE NOT h.voided;
+FROM delivery_receipts h JOIN delivery_receipt_lines l ON l.delivery_receipt_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 INSERT INTO migration.movement
 SELECT l.item_id, h.destination_warehouse_id, 0, l.quantity, h.delivery_date, 'DELIVERY_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
 FROM delivery_receipts h JOIN delivery_receipt_lines l ON l.delivery_receipt_id = h.id
-WHERE NOT h.voided AND h.destination_warehouse_id IS NOT NULL;
+WHERE NOT h.voided AND h.company_id = migration.cid() AND h.destination_warehouse_id IS NOT NULL;
 
 -- Outlet Receipt: outlet transit -> on-hand.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'OUTLET_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM outlet_receipts h JOIN outlet_receipt_lines l ON l.outlet_receipt_id = h.id WHERE NOT h.voided;
+FROM outlet_receipts h JOIN outlet_receipt_lines l ON l.outlet_receipt_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 -- Outlet Delivery Receipt (outlet sale): outlet on-hand out. Return: back in.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, -l.quantity, 0, h.delivery_date, 'OUTLET_DELIVERY_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM outlet_delivery_receipts h JOIN outlet_delivery_receipt_lines l ON l.outlet_delivery_receipt_id = h.id WHERE NOT h.voided;
+FROM outlet_delivery_receipts h JOIN outlet_delivery_receipt_lines l ON l.outlet_delivery_receipt_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, l.quantity, 0, h.return_date, 'OUTLET_DELIVERY_RETURN', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM outlet_delivery_returns h JOIN outlet_delivery_return_lines l ON l.outlet_delivery_return_id = h.id WHERE NOT h.voided;
+FROM outlet_delivery_returns h JOIN outlet_delivery_return_lines l ON l.outlet_delivery_return_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 -- Outlet Pull-out: outlet on-hand out, main transit in. Pull-out Receipt: main transit -> on-hand.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, -l.quantity, 0, h.pull_out_date, 'OUTLET_PULL_OUT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM outlet_pull_outs h JOIN outlet_pull_out_lines l ON l.outlet_pull_out_id = h.id WHERE NOT h.voided;
+FROM outlet_pull_outs h JOIN outlet_pull_out_lines l ON l.outlet_pull_out_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 INSERT INTO migration.movement
 SELECT l.item_id, h.destination_warehouse_id, 0, l.quantity, h.pull_out_date, 'OUTLET_PULL_OUT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM outlet_pull_outs h JOIN outlet_pull_out_lines l ON l.outlet_pull_out_id = h.id WHERE NOT h.voided;
+FROM outlet_pull_outs h JOIN outlet_pull_out_lines l ON l.outlet_pull_out_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'PULL_OUT_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM pull_out_receipts h JOIN pull_out_receipt_lines l ON l.pull_out_receipt_id = h.id WHERE NOT h.voided;
+FROM pull_out_receipts h JOIN pull_out_receipt_lines l ON l.pull_out_receipt_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 -- Direct Purchase Invoice: main transit in. Purchase Receipt: main transit -> on-hand.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, 0, l.quantity, h.invoice_date, 'PURCHASE_INVOICE', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM purchase_invoices h JOIN purchase_invoice_lines l ON l.purchase_invoice_id = h.id WHERE NOT h.voided AND h.purchase_order_id IS NULL;
+FROM purchase_invoices h JOIN purchase_invoice_lines l ON l.purchase_invoice_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid() AND h.purchase_order_id IS NULL;
 
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, l.quantity, -l.quantity, h.receipt_date, 'PURCHASE_RECEIPT', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM purchase_receipts h JOIN purchase_receipt_lines l ON l.purchase_receipt_id = h.id WHERE NOT h.voided;
+FROM purchase_receipts h JOIN purchase_receipt_lines l ON l.purchase_receipt_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
 
 -- Assembly: outputs in, raw materials out, main warehouse.
 INSERT INTO migration.movement
 SELECT l.item_id, h.warehouse_id, CASE WHEN l.kind = 'OUTPUT' THEN l.quantity ELSE -l.quantity END, 0,
        h.assembly_date, 'ASSEMBLY', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
-FROM assemblies h JOIN assembly_lines l ON l.assembly_id = h.id WHERE NOT h.voided;
+FROM assemblies h JOIN assembly_lines l ON l.assembly_id = h.id WHERE NOT h.voided AND h.company_id = migration.cid();
+
+-- Direct Sales Invoice: main on-hand out — only the lines legacy posted to stock (30_sales.sql).
+INSERT INTO migration.movement
+SELECT l.item_id, h.warehouse_id, -l.quantity, 0, h.invoice_date, 'SALES_INVOICE', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
+FROM sales_invoices h JOIN sales_invoice_lines l ON l.sales_invoice_id = h.id
+WHERE h.company_id = migration.cid() AND h.origin = 'MIGRATED' AND NOT h.voided
+  AND EXISTS (SELECT 1 FROM migration.si_posted p WHERE p.invoice_id = h.id AND p.item_id = l.item_id);
+
+-- Sales Invoice Return: main on-hand back in — only the lines legacy posted to stock (30_sales.sql).
+INSERT INTO migration.movement
+SELECT l.item_id, h.warehouse_id, l.quantity, 0, h.return_date, 'SALES_INVOICE_RETURN', h.id, h.reference_number, h.sheet_number, h.created_at, h.created_by
+FROM sales_invoice_returns h JOIN sales_invoice_return_lines l ON l.sales_invoice_return_id = h.id
+WHERE h.company_id = migration.cid() AND h.origin = 'MIGRATED' AND NOT h.voided AND l.posts_stock;
 
 -- Rows that change nothing are noise in the ledger.
 DELETE FROM migration.movement WHERE quantity_delta = 0 AND transit_quantity_delta = 0;
@@ -92,38 +105,36 @@ FROM migration.movement GROUP BY item_id, warehouse_id;
 
 -- ---- transaction history: CREATED for every document, VOIDED for voided ones ----------------
 
+CREATE TABLE migration.document AS
+SELECT * FROM (
+    SELECT 'INVENTORY_ADJUSTMENT' type, id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM inventory_adjustments
+    UNION ALL SELECT 'STOCK_TRANSFER', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM stock_transfers
+    UNION ALL SELECT 'DELIVERY_RECEIPT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM delivery_receipts
+    UNION ALL SELECT 'OUTLET_RECEIPT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM outlet_receipts
+    UNION ALL SELECT 'OUTLET_DELIVERY_RECEIPT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM outlet_delivery_receipts
+    UNION ALL SELECT 'OUTLET_DELIVERY_RETURN', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM outlet_delivery_returns
+    UNION ALL SELECT 'OUTLET_PULL_OUT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM outlet_pull_outs
+    UNION ALL SELECT 'PULL_OUT_RECEIPT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM pull_out_receipts
+    UNION ALL SELECT 'PURCHASE_INVOICE', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM purchase_invoices
+    UNION ALL SELECT 'PURCHASE_RECEIPT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM purchase_receipts
+    UNION ALL SELECT 'ASSEMBLY', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM assemblies
+    UNION ALL SELECT 'SALES_INVOICE', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM sales_invoices
+    UNION ALL SELECT 'SALES_INVOICE_RETURN', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM sales_invoice_returns
+    UNION ALL SELECT 'CUSTOMER_MEMO', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM customer_memos
+    UNION ALL SELECT 'CUSTOMER_PAYMENT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM customer_payments
+    UNION ALL SELECT 'CUSTOMER_REFUND', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM customer_refunds
+    UNION ALL SELECT 'DEPOSIT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM deposits
+    UNION ALL SELECT 'SUPPLIER_PAYMENT', id, company_id, reference_number, created_by, created_at, origin, voided, voided_by, voided_at FROM supplier_payments
+) t WHERE t.company_id = migration.cid() AND t.origin IN ('MIGRATED', 'RECONSTRUCTED');
+
 INSERT INTO transaction_events (company_id, transaction_type, transaction_id, reference_number, event_type, performed_by, performed_at, remarks)
 SELECT migration.cid(), t.type, t.id, left(t.reference_number, 50), 'CREATED', coalesce(t.created_by, 'legacy-migration'), t.created_at,
        CASE t.origin WHEN 'RECONSTRUCTED' THEN 'Reconstructed by the legacy migration' ELSE 'Migrated from legacy' END
-FROM (
-    SELECT 'INVENTORY_ADJUSTMENT' type, id, reference_number, created_by, created_at, origin FROM inventory_adjustments
-    UNION ALL SELECT 'STOCK_TRANSFER', id, reference_number, created_by, created_at, origin FROM stock_transfers
-    UNION ALL SELECT 'DELIVERY_RECEIPT', id, reference_number, created_by, created_at, origin FROM delivery_receipts
-    UNION ALL SELECT 'OUTLET_RECEIPT', id, reference_number, created_by, created_at, origin FROM outlet_receipts
-    UNION ALL SELECT 'OUTLET_DELIVERY_RECEIPT', id, reference_number, created_by, created_at, origin FROM outlet_delivery_receipts
-    UNION ALL SELECT 'OUTLET_DELIVERY_RETURN', id, reference_number, created_by, created_at, origin FROM outlet_delivery_returns
-    UNION ALL SELECT 'OUTLET_PULL_OUT', id, reference_number, created_by, created_at, origin FROM outlet_pull_outs
-    UNION ALL SELECT 'PULL_OUT_RECEIPT', id, reference_number, created_by, created_at, origin FROM pull_out_receipts
-    UNION ALL SELECT 'PURCHASE_INVOICE', id, reference_number, created_by, created_at, origin FROM purchase_invoices
-    UNION ALL SELECT 'PURCHASE_RECEIPT', id, reference_number, created_by, created_at, origin FROM purchase_receipts
-    UNION ALL SELECT 'ASSEMBLY', id, reference_number, created_by, created_at, origin FROM assemblies
-) t;
+FROM migration.document t;
 
 INSERT INTO transaction_events (company_id, transaction_type, transaction_id, reference_number, event_type, performed_by, performed_at, remarks)
 SELECT migration.cid(), t.type, t.id, left(t.reference_number, 50), 'VOIDED', coalesce(t.voided_by, 'legacy-migration'), t.voided_at, NULL
-FROM (
-    SELECT 'INVENTORY_ADJUSTMENT' type, id, reference_number, voided, voided_by, voided_at FROM inventory_adjustments
-    UNION ALL SELECT 'STOCK_TRANSFER', id, reference_number, voided, voided_by, voided_at FROM stock_transfers
-    UNION ALL SELECT 'DELIVERY_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM delivery_receipts
-    UNION ALL SELECT 'OUTLET_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM outlet_receipts
-    UNION ALL SELECT 'OUTLET_DELIVERY_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM outlet_delivery_receipts
-    UNION ALL SELECT 'OUTLET_DELIVERY_RETURN', id, reference_number, voided, voided_by, voided_at FROM outlet_delivery_returns
-    UNION ALL SELECT 'OUTLET_PULL_OUT', id, reference_number, voided, voided_by, voided_at FROM outlet_pull_outs
-    UNION ALL SELECT 'PULL_OUT_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM pull_out_receipts
-    UNION ALL SELECT 'PURCHASE_INVOICE', id, reference_number, voided, voided_by, voided_at FROM purchase_invoices
-    UNION ALL SELECT 'PURCHASE_RECEIPT', id, reference_number, voided, voided_by, voided_at FROM purchase_receipts
-    UNION ALL SELECT 'ASSEMBLY', id, reference_number, voided, voided_by, voided_at FROM assemblies
-) t WHERE t.voided;
+FROM migration.document t WHERE t.voided;
 
 -- ---- Stock Transfer actions (sign-offs) <- tblStockTransferUserActions ----------------------
 -- One action definition per distinct legacy ActionId, then one ACTION history event per legacy

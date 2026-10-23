@@ -20,23 +20,32 @@ END $$;
 INSERT INTO transaction_sequences (company_id, transaction_type, last_number)
 SELECT migration.cid(), s.type, coalesce(max(substring(s.reference_number FROM '^' || s.prefix || '-(\d+)$')::bigint), 0)
 FROM (
-    SELECT 'DELIVERY_RECEIPT' type, 'DR' prefix, reference_number FROM delivery_receipts
-    UNION ALL SELECT 'OUTLET_RECEIPT', 'OR', reference_number FROM outlet_receipts
-    UNION ALL SELECT 'OUTLET_DELIVERY_RECEIPT', 'ODR', reference_number FROM outlet_delivery_receipts
-    UNION ALL SELECT 'OUTLET_DELIVERY_RETURN', 'ODRR', reference_number FROM outlet_delivery_returns
-    UNION ALL SELECT 'STOCK_TRANSFER', 'STF', reference_number FROM stock_transfers
-    UNION ALL SELECT 'OUTLET_PULL_OUT', 'DRR', reference_number FROM outlet_pull_outs
-    UNION ALL SELECT 'PULL_OUT_RECEIPT', 'OPO', reference_number FROM pull_out_receipts
-    UNION ALL SELECT 'ASSEMBLY', 'ASM', reference_number FROM assemblies
-    UNION ALL SELECT 'INVENTORY_ADJUSTMENT', 'IA', reference_number FROM inventory_adjustments
-    UNION ALL SELECT 'PURCHASE_INVOICE', 'PINV', reference_number FROM purchase_invoices
-    UNION ALL SELECT 'PURCHASE_RECEIPT', 'PR', reference_number FROM purchase_receipts
+    SELECT 'DELIVERY_RECEIPT' type, 'DR' prefix, reference_number, company_id FROM delivery_receipts
+    UNION ALL SELECT 'OUTLET_RECEIPT', 'OR', reference_number, company_id FROM outlet_receipts
+    UNION ALL SELECT 'OUTLET_DELIVERY_RECEIPT', 'ODR', reference_number, company_id FROM outlet_delivery_receipts
+    UNION ALL SELECT 'OUTLET_DELIVERY_RETURN', 'ODRR', reference_number, company_id FROM outlet_delivery_returns
+    UNION ALL SELECT 'STOCK_TRANSFER', 'STF', reference_number, company_id FROM stock_transfers
+    UNION ALL SELECT 'OUTLET_PULL_OUT', 'DRR', reference_number, company_id FROM outlet_pull_outs
+    UNION ALL SELECT 'PULL_OUT_RECEIPT', 'OPO', reference_number, company_id FROM pull_out_receipts
+    UNION ALL SELECT 'ASSEMBLY', 'ASM', reference_number, company_id FROM assemblies
+    UNION ALL SELECT 'INVENTORY_ADJUSTMENT', 'IA', reference_number, company_id FROM inventory_adjustments
+    UNION ALL SELECT 'PURCHASE_INVOICE', 'PINV', reference_number, company_id FROM purchase_invoices
+    UNION ALL SELECT 'PURCHASE_RECEIPT', 'PR', reference_number, company_id FROM purchase_receipts
+    UNION ALL SELECT 'SALES_INVOICE', 'SI', reference_number, company_id FROM sales_invoices
+    UNION ALL SELECT 'SALES_INVOICE_RETURN', 'SIR', reference_number, company_id FROM sales_invoice_returns
+    UNION ALL SELECT 'CUSTOMER_MEMO_CREDIT', 'CCM', reference_number, company_id FROM customer_memos WHERE memo_type = 'CREDIT'
+    UNION ALL SELECT 'CUSTOMER_MEMO_DEBIT', 'CDM', reference_number, company_id FROM customer_memos WHERE memo_type = 'DEBIT'
+    UNION ALL SELECT 'CUSTOMER_PAYMENT', 'CPY', reference_number, company_id FROM customer_payments
+    UNION ALL SELECT 'CUSTOMER_REFUND', 'CRF', reference_number, company_id FROM customer_refunds
+    UNION ALL SELECT 'DEPOSIT', 'DEP', reference_number, company_id FROM deposits
+    UNION ALL SELECT 'SUPPLIER_PAYMENT', 'SPY', reference_number, company_id FROM supplier_payments
 ) s
+WHERE s.company_id = migration.cid()
 GROUP BY s.type;
 
 INSERT INTO audit_logs (entity_type, entity_id, action, changed_by, changed_at, changes)
 SELECT 'Company', migration.cid(), 'CREATE', (SELECT actor FROM migration.ctx), now(),
-       json_build_object('migration', 'Legacy jbsKarutora data loaded by tools/legacy-migration',
-                         'cutover', (SELECT cutover FROM migration.ctx))::text;
+       json_build_object('migration', 'Legacy ' || (SELECT legacy_database FROM migration.ctx) || ' data loaded by tools/legacy-migration',
+                         'cutover', (SELECT cutover FROM migration.ctx), 'idOffset', (SELECT id_offset FROM migration.ctx))::text;
 
 ANALYZE;

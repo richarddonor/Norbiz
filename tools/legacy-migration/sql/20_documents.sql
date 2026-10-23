@@ -34,7 +34,6 @@ CREATE FUNCTION migration.price(net numeric, q double precision, list numeric) R
     SELECT round(CASE WHEN coalesce(q, 0) <> 0 AND net IS NOT NULL THEN net / q::numeric ELSE coalesce(list, 0) END, 4)
 $$;
 
-CREATE FUNCTION migration.cid() RETURNS bigint LANGUAGE sql STABLE AS $$ SELECT company_id FROM migration.ctx $$;
 
 -- Log impossible document dates.
 INSERT INTO migration.issues (kind, entity, legacy_id, detail)
@@ -59,7 +58,10 @@ FROM (
 
 INSERT INTO inventory_adjustments (id, company_id, warehouse_id, reference_number, sheet_number, adjustment_date, reason,
                                    created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT a.id, migration.cid(), a.warehouseid, btrim(a.iteminvadjrefno), migration.trunc(a.iteminvadjno, 100),
+SELECT a.id, migration.cid(), a.warehouseid,
+       CASE WHEN row_number() OVER (PARTITION BY btrim(a.iteminvadjrefno) ORDER BY a.id) > 1 OR migration.trunc(a.iteminvadjrefno, 50) IS NULL
+            THEN left(coalesce(btrim(a.iteminvadjrefno), 'IA'), 38) || '-' || migration.legacy_id(a.id) ELSE btrim(a.iteminvadjrefno) END,
+       migration.trunc(a.iteminvadjno, 100),
        migration.doc_day(a.date, a.creationdate), migration.trunc(concat_ws(' — ', nullif(btrim(a.comments), ''), nullif(btrim(a.addremarks), '')), 255),
        migration.created(a.creationdate, a.date), migration.actor(a.createdbyid),
        a.void, CASE WHEN a.void THEN coalesce(migration.at(a.datevoid), migration.created(a.creationdate, a.date)) END,
@@ -75,7 +77,11 @@ WHERE EXISTS (SELECT 1 FROM inventory_adjustments a WHERE a.id = d.masterid);
 
 INSERT INTO inventory_adjustments (id, company_id, warehouse_id, reference_number, sheet_number, adjustment_date, reason,
                                    created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT a.id + 100000, migration.cid(), a.warehouseid, btrim(a.iteminvadjrefno), migration.trunc(a.iteminvadjno, 100),
+SELECT a.id + 100000, migration.cid(), a.warehouseid,
+       CASE WHEN row_number() OVER (PARTITION BY btrim(a.iteminvadjrefno) ORDER BY a.id) > 1 OR migration.trunc(a.iteminvadjrefno, 50) IS NULL
+                 OR btrim(a.iteminvadjrefno) IN (SELECT btrim(iteminvadjrefno) FROM legacy.tblinventoryadjustment)
+            THEN left(coalesce(btrim(a.iteminvadjrefno), 'OIA'), 36) || '-O' || migration.legacy_id(a.id) ELSE btrim(a.iteminvadjrefno) END,
+       migration.trunc(a.iteminvadjno, 100),
        migration.doc_day(a.date, a.creationdate), migration.trunc(a.comments, 255),
        migration.created(a.creationdate, a.date), migration.actor(a.createdbyid),
        a.void, CASE WHEN a.void THEN coalesce(migration.at(a.datevoid), migration.created(a.creationdate, a.date)) END,
@@ -88,6 +94,11 @@ SELECT d.id, d.masterid + 100000, d.itemid,
        row_number() OVER (PARTITION BY d.masterid ORDER BY d.id)
 FROM legacy.tbloutletinventoryadjustmentdetails d
 WHERE EXISTS (SELECT 1 FROM legacy.tbloutletinventoryadjustment a WHERE a.id = d.masterid);
+
+INSERT INTO migration.issues (kind, entity, legacy_id, detail)
+SELECT 'renamed', 'InventoryAdjustment', a.id, 'Duplicate/blank reference ' || coalesce(btrim(l.iteminvadjrefno), 'NULL') || ' became ' || a.reference_number
+FROM inventory_adjustments a JOIN legacy.tblinventoryadjustment l ON l.id = a.id
+WHERE a.company_id = migration.cid() AND a.reference_number IS DISTINCT FROM btrim(l.iteminvadjrefno);
 
 -- ============================================================================================
 -- Stock transfers and delivery receipts
@@ -102,7 +113,7 @@ CREATE UNIQUE INDEX ON migration.dr_transfer (dr_id);
 
 INSERT INTO stock_transfers (id, company_id, customer_id, warehouse_id, reference_number, sheet_number, transfer_date, remarks,
                              created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT s.id, migration.cid(), s.customerid, 1, btrim(s.refno), migration.trunc(s.sheetno, 100),
+SELECT s.id, migration.cid(), s.customerid, migration.main_wh(), btrim(s.refno), migration.trunc(s.sheetno, 100),
        migration.doc_day(s.date, s.creationdate), migration.trunc(s.comments, 255),
        migration.created(s.creationdate, s.date), migration.actor(s.createdbyid),
        s.void, CASE WHEN s.void THEN coalesce(migration.at(s.datevoided), migration.created(s.creationdate, s.date)) END,
@@ -119,12 +130,12 @@ FROM legacy.tblstocktransferdetails d
 WHERE EXISTS (SELECT 1 FROM stock_transfers s WHERE s.id = d.masterid);
 
 UPDATE stock_transfer_lines l SET quantity_loaded = l.quantity
-FROM stock_transfers s WHERE s.id = l.stock_transfer_id AND s.loaded;
+FROM stock_transfers s WHERE s.id = l.stock_transfer_id AND s.loaded AND s.company_id = migration.cid();
 
 INSERT INTO delivery_receipts (id, company_id, customer_id, warehouse_id, destination_warehouse_id, stock_transfer_id,
                                reference_number, sheet_number, delivery_date, remarks,
                                created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT d.id, migration.cid(), d.customerid, 1, c.warehouse_id,
+SELECT d.id, migration.cid(), d.customerid, migration.main_wh(), c.warehouse_id,
        CASE WHEN NOT d.void THEN t.transfer_id END,
        btrim(d.drno), migration.trunc(d.sheetno, 100), migration.doc_day(d.date, d.creationdate), migration.trunc(d.comments, 255),
        migration.created(d.creationdate, d.date), migration.actor(d.createdbyid),
@@ -133,6 +144,10 @@ SELECT d.id, migration.cid(), d.customerid, 1, c.warehouse_id,
 FROM legacy.tbldeliveryreceipts d
 JOIN customers c ON c.id = d.customerid
 LEFT JOIN migration.dr_transfer t ON t.dr_id = d.id;
+
+INSERT INTO migration.issues (kind, entity, legacy_id, detail)
+SELECT 'skipped', 'DeliveryReceipt', d.id, 'Customer ' || coalesce(migration.legacy_id(d.customerid)::text, 'NULL') || ' does not exist'
+FROM legacy.tbldeliveryreceipts d WHERE NOT EXISTS (SELECT 1 FROM customers c WHERE c.id = d.customerid);
 
 INSERT INTO delivery_receipt_lines (id, delivery_receipt_id, item_id, quantity, unit_price, line_number, quantity_loaded)
 SELECT d.id, d.drid, d.itemid, migration.qty(d.quantity), migration.price(d.netamount, d.quantity, d.sellingprice),
@@ -257,7 +272,7 @@ FROM (SELECT source_line_id, sum(allocated) q FROM migration.receive_alloc WHERE
 WHERE s.source_line_id = l.id;
 
 UPDATE delivery_receipts r SET loaded = true
-WHERE r.destination_warehouse_id IS NOT NULL
+WHERE r.company_id = migration.cid() AND r.destination_warehouse_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM delivery_receipt_lines l WHERE l.delivery_receipt_id = r.id AND l.quantity_loaded < l.quantity);
 
 -- ============================================================================================
@@ -298,7 +313,7 @@ FROM legacy.tblreturnslips s;
 INSERT INTO outlet_pull_outs (id, company_id, customer_id, warehouse_id, destination_warehouse_id, pull_out_reason_id,
                               reference_number, sheet_number, pull_out_date, remarks,
                               created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT s.id, migration.cid(), s.customerid, c.warehouse_id, 1,
+SELECT s.id, migration.cid(), s.customerid, c.warehouse_id, migration.main_wh(),
        CASE WHEN EXISTS (SELECT 1 FROM pull_out_reasons r WHERE r.id = s.pulloutreasonid) THEN s.pulloutreasonid END,
        btrim(s.crsno), migration.trunc(s.sheetno, 100), migration.doc_day(s.date, s.creationdate),
        migration.trunc(concat_ws(' — ', nullif(btrim(s.comments), ''), nullif(btrim(s.remark1), ''), nullif(btrim(s.remark2), '')), 255),
@@ -320,7 +335,7 @@ WHERE EXISTS (SELECT 1 FROM outlet_pull_outs p WHERE p.id = d.returnslipmasterid
 
 INSERT INTO pull_out_receipts (id, company_id, outlet_pull_out_id, customer_id, warehouse_id, reference_number, sheet_number,
                                receipt_date, remarks, created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT p.new_id, migration.cid(), p.source_id, po.customer_id, 1,
+SELECT p.new_id, migration.cid(), p.source_id, po.customer_id, migration.main_wh(),
        btrim(r.refno) || CASE WHEN p.part > 1 THEN '-' || p.part ELSE '' END,
        migration.trunc(r.sheetno, 100), migration.doc_day(r.date, r.creationdate),
        migration.trunc(concat_ws(' — ',
@@ -352,7 +367,7 @@ WHERE f.flow = 'DIRECT' AND NOT po.voided;
 
 INSERT INTO pull_out_receipts (id, company_id, outlet_pull_out_id, customer_id, warehouse_id, reference_number, sheet_number,
                                receipt_date, remarks, created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT d.receive_id, po.company_id, po.id, po.customer_id, 1, 'RCN-OPO-' || lpad(d.n::text, 6, '0'), po.sheet_number,
+SELECT d.receive_id, po.company_id, po.id, po.customer_id, migration.main_wh(), 'RCN-OPO-' || lpad(d.n::text, 6, '0'), po.sheet_number,
        po.pull_out_date,
        left('Reconstructed: legacy pull-out ' || po.reference_number || ' went straight into main-warehouse on-hand (no transit step)', 255),
        po.created_at, (SELECT actor FROM migration.ctx), false, NULL, NULL, false, 'RECONSTRUCTED'
@@ -365,11 +380,11 @@ FROM migration.direct_pull_out d JOIN outlet_pull_out_lines l ON l.outlet_pull_o
 
 UPDATE outlet_pull_out_lines l SET quantity_loaded = least(l.quantity, s.q)
 FROM (SELECT r.outlet_pull_out_line_id, sum(r.quantity) q FROM pull_out_receipt_lines r
-      JOIN pull_out_receipts h ON h.id = r.pull_out_receipt_id WHERE NOT h.voided GROUP BY 1) s
+      JOIN pull_out_receipts h ON h.id = r.pull_out_receipt_id WHERE NOT h.voided AND h.company_id = migration.cid() GROUP BY 1) s
 WHERE s.outlet_pull_out_line_id = l.id;
 
 UPDATE outlet_pull_outs p SET loaded = true
-WHERE NOT EXISTS (SELECT 1 FROM outlet_pull_out_lines l WHERE l.outlet_pull_out_id = p.id AND l.quantity_loaded < l.quantity);
+WHERE p.company_id = migration.cid() AND NOT EXISTS (SELECT 1 FROM outlet_pull_out_lines l WHERE l.outlet_pull_out_id = p.id AND l.quantity_loaded < l.quantity);
 
 -- ============================================================================================
 -- Purchases: supplier invoices -> Direct Purchase Invoices, tblItemReceive -> Purchase Receipts
@@ -389,10 +404,10 @@ FROM legacy.tblsupplierinvoices h;
 -- An invoice that never touched stock and was never received predates legacy inventory tracking:
 -- it is migrated voided (a Direct invoice would otherwise post phantom transit).
 INSERT INTO purchase_invoices (id, company_id, warehouse_id, supplier_id, purchase_order_id, reference_number, sheet_number,
-                               invoice_date, remarks, discount_percentage, payment_status,
+                               invoice_date, remarks, discount_percentage, payment_status, net_amount, term_days, due_date,
                                created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT h.id, migration.cid(), 1, h.supplierid, NULL,
-       CASE WHEN row_number() OVER (PARTITION BY btrim(h.sivno) ORDER BY h.id) > 1 THEN btrim(h.sivno) || '-' || h.id ELSE btrim(h.sivno) END,
+SELECT h.id, migration.cid(), migration.main_wh(), h.supplierid, NULL,
+       CASE WHEN row_number() OVER (PARTITION BY btrim(h.sivno) ORDER BY h.id) > 1 THEN btrim(h.sivno) || '-' || migration.legacy_id(h.id) ELSE btrim(h.sivno) END,
        migration.trunc(h.sheetno, 100), migration.doc_day(h.date, h.creationdate),
        migration.trunc(concat_ws(' — ',
            CASE WHEN NOT h.void AND f.flow = 'NONE' AND NOT f.received
@@ -401,6 +416,11 @@ SELECT h.id, migration.cid(), 1, h.supplierid, NULL,
        0,
        CASE WHEN coalesce(h.amountpaid, 0) >= coalesce(h.netamount, 0) AND coalesce(h.netamount, 0) > 0 THEN 'PAID'
             WHEN coalesce(h.amountpaid, 0) > 0 THEN 'PARTIALLY_PAID' ELSE 'UNPAID' END,
+       -- Legacy net (its discounts and VAT included) so a tracked invoice's payable matches legacy (35_accounting.sql).
+       round(greatest(coalesce(h.netamount, 0), 0), 2),
+       coalesce(nullif(migration.term_days(h.termsid), 0), (SELECT s.term_days FROM suppliers s WHERE s.id = h.supplierid), 0),
+       migration.doc_day(h.date, h.creationdate)
+           + make_interval(days => coalesce(nullif(migration.term_days(h.termsid), 0), (SELECT s.term_days FROM suppliers s WHERE s.id = h.supplierid), 0)),
        migration.created(h.creationdate, h.date), migration.actor(h.createdbyid),
        h.void OR (f.flow = 'NONE' AND NOT f.received),
        CASE WHEN h.void OR (f.flow = 'NONE' AND NOT f.received)
@@ -428,8 +448,8 @@ WHERE EXISTS (SELECT 1 FROM purchase_invoices p WHERE p.id = d.supplierinvoiceid
 
 INSERT INTO purchase_receipts (id, company_id, warehouse_id, supplier_id, purchase_order_id, purchase_invoice_id, reference_number,
                                sheet_number, receipt_date, remarks, created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT r.id, migration.cid(), 1, pi.supplier_id, NULL, pi.id,
-       CASE WHEN row_number() OVER (PARTITION BY btrim(r.recno) ORDER BY r.id) > 1 THEN btrim(r.recno) || '-' || r.id ELSE btrim(r.recno) END,
+SELECT r.id, migration.cid(), migration.main_wh(), pi.supplier_id, NULL, pi.id,
+       CASE WHEN row_number() OVER (PARTITION BY btrim(r.recno) ORDER BY r.id) > 1 THEN btrim(r.recno) || '-' || migration.legacy_id(r.id) ELSE btrim(r.recno) END,
        migration.trunc(r.recrefno, 100), migration.doc_day(r.date, NULL),
        migration.trunc(concat_ws(' — ', nullif(btrim(r.comment), ''), nullif(btrim(r.remark1), ''), nullif(btrim(r.remark2), '')), 255),
        migration.created(NULL, r.date), migration.actor(coalesce(r.preparedbyid, r.receivedbyid)),
@@ -461,7 +481,7 @@ WHERE f.flow = 'ONHAND' AND NOT p.voided;
 
 INSERT INTO purchase_receipts (id, company_id, warehouse_id, supplier_id, purchase_order_id, purchase_invoice_id, reference_number,
                                sheet_number, receipt_date, remarks, created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT o.receive_id, p.company_id, 1, p.supplier_id, NULL, p.id, 'RCN-PR-' || lpad(o.n::text, 6, '0'), p.sheet_number, p.invoice_date,
+SELECT o.receive_id, p.company_id, migration.main_wh(), p.supplier_id, NULL, p.id, 'RCN-PR-' || lpad(o.n::text, 6, '0'), p.sheet_number, p.invoice_date,
        left('Reconstructed: legacy invoice ' || p.reference_number || ' posted straight into on-hand (no separate receipt)', 255),
        p.created_at, (SELECT actor FROM migration.ctx), false, NULL, NULL, false, 'RECONSTRUCTED'
 FROM migration.onhand_invoice o JOIN purchase_invoices p ON p.id = o.invoice_id;
@@ -474,11 +494,12 @@ FROM migration.onhand_invoice o JOIN purchase_invoice_lines l ON l.purchase_invo
 
 UPDATE purchase_invoice_lines l SET quantity_loaded = least(l.quantity, s.q)
 FROM (SELECT r.purchase_invoice_line_id, sum(r.quantity) q FROM purchase_receipt_lines r
-      JOIN purchase_receipts h ON h.id = r.purchase_receipt_id WHERE NOT h.voided AND r.purchase_invoice_line_id IS NOT NULL GROUP BY 1) s
+      JOIN purchase_receipts h ON h.id = r.purchase_receipt_id WHERE NOT h.voided AND h.company_id = migration.cid()
+      AND r.purchase_invoice_line_id IS NOT NULL GROUP BY 1) s
 WHERE s.purchase_invoice_line_id = l.id;
 
 UPDATE purchase_invoices p SET loaded = true
-WHERE NOT p.voided
+WHERE NOT p.voided AND p.company_id = migration.cid()
   AND NOT EXISTS (SELECT 1 FROM purchase_invoice_lines l WHERE l.purchase_invoice_id = p.id AND l.quantity_loaded < l.quantity);
 
 -- ============================================================================================
@@ -487,7 +508,7 @@ WHERE NOT p.voided
 
 INSERT INTO assemblies (id, company_id, warehouse_id, reference_number, sheet_number, assembly_date, remarks,
                         created_at, created_by, voided, voided_at, voided_by, loaded, origin)
-SELECT a.id, migration.cid(), 1, btrim(a.refno), migration.trunc(a.sheetno, 100), migration.doc_day(a.date, a.creationdate),
+SELECT a.id, migration.cid(), migration.main_wh(), btrim(a.refno), migration.trunc(a.sheetno, 100), migration.doc_day(a.date, a.creationdate),
        migration.trunc(a.comments, 255), migration.created(a.creationdate, a.date), migration.actor(a.createdbyid),
        a.void, CASE WHEN a.void THEN coalesce(migration.at(a.datevoided), migration.created(a.creationdate, a.date)) END,
        CASE WHEN a.void THEN migration.actor(a.voidedby) END, false, 'MIGRATED'
@@ -525,7 +546,7 @@ FROM (SELECT DISTINCT kind, receive_id FROM migration.receive_excess) x;
 INSERT INTO inventory_adjustments (id, company_id, warehouse_id, reference_number, sheet_number, adjustment_date, reason,
                                    created_at, created_by, voided, voided_at, voided_by, loaded, origin)
 SELECT e.adjustment_id, migration.cid(),
-       CASE e.kind WHEN 'OR' THEN c.warehouse_id ELSE 1 END,
+       CASE e.kind WHEN 'OR' THEN c.warehouse_id ELSE migration.main_wh() END,
        'RCN-IA-' || lpad(e.n::text, 6, '0'), migration.trunc(h.sheetno, 100), migration.doc_day(h.date, h.creationdate),
        left('Reconstructed: legacy ' || CASE e.kind WHEN 'OR' THEN 'outlet receipt ' ELSE 'pull-out receipt ' END || btrim(h.refno)
             || ' took in more than its source had outstanding', 255),

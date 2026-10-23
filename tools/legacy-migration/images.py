@@ -134,7 +134,8 @@ def main():
     # firewall/NAT between here and a remote server from dropping it ("Operation timed out").
     with psycopg.connect(dsn, keepalives=1, keepalives_idle=30, keepalives_interval=10,
                          keepalives_count=6) as pg, mssql_connect() as ms:
-        company_id = pg.execute("SELECT company_id FROM migration.ctx").fetchone()[0]
+        # Norbiz item IDs are the legacy tblItems.IDs plus the run's offset (01_reset_data.sql).
+        company_id, offset = pg.execute("SELECT company_id, id_offset FROM migration.ctx").fetchone()
         codes = dict(pg.execute("SELECT id, item_code FROM items WHERE company_id = %s", (company_id,)).fetchall())
         rel_dir = "{}/items/images".format(company_id)
         if args.remote:
@@ -158,7 +159,8 @@ def main():
             rows = cur.fetchmany(BATCH)
             if not rows:
                 break
-            for item_id, data in rows:
+            for legacy_id, data in rows:
+                item_id = legacy_id + offset
                 code = codes.get(item_id)
                 if code is None or not data:
                     continue

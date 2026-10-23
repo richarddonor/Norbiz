@@ -12,8 +12,10 @@ CREATE TABLE migration.onhand_before AS
 SELECT coalesce(n.warehouse_id, l.warehouseid) AS warehouse_id, coalesce(n.item_id, l.itemid) AS item_id,
        coalesce(n.quantity, 0) AS norbiz, coalesce(round(l.quantity::numeric, 4), 0) AS legacy,
        coalesce(n.transit_quantity, 0) AS norbiz_transit, coalesce(round(l.intransitqty::numeric, 4), 0) AS legacy_transit
-FROM inventory_balances n
-FULL JOIN legacy.tblinventory l ON l.warehouseid = n.warehouse_id AND l.itemid = n.item_id;
+FROM (SELECT b.* FROM inventory_balances b JOIN warehouses w ON w.id = b.warehouse_id WHERE w.company_id = migration.cid()) n
+FULL JOIN (SELECT l.* FROM legacy.tblinventory l
+           WHERE EXISTS (SELECT 1 FROM warehouses w WHERE w.id = l.warehouseid AND w.company_id = migration.cid())
+             AND EXISTS (SELECT 1 FROM items i WHERE i.id = l.itemid)) l ON l.warehouseid = n.warehouse_id AND l.itemid = n.item_id;
 
 CREATE TABLE migration.correction AS
 SELECT warehouse_id, item_id, legacy - norbiz AS quantity
@@ -22,7 +24,7 @@ FROM migration.onhand_before WHERE abs(legacy - norbiz) > 0.00005;
 CREATE TABLE migration.correction_adjustment AS
 SELECT warehouse_id,
        (SELECT max(id) FROM inventory_adjustments) + row_number() OVER (ORDER BY warehouse_id) AS adjustment_id,
-       (SELECT count(*) FROM inventory_adjustments WHERE reference_number LIKE 'RCN-IA-%') + row_number() OVER (ORDER BY warehouse_id) AS n
+       (SELECT count(*) FROM inventory_adjustments WHERE company_id = migration.cid() AND reference_number LIKE 'RCN-IA-%') + row_number() OVER (ORDER BY warehouse_id) AS n
 FROM (SELECT DISTINCT warehouse_id FROM migration.correction) x;
 
 INSERT INTO inventory_adjustments (id, company_id, warehouse_id, reference_number, sheet_number, adjustment_date, reason,

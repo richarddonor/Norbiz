@@ -1,12 +1,19 @@
-"""Copy the legacy jbsKarutora tables the migration needs from SQL Server into a fresh `legacy`
-schema in the target Postgres database, as-is (column names lower-cased, no transformation).
+"""Copy the legacy tables the migration needs from SQL Server (MSSQL_DATABASE: jbsKarutora,
+jbsNeostrata, ...) into a fresh `legacy` schema in the target Postgres database, as-is (column names
+lower-cased, no transformation).
 
 Every run drops and recreates the `legacy` schema, so it always reflects the SQL Server backup that
 is currently restored. Binary columns (item pictures) are skipped here — images.py handles those.
 
+The legacy databases share one schema but not every database has every table or column (a company
+on older updates lacks e.g. tblAssembly or tblStockTransferUserActions). legacy_columns.json lists
+every table/column the loader may read, with its SQL Server type; whatever the source lacks is
+created empty / NULL, so the same SQL runs against every legacy database.
+
 Connection settings come from the environment (see config.env.example). Usage:
     .venv/bin/python extract.py
 """
+import json
 import os
 import sys
 import time
@@ -15,7 +22,8 @@ import psycopg
 import pymssql
 
 # Table -> optional WHERE clause. tblInventory has ~75M rows, almost all zero balances: only
-# non-zero ones matter for reconciliation.
+# non-zero ones matter for reconciliation. Legacy auto-raised one debit memo per outlet sale; those are
+# not migrated (docs/LEGACY_MIGRATION.md), only memos encoded by hand.
 TABLES = {
     # master data
     "tblCompany": None,
@@ -66,7 +74,37 @@ TABLES = {
     "tblTransactions": None,
     "tblTransactionDetails": None,
     "tblInventory": "Quantity <> 0 OR IntransitQty <> 0",
+    # sales and receivables / payables (docs/LEGACY_MIGRATION.md "Accounting")
+    "tblTerms": None,
+    "tblBanks": None,
+    "tblBankAccounts": None,
+    "tblModesOfPayment": None,
+    "tblSITransactionTypes": None,
+    "tblCustomerBranches": None,
+    "tblCustomerCreditMemoTypes": None,
+    "tblSalesInvoices": None,
+    "tblSalesInvoiceDetails": None,
+    "tblSIReturnSlips": None,
+    "tblSIReturnSlipDetails": None,
+    "tblItemEntries": None,
+    "tblItemEntryDetails": None,
+    "tblItemDisbursements": None,
+    "tblItemDisbursementDetails": None,
+    "tblCustomerPayments": None,
+    "tblCustomerPaymentDetails": None,
+    "tblCustomerPaymentLinks": None,
+    "tblDeposits": None,
+    "tblDepositDetails": None,
+    "tblCustomerCreditMemos": None,
+    "tblCustomerDebitMemos": "Description IS NULL OR Description NOT LIKE 'ODR-%Generated from Outlet Sales Invoice%'",
+    "tblCustomerRefunds": None,
+    "tblSupplierPayments": None,
+    "tblSupplierPaymentDetails": None,
+    "tblSupplierPaymentLinks": None,
 }
+
+# Every column the loader may read, per table (the union of the known legacy databases).
+SPEC = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "legacy_columns.json")))
 
 SKIPPED_TYPES = {"image", "varbinary", "binary", "timestamp"}
 
@@ -113,16 +151,25 @@ def copy_table(ms, pg, table, where):
         "JOIN sys.types t ON t.user_type_id = c.user_type_id "
         "WHERE c.object_id = OBJECT_ID(%s) ORDER BY c.column_id", (table,))
     columns = [(r["col"], r["type"]) for r in cur.fetchall() if r["type"] not in SKIPPED_TYPES]
-    if not columns:
+    spec = [(c, t) for c, t in SPEC.get(table, [])]
+    if not columns and not spec:
         raise SystemExit("Table not found in SQL Server: " + table)
+    # Columns this database lacks (it is behind on legacy updates) are created NULL.
+    present = {c.lower() for c, _ in columns}
+    missing = [(c, t) for c, t in spec if c.lower() not in present]
 
-    unknown = [t for _, t in columns if t not in PG_TYPES]
+    unknown = [t for _, t in columns + missing if t not in PG_TYPES]
     if unknown:
         raise SystemExit("Unmapped SQL Server type(s) in {}: {}".format(table, sorted(set(unknown))))
 
     pg_table = "legacy." + table.lower()
-    ddl = ", ".join('"{}" {}'.format(c.lower(), PG_TYPES[t]) for c, t in columns)
+    ddl = ", ".join('"{}" {}'.format(c.lower(), PG_TYPES[t]) for c, t in columns + missing)
     pg.execute("CREATE TABLE {} ({})".format(pg_table, ddl))
+    if not columns:
+        print("  {:<40} {:>10} (not in this database: created empty)".format(table, "-"), flush=True)
+        return 0
+    if missing:
+        print("  {:<40} missing column(s) created NULL: {}".format(table, ", ".join(c for c, _ in missing)), flush=True)
 
     select = "SELECT {} FROM dbo.[{}]{}".format(
         ", ".join("[{}]".format(c) for c, _ in columns), table, " WHERE " + where if where else "")
@@ -144,12 +191,16 @@ def copy_table(ms, pg, table, where):
 
 def main():
     pg_dsn = env("PG_DSN", "postgresql://norbiz:changeme@localhost:5432/norbiz_mig")
+    database = env("MSSQL_DATABASE", "jbsKarutora")
     print("Extracting {} tables from SQL Server {} into {} (schema legacy)".format(
-        len(TABLES), env("MSSQL_DATABASE", "jbsKarutora"), pg_dsn.rsplit("@", 1)[-1]), flush=True)
+        len(TABLES), database, pg_dsn.rsplit("@", 1)[-1]), flush=True)
     started = time.time()
     with mssql_connect() as ms, psycopg.connect(pg_dsn, autocommit=False) as pg:
         pg.execute("DROP SCHEMA IF EXISTS legacy CASCADE")
         pg.execute("CREATE SCHEMA legacy")
+        # Which legacy database this copy came from — the loader scopes the run to its company.
+        pg.execute("CREATE TABLE legacy.source (database text NOT NULL, extracted_at timestamptz NOT NULL DEFAULT now())")
+        pg.execute("INSERT INTO legacy.source (database) VALUES (%s)", (database,))
         total = 0
         for table, where in TABLES.items():
             total += copy_table(ms, pg, table, where)

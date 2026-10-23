@@ -41,14 +41,15 @@ def run(pg):
     sales = {}                                   # odr_id -> dict
     by_outlet = defaultdict(list)                # customer_id -> [odr_id] (newest first after sort)
     for odr_id, customer_id, day, agent_id, warehouse_id in pg.execute(
-            "SELECT id, customer_id, delivery_date, agent_id, warehouse_id FROM outlet_delivery_receipts WHERE NOT voided"):
+            "SELECT id, customer_id, delivery_date, agent_id, warehouse_id FROM outlet_delivery_receipts WHERE NOT voided AND company_id = %s",
+            (company_id,)):
         sales[odr_id] = {"customer": customer_id, "day": day, "agent": agent_id, "warehouse": warehouse_id,
                          "lines": defaultdict(list)}
         by_outlet[customer_id].append(odr_id)
     for line_id, odr_id, item_id, qty, price, line_no in pg.execute(
             "SELECT l.id, l.outlet_delivery_receipt_id, l.item_id, l.quantity, l.unit_price, l.line_number "
             "FROM outlet_delivery_receipt_lines l JOIN outlet_delivery_receipts o ON o.id = l.outlet_delivery_receipt_id "
-            "WHERE NOT o.voided ORDER BY l.id"):
+            "WHERE NOT o.voided AND o.company_id = %s ORDER BY l.id", (company_id,)):
         sales[odr_id]["lines"][item_id].append({"id": line_id, "remaining": qty, "price": price, "qty": qty, "line_number": line_no})
     for ids in by_outlet.values():
         ids.sort(key=lambda i: (sales[i]["day"], i), reverse=True)

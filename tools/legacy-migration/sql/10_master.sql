@@ -2,22 +2,17 @@
 -- 10 — Master data: company, users, employees, catalog, suppliers, customers + outlet warehouses,
 -- pull-out reasons, bills of materials.
 --
--- Identity: Norbiz rows keep their legacy ID wherever one legacy table maps to one Norbiz table
--- (items, employees, customers, suppliers, ...), so every transaction can reference them without
--- a lookup table. Outlet warehouses take their customer's ID: legacy keys outlet stock by customer
--- ID (warehouse 1 = main), and no customer has ID 1. Rows with no single legacy source (company,
--- categories, groups, brands, users) get fresh IDs. Requires an empty target (see 00_reset.sql).
+-- Identity: Norbiz rows keep their (offset) legacy ID wherever one legacy table maps to one Norbiz
+-- table (items, employees, customers, suppliers, banks, ...), so every transaction can reference them
+-- without a lookup table. Outlet warehouses take their customer's ID: legacy keys outlet stock by
+-- customer ID (warehouse 1 = main), and no outlet customer has ID 1. Rows with no single legacy
+-- source (company, categories, groups, brands, users) get fresh IDs. 01_reset_data.sql has made room
+-- (wiped this company's previous load) and shifted the legacy IDs by migration.ctx.id_offset.
 -- ============================================================================================
 
 -- ---- helpers --------------------------------------------------------------------------------
 
--- Run context: the company every migrated row belongs to, the cutover instant, and the actor
--- recorded on rows that have no legacy author.
-CREATE TABLE migration.ctx (company_id bigint, cutover timestamptz NOT NULL, actor text NOT NULL);
-INSERT INTO migration.ctx (cutover, actor) VALUES (now(), 'legacy-migration');
-
--- Anything the loader had to fix or couldn't map — listed by report.sql.
-CREATE TABLE migration.issues (kind text NOT NULL, entity text NOT NULL, legacy_id bigint, detail text);
+-- migration.ctx and migration.issues are created by 01_reset_data.sql.
 
 -- A legacy business date as Norbiz stores it: the UTC-midnight instant of that calendar day.
 -- Impossible dates (before 2000, or more than a year past the cutover) come back NULL.
@@ -38,39 +33,70 @@ $$;
 
 -- ---- company --------------------------------------------------------------------------------
 
+-- A re-load keeps its company row (theme, logo, templates); a first load creates it.
 WITH c AS (
     INSERT INTO companies (name, active, created_at, updated_at, created_by, updated_by)
-    SELECT coalesce(migration.trunc(name, 255), 'Legacy Company'), true, now(), now(), 'legacy-migration', 'legacy-migration'
-    FROM legacy.tblcompany ORDER BY id LIMIT 1
+    SELECT company_name, true, now(), now(), 'legacy-migration', 'legacy-migration'
+    FROM migration.ctx WHERE company_id IS NULL
     RETURNING id)
-UPDATE migration.ctx SET company_id = (SELECT id FROM c);
+UPDATE migration.ctx SET company_id = (SELECT id FROM c) WHERE company_id IS NULL;
+
+-- Outlet warehouses take their customer's ID, the main warehouse keeps legacy ID 1.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM legacy.tblcustomers WHERE id = migration.main_wh() AND customertypeid = 2) THEN
+        RAISE EXCEPTION 'Legacy customer 1 is an outlet: its warehouse would clash with the main warehouse (ID 1)';
+    END IF;
+END $$;
 
 -- ---- users ----------------------------------------------------------------------------------
--- Legacy password hashes are ints and can't be converted: every migrated user gets a password no
+-- Legacy password hashes are ints and can't be converted: every new migrated user gets a password no
 -- login can match, so an admin must reset it (RESET_USER_PASSWORD) before first use. No roles are
 -- assigned — legacy security groups don't map 1:1 to Norbiz roles; assign them after cutover.
+--
+-- Users are shared across companies. A login another company already has (e.g. migrated from an
+-- earlier legacy database) is the same person when the names agree — the legacy last name appears
+-- in the existing display name, or, without a last name, the display name starts with the first
+-- name: that user is linked to this company too. Otherwise (a different person, or a seeded admin
+-- login) the login gets a "-<company word>" suffix.
 
 CREATE TABLE migration.user_map AS
-SELECT u.id AS legacy_id, u.employeeid,
-       CASE WHEN lower(btrim(u.loginname)) IN (SELECT lower(username) FROM users)
-            THEN btrim(u.loginname) || '-legacy' ELSE btrim(u.loginname) END AS username,
-       nullif(btrim(concat_ws(' ', nullif(btrim(e.firstname), ''), nullif(btrim(e.lastname), ''))), '') AS display_name
+SELECT u.id AS legacy_id, u.employeeid, btrim(u.loginname) AS login,
+       nullif(btrim(concat_ws(' ', nullif(btrim(e.firstname), ''), nullif(btrim(e.lastname), ''))), '') AS display_name,
+       nullif(lower(btrim(e.firstname)), '') AS first_name, nullif(lower(btrim(e.lastname)), '') AS last_name,
+       NULL::bigint AS existing_user_id, btrim(u.loginname) AS username
 FROM legacy.tblsecurityusers u
 LEFT JOIN legacy.tblemployees e ON e.id = u.employeeid;
 
+UPDATE migration.user_map m SET existing_user_id = x.id
+FROM users x
+WHERE lower(x.username) = lower(m.login) AND x.username NOT IN ('admin', 'super_admin', 'system_admin')
+  AND (CASE WHEN m.last_name IS NOT NULL THEN position(m.last_name IN lower(x.display_name)) > 0
+            ELSE m.first_name IS NOT NULL AND lower(x.display_name) LIKE m.first_name || '%' END);
+
+-- Suffix: the company name's last word ("DMARK MULTISALES INC. - NEOSTRATA" -> "neostrata").
+UPDATE migration.user_map m SET username = m.login || '-' ||
+       coalesce(nullif(lower(regexp_replace(substring((SELECT company_name FROM migration.ctx) FROM '([A-Za-z0-9]+)\W*$'), '[^A-Za-z0-9]', '', 'g')), ''), 'legacy')
+WHERE m.existing_user_id IS NULL AND lower(m.login) IN (SELECT lower(username) FROM users);
+UPDATE migration.user_map m SET username = x.username FROM users x WHERE x.id = m.existing_user_id;
+
 INSERT INTO migration.issues (kind, entity, legacy_id, detail)
-SELECT 'renamed', 'User', legacy_id, 'Login clashed with a seeded Norbiz user; renamed to ' || username
-FROM migration.user_map WHERE username LIKE '%-legacy';
+SELECT 'renamed', 'User', legacy_id, 'Login clashed with an existing Norbiz user (another person); renamed to ' || username
+FROM migration.user_map WHERE existing_user_id IS NULL AND username <> login
+UNION ALL
+SELECT 'linked', 'User', legacy_id, 'Login ' || login || ' is the same person as existing user ' || username || '; linked to this company'
+FROM migration.user_map WHERE existing_user_id IS NOT NULL;
 
 INSERT INTO users (username, display_name, email, password, created_at, updated_at, created_by, updated_by)
 SELECT m.username, coalesce(m.display_name, m.username),
        lower(regexp_replace(m.username, '[^A-Za-z0-9._-]', '', 'g')) || '.' || m.legacy_id || '@legacy.invalid',
        '!legacy-migration-password-reset-required', now(), now(), 'legacy-migration', 'legacy-migration'
-FROM migration.user_map m;
+FROM migration.user_map m WHERE m.existing_user_id IS NULL;
 
 INSERT INTO user_companies (user_id, company_id)
 SELECT u.id, (SELECT company_id FROM migration.ctx)
-FROM users u JOIN migration.user_map m ON m.username = u.username;
+FROM users u JOIN migration.user_map m ON m.username = u.username
+ON CONFLICT DO NOTHING;
 
 -- The seeded admins work in the migrated company too (login requires at least one company).
 INSERT INTO user_companies (user_id, company_id)
@@ -85,7 +111,7 @@ SELECT e.id, (SELECT company_id FROM migration.ctx),
        (SELECT u.id FROM users u JOIN migration.user_map m ON m.username = u.username WHERE m.employeeid = e.id ORDER BY m.legacy_id LIMIT 1),
        CASE WHEN count(*) OVER (PARTITION BY btrim(e.employeecode)) > 1
                  AND row_number() OVER (PARTITION BY btrim(e.employeecode) ORDER BY e.id) > 1
-            THEN left(btrim(e.employeecode), 90) || '-' || e.id ELSE left(btrim(e.employeecode), 100) END,
+            THEN left(btrim(e.employeecode), 90) || '-' || migration.legacy_id(e.id) ELSE left(btrim(e.employeecode), 100) END,
        coalesce(migration.trunc(e.firstname, 255), migration.trunc(e.name, 255), migration.trunc(e.fullname, 255), '-'),
        coalesce(migration.trunc(e.lastname, 255), '-'),
        coalesce(e.active, true),
@@ -97,8 +123,17 @@ SELECT 'renamed', 'Employee', e.id, 'Duplicate employee code ' || btrim(l.employ
 FROM employees e JOIN legacy.tblemployees l ON l.id = e.id WHERE e.employee_code <> btrim(l.employeecode);
 
 -- Every employee credited on an outlet sale is a sales agent (Outlet Delivery Receipt requires it).
+-- So is every one credited on a sales invoice (Norbiz Sales Invoices carry no agent; see docs).
 INSERT INTO employee_tags (employee_id, tag)
-SELECT DISTINCT agentid, 'AGENT' FROM legacy.tbloutletdeliveryreceipts WHERE agentid IS NOT NULL;
+SELECT DISTINCT agentid, 'AGENT' FROM legacy.tbloutletdeliveryreceipts WHERE agentid IS NOT NULL
+UNION SELECT DISTINCT s.agentid, 'AGENT' FROM legacy.tblsalesinvoices s JOIN legacy.tblemployees e ON e.id = s.agentid;
+
+-- Payment terms (tblTerms: "30 days" ...) as Norbiz term days (0-365).
+CREATE TABLE migration.terms AS
+SELECT id, least(greatest(coalesce(numberofdays, 0), 0), 365) AS days FROM legacy.tblterms;
+CREATE FUNCTION migration.term_days(terms_id int) RETURNS int LANGUAGE sql STABLE AS $$
+    SELECT coalesce((SELECT days FROM migration.terms WHERE id = $1), 0)
+$$;
 
 -- Who a legacy CreatedByID / VoidedBy (an employee ID) becomes on Norbiz rows: the employee's
 -- login when they had one, otherwise a "legacy-<employee code>" marker.
@@ -167,10 +202,10 @@ INSERT INTO items (id, company_id, item_category_id, item_group_id, item_code, n
 SELECT i.id, (SELECT company_id FROM migration.ctx),
        coalesce(cm.category_id, (SELECT id FROM item_categories WHERE name = 'UNCATEGORIZED' AND company_id = (SELECT company_id FROM migration.ctx))),
        gm.group_id,
-       CASE WHEN migration.trunc(i.itemcode, 100) IS NULL THEN 'LEGACY-' || i.id
-            WHEN row_number() OVER (PARTITION BY btrim(i.itemcode) ORDER BY i.id) > 1 THEN left(btrim(i.itemcode), 88) || '-' || i.id
+       CASE WHEN migration.trunc(i.itemcode, 100) IS NULL THEN 'LEGACY-' || migration.legacy_id(i.id)
+            WHEN row_number() OVER (PARTITION BY btrim(i.itemcode) ORDER BY i.id) > 1 THEN left(btrim(i.itemcode), 88) || '-' || migration.legacy_id(i.id)
             ELSE btrim(i.itemcode) END,
-       coalesce(migration.trunc(i.itemname, 255), migration.trunc(i.description, 255), migration.trunc(i.itemcode, 255), 'Item ' || i.id),
+       coalesce(migration.trunc(i.itemname, 255), migration.trunc(i.description, 255), migration.trunc(i.itemcode, 255), 'Item ' || migration.legacy_id(i.id)),
        i.active,
        coalesce(migration.at(i.dateencoded), now()), now(), migration.actor(i.encodedbyid), 'legacy-migration'
 FROM legacy.tblitems i
@@ -292,14 +327,14 @@ CREATE INDEX IF NOT EXISTS ITEM_SKUS_BRAND_CATEGORY_PRICE_IX ON item_skus (compa
 
 -- ---- suppliers ------------------------------------------------------------------------------
 
-INSERT INTO suppliers (id, company_id, code, name, phone, active, created_at, updated_at, created_by, updated_by)
+INSERT INTO suppliers (id, company_id, code, name, phone, active, term_days, created_at, updated_at, created_by, updated_by)
 SELECT s.id, (SELECT company_id FROM migration.ctx),
-       CASE WHEN migration.trunc(s.suppliercode, 100) IS NULL THEN 'S-' || s.id
-            WHEN row_number() OVER (PARTITION BY btrim(s.suppliercode) ORDER BY s.id) > 1 THEN left(btrim(s.suppliercode), 88) || '-' || s.id
+       CASE WHEN migration.trunc(s.suppliercode, 100) IS NULL THEN 'S-' || migration.legacy_id(s.id)
+            WHEN row_number() OVER (PARTITION BY btrim(s.suppliercode) ORDER BY s.id) > 1 THEN left(btrim(s.suppliercode), 88) || '-' || migration.legacy_id(s.id)
             ELSE btrim(s.suppliercode) END,
-       coalesce(migration.trunc(s.name, 255), 'Supplier ' || s.id),
+       coalesce(migration.trunc(s.name, 255), 'Supplier ' || migration.legacy_id(s.id)),
        migration.trunc(s.telnum1, 50),
-       coalesce(s.active, true),
+       coalesce(s.active, true), migration.term_days(s.termsid),
        coalesce(migration.at(s.dateencoded), now()), now(), migration.actor(s.encodedbyid), 'legacy-migration'
 FROM legacy.tblsuppliers s;
 
@@ -308,14 +343,14 @@ FROM legacy.tblsuppliers s;
 -- by customer ID — three CUSTOMER-typed customers did).
 
 CREATE TABLE migration.stock_holders AS
-SELECT DISTINCT warehouseid AS customer_id FROM legacy.tbltransactiondetails WHERE warehouseid <> 1
-UNION SELECT DISTINCT warehouseid FROM legacy.tblinventory WHERE warehouseid <> 1;
+SELECT DISTINCT warehouseid AS customer_id FROM legacy.tbltransactiondetails WHERE warehouseid <> migration.main_wh()
+UNION SELECT DISTINCT warehouseid FROM legacy.tblinventory WHERE warehouseid <> migration.main_wh();
 
 CREATE TABLE migration.customer_map AS
 SELECT c.id,
        (c.customertypeid = 2 OR c.id IN (SELECT customer_id FROM migration.stock_holders)) AS outlet,
-       CASE WHEN migration.trunc(c.code, 100) IS NULL THEN 'C-' || c.id
-            WHEN row_number() OVER (PARTITION BY btrim(c.code) ORDER BY c.id) > 1 THEN left(btrim(c.code), 88) || '-' || c.id
+       CASE WHEN migration.trunc(c.code, 100) IS NULL THEN 'C-' || migration.legacy_id(c.id)
+            WHEN row_number() OVER (PARTITION BY btrim(c.code) ORDER BY c.id) > 1 THEN left(btrim(c.code), 88) || '-' || migration.legacy_id(c.id)
             ELSE btrim(c.code) END AS code
 FROM legacy.tblcustomers c;
 
@@ -330,22 +365,22 @@ FROM legacy.tblcustomers c JOIN migration.customer_map m ON m.id = c.id WHERE m.
 
 INSERT INTO warehouses (id, company_id, code, name, active, main, outlet, created_at, updated_at, created_by, updated_by)
 SELECT w.id, (SELECT company_id FROM migration.ctx),
-       CASE WHEN EXISTS (SELECT 1 FROM migration.customer_map m WHERE m.code = 'MAIN') THEN 'MAIN-' || w.id ELSE 'MAIN' END,
+       CASE WHEN EXISTS (SELECT 1 FROM migration.customer_map m WHERE m.code = 'MAIN') THEN 'MAIN-' || migration.legacy_id(w.id) ELSE 'MAIN' END,
        coalesce(migration.trunc(w.name, 255), 'Main Warehouse'), true, true, false,
        coalesce(migration.at(w.dateencoded), now()), now(), 'legacy-migration', 'legacy-migration'
-FROM legacy.tblwarehouses w WHERE w.id = 1;
+FROM legacy.tblwarehouses w WHERE w.id = migration.main_wh();
 
 -- Each outlet's warehouse mirrors the customer's code/name/active, as CustomerService keeps them.
 INSERT INTO warehouses (id, company_id, code, name, active, main, outlet, created_at, updated_at, created_by, updated_by)
-SELECT c.id, (SELECT company_id FROM migration.ctx), m.code, coalesce(migration.trunc(c.name, 255), 'Outlet ' || c.id),
+SELECT c.id, (SELECT company_id FROM migration.ctx), m.code, coalesce(migration.trunc(c.name, 255), 'Outlet ' || migration.legacy_id(c.id)),
        coalesce(c.active, true), false, true, coalesce(migration.at(c.dateencoded), now()), now(), 'legacy-migration', 'legacy-migration'
 FROM legacy.tblcustomers c JOIN migration.customer_map m ON m.id = c.id WHERE m.outlet;
 
-INSERT INTO customers (id, company_id, code, name, type, phone, active, warehouse_id, created_at, updated_at, created_by, updated_by)
-SELECT c.id, (SELECT company_id FROM migration.ctx), m.code, coalesce(migration.trunc(c.name, 255), 'Customer ' || c.id),
+INSERT INTO customers (id, company_id, code, name, type, phone, active, warehouse_id, term_days, created_at, updated_at, created_by, updated_by)
+SELECT c.id, (SELECT company_id FROM migration.ctx), m.code, coalesce(migration.trunc(c.name, 255), 'Customer ' || migration.legacy_id(c.id)),
        CASE WHEN m.outlet THEN 'OUTLET' ELSE 'CUSTOMER' END,
        migration.trunc(coalesce(nullif(btrim(c.telnum1), ''), c.cellphone1), 50),
-       coalesce(c.active, true), CASE WHEN m.outlet THEN c.id END,
+       coalesce(c.active, true), CASE WHEN m.outlet THEN c.id END, migration.term_days(c.termsid),
        coalesce(migration.at(c.dateencoded), now()), now(), migration.actor(c.encodedbyid), 'legacy-migration'
 FROM legacy.tblcustomers c JOIN migration.customer_map m ON m.id = c.id;
 
@@ -353,15 +388,15 @@ FROM legacy.tblcustomers c JOIN migration.customer_map m ON m.id = c.id;
 
 INSERT INTO pull_out_reasons (id, company_id, name, active, created_at, updated_at, created_by, updated_by)
 SELECT r.id, (SELECT company_id FROM migration.ctx),
-       CASE WHEN row_number() OVER (PARTITION BY btrim(r.name) ORDER BY r.id) > 1 THEN left(btrim(r.name), 240) || ' #' || r.id
-            ELSE coalesce(migration.trunc(r.name, 255), 'Reason ' || r.id) END,
+       CASE WHEN row_number() OVER (PARTITION BY btrim(r.name) ORDER BY r.id) > 1 THEN left(btrim(r.name), 240) || ' #' || migration.legacy_id(r.id)
+            ELSE coalesce(migration.trunc(r.name, 255), 'Reason ' || migration.legacy_id(r.id)) END,
        true, now(), now(), 'legacy-migration', 'legacy-migration'
 FROM legacy.tblpulloutreasons r;
 
 INSERT INTO bills_of_materials (id, company_id, code, item_id, active, created_at, updated_at, created_by, updated_by)
 SELECT b.id, (SELECT company_id FROM migration.ctx),
-       CASE WHEN migration.trunc(b.code, 100) IS NULL THEN 'BOM-' || b.id
-            WHEN row_number() OVER (PARTITION BY btrim(b.code) ORDER BY b.id) > 1 THEN left(btrim(b.code), 88) || '-' || b.id
+       CASE WHEN migration.trunc(b.code, 100) IS NULL THEN 'BOM-' || migration.legacy_id(b.id)
+            WHEN row_number() OVER (PARTITION BY btrim(b.code) ORDER BY b.id) > 1 THEN left(btrim(b.code), 88) || '-' || migration.legacy_id(b.id)
             ELSE btrim(b.code) END,
        b.itemid, true, now(), now(), 'legacy-migration', 'legacy-migration'
 FROM legacy.tblbillofmaterial b WHERE EXISTS (SELECT 1 FROM legacy.tblitems i WHERE i.id = b.itemid);
@@ -378,3 +413,40 @@ FROM legacy.tblbillofmaterialrawdetail d
 JOIN bills_of_materials b ON b.id = d.masterid
 WHERE d.itemid <> b.item_id AND d.quantity > 0 AND EXISTS (SELECT 1 FROM legacy.tblitems i WHERE i.id = d.itemid)
 GROUP BY d.masterid, d.itemid;
+
+
+-- ---- banks and bank accounts ------------------------------------------------------------------
+-- tblBanks are drawee banks (the bank a customer's check is drawn on); tblBankAccounts are the
+-- company's own accounts. Legacy accounts name their bank only in their name ("bdo (Dmark Medical)"),
+-- so each account's bank is the tblBanks row whose code is that first word, else a bank created
+-- from it. Both keep their (offset) legacy IDs. Opening balance 0 as of the first deposit: the bank
+-- book is rebuilt from the migrated deposits, transfers and disbursements.
+
+INSERT INTO banks (id, company_id, code, name, active, created_at, updated_at, created_by, updated_by)
+SELECT b.id, migration.cid(),
+       CASE WHEN row_number() OVER (PARTITION BY upper(btrim(b.code)) ORDER BY b.id) > 1 OR migration.trunc(b.code, 50) IS NULL
+            THEN left(coalesce(upper(btrim(b.code)), 'BANK'), 40) || '-' || migration.legacy_id(b.id) ELSE upper(btrim(b.code)) END,
+       coalesce(migration.trunc(b.name, 255), migration.trunc(b.code, 255), 'Bank ' || migration.legacy_id(b.id)),
+       true, now(), now(), 'legacy-migration', 'legacy-migration'
+FROM legacy.tblbanks b;
+
+CREATE TABLE migration.account_bank AS
+SELECT a.id AS account_id, upper(coalesce(substring(btrim(a.name) FROM '^([A-Za-z]+)'), 'BANK')) AS bank_word FROM legacy.tblbankaccounts a;
+-- Common short forms in account names.
+UPDATE migration.account_bank SET bank_word = CASE bank_word WHEN 'SB' THEN 'SECURITY BANK' WHEN 'EASTWEST' THEN 'EASTWEST BANK' ELSE bank_word END;
+
+INSERT INTO banks (company_id, code, name, active, created_at, updated_at, created_by, updated_by)
+SELECT DISTINCT migration.cid(), left(a.bank_word, 50), a.bank_word, true, now(), now(), 'legacy-migration', 'legacy-migration'
+FROM migration.account_bank a
+WHERE NOT EXISTS (SELECT 1 FROM banks b WHERE b.company_id = migration.cid() AND (upper(b.code) = a.bank_word OR upper(b.name) = a.bank_word));
+
+INSERT INTO bank_accounts (id, company_id, bank_id, name, account_number, opening_balance, opening_balance_date, active,
+                           created_at, updated_at, created_by, updated_by)
+SELECT a.id, migration.cid(),
+       (SELECT b.id FROM banks b WHERE b.company_id = migration.cid() AND (upper(b.code) = m.bank_word OR upper(b.name) = m.bank_word) ORDER BY b.id LIMIT 1),
+       coalesce(migration.trunc(a.name, 255), 'Account ' || migration.legacy_id(a.id)),
+       CASE WHEN row_number() OVER (PARTITION BY btrim(a.number) ORDER BY a.id) > 1 OR migration.trunc(a.number, 50) IS NULL
+            THEN left(coalesce(btrim(a.number), 'ACCOUNT'), 40) || '-' || migration.legacy_id(a.id) ELSE btrim(a.number) END,
+       0, (SELECT migration.day(min(d.date)) FROM legacy.tbldeposits d WHERE d.bankid = a.id),
+       coalesce(a.active, true), now(), now(), 'legacy-migration', 'legacy-migration'
+FROM legacy.tblbankaccounts a JOIN migration.account_bank m ON m.account_id = a.id;

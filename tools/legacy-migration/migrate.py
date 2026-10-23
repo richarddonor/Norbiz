@@ -1,11 +1,13 @@
-"""Run the legacy jbsKarutora -> Norbiz migration end to end against the database in PG_DSN:
+"""Run a legacy (jbsKarutora, jbsNeostrata, ...) -> Norbiz migration end to end against the database
+in PG_DSN, for the legacy database in MSSQL_DATABASE:
 
-    extract (SQL Server -> legacy schema)  ->  00 prepare  ->  01 reset Norbiz data  ->  10 master data
-    ->  20 documents  ->  25 outlet delivery returns  ->  40 ledger + history  ->  50 reconcile
-    ->  60 finalize  ->  report
+    extract (SQL Server -> legacy schema)  ->  00 prepare  ->  01 wipe this company's previous load
+    ->  10 master data  ->  20 documents  ->  25 outlet delivery returns  ->  30 sales  ->  35 AR/AP
+    ->  40 ledger + history  ->  50 reconcile  ->  55 audit  ->  60 finalize  ->  report
 
-Every step runs in its own transaction and the whole run is repeatable: it always starts by wiping
-Norbiz down to its seeded basics, so a rehearsal and the real cutover are the same command.
+Every step runs in its own transaction and the whole run is repeatable: it starts by wiping the
+company this legacy database loads into (and only that company), so a rehearsal and the real
+cutover are the same command, and other migrated companies are never touched.
 Because step 01 is destructive, the run refuses to start unless --confirm-reset names the target
 database. run_migration.sh adds the remaining cutover guards (app stopped, pg_dump backup, Redis).
 
@@ -26,10 +28,12 @@ PY = sys.executable
 
 STEPS = [
     ("sql", "00_prepare.sql", "index the legacy copy"),
-    ("sql", "01_reset_data.sql", "reset Norbiz to its seeded basics"),
+    ("sql", "01_reset_data.sql", "wipe this company's previous load, offset legacy IDs"),
     ("sql", "10_master.sql", "master data"),
     ("sql", "20_documents.sql", "documents"),
     ("py", "match_returns.py", "outlet delivery returns"),
+    ("sql", "30_sales.sql", "sales invoices, returns, item entries"),
+    ("sql", "35_accounting.sql", "receivables, payables, deposits, bank book"),
     ("sql", "40_ledger.sql", "ledger and history"),
     ("sql", "50_reconcile.sql", "reconcile on-hand with legacy"),
     # Shared with existing databases: run as-is from db/migrations (idempotent).

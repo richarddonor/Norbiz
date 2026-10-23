@@ -1,34 +1,197 @@
 -- ============================================================================================
--- 01 — Wipe Norbiz down to its seeded basics so the migration loads into an empty database.
+-- 01 — Make room for the legacy company being loaded, and only for it.
 --
--- Kept: permissions, roles, role_permissions, and the users DataInitializer seeds (admin,
--- super_admin, system_admin) with their roles and preferences. Everything else — companies,
--- master data, transactions, ledger, history, templates, audit log — is truncated with its
--- identity sequences restarted. DataInitializer recreates the default company and print templates
--- on the next app start.
+-- One Norbiz database holds several migrated companies (one per legacy database: jbsKarutora,
+-- jbsNeostrata, ...). The company a legacy database loads into is the Norbiz company named like its
+-- tblCompany row; it is created on the first run. A re-run wipes that company's data — master
+-- data, transactions, ledger, AR/AP, history, its audit trail, the users that only it had — and
+-- nothing of any other company. Kept: the company row itself (name, theme, logo), its print
+-- templates, accounting settings someone set by hand, and every user that is still in use elsewhere.
+--
+-- Identity: the loader keeps legacy IDs as Norbiz IDs. A second company's legacy IDs overlap the
+-- first's, so every ID column of the legacy copy is shifted by migration.ctx.id_offset first: 0 when
+-- nothing else is loaded (a lone Karutora run is unchanged), else a round number above every ID
+-- in use, so the migrated rows can never collide with another company's (or a future native) row.
 --
 -- Destructive: run_migration.sh only runs this after its safety checks and a pg_dump backup.
 -- ============================================================================================
 
+DROP SCHEMA IF EXISTS migration CASCADE;
+CREATE SCHEMA migration;
+
+-- Run context: the legacy database, the company every migrated row belongs to, the cutover
+-- instant, the actor recorded on rows that have no legacy author, and the ID offset.
+CREATE TABLE migration.ctx (
+    legacy_database text NOT NULL, company_id bigint, company_name text NOT NULL, cutover timestamptz NOT NULL,
+    actor text NOT NULL, id_offset bigint NOT NULL DEFAULT 0, reloaded boolean NOT NULL DEFAULT false);
+INSERT INTO migration.ctx (legacy_database, company_name, cutover, actor)
+SELECT (SELECT database FROM legacy.source),
+       coalesce((SELECT left(btrim(name), 255) FROM legacy.tblcompany WHERE btrim(name) <> '' ORDER BY id LIMIT 1), 'Legacy Company'),
+       now(), 'legacy-migration';
+
+-- Anything the loader had to fix or couldn't map — listed by report.py. legacy_id is the ID as in the
+-- (shifted) legacy copy; the report prints it without the offset.
+CREATE TABLE migration.issues (kind text NOT NULL, entity text NOT NULL, legacy_id bigint, detail text);
+
+UPDATE migration.ctx SET company_id = c.id, reloaded = true
+FROM (SELECT id FROM companies WHERE name = (SELECT company_name FROM migration.ctx) ORDER BY id LIMIT 1) c;
+
+-- ---- wipe the company's previous load -------------------------------------------------------
+
+-- Auditable entity -> its table (company-scoped ones; their child entities are found through
+-- audit_logs.parent_type/parent_id).
+CREATE TABLE migration.audited (entity_type text, table_name text);
+INSERT INTO migration.audited VALUES
+    ('AccountingSettings', 'accounting_settings'), ('Bank', 'banks'), ('BankAccount', 'bank_accounts'),
+    ('BillOfMaterial', 'bills_of_materials'), ('Brand', 'brands'), ('Customer', 'customers'), ('Employee', 'employees'),
+    ('Item', 'items'), ('ItemCategory', 'item_categories'), ('ItemGroup', 'item_groups'), ('ItemSku', 'item_skus'),
+    ('PullOutReason', 'pull_out_reasons'), ('Supplier', 'suppliers'), ('TransactionActionDefinition', 'transaction_action_definitions'),
+    ('Warehouse', 'warehouses');
+
 DO $$
 DECLARE
-    keep CONSTANT text[] := ARRAY['permissions', 'roles', 'role_permissions', 'users', 'user_roles', 'user_preferences'];
-    tables text;
+    cid CONSTANT bigint := (SELECT company_id FROM migration.ctx);
+    -- Company configuration a re-run keeps (the company row itself is never deleted).
+    keep CONSTANT text[] := ARRAY['companies', 'document_templates', 'accounting_settings', 'user_companies'];
+    t record;
+    n bigint;
+    total bigint;
 BEGIN
-    SELECT string_agg(format('public.%I', tablename), ', ')
-    INTO tables
-    FROM pg_tables
-    WHERE schemaname = 'public' AND tablename <> ALL (keep);
-
-    IF tables IS NOT NULL THEN
-        EXECUTE 'TRUNCATE ' || tables || ' RESTART IDENTITY CASCADE';
+    IF cid IS NULL THEN
+        RAISE NOTICE 'First load of %: a new company will be created', (SELECT company_name FROM migration.ctx);
+        RETURN;
     END IF;
+    RAISE NOTICE 'Re-load of % (company %): wiping its previous data', (SELECT company_name FROM migration.ctx), cid;
+
+    -- FK triggers off for the wipe: rows are deleted company table by company table, then every
+    -- child row left pointing at a deleted parent is swept up (works for any table added later).
+    SET LOCAL session_replication_role = replica;
+
+    -- Its audit trail: logs of the company's entities and of their children.
+    FOR t IN SELECT a.* FROM migration.audited a JOIN information_schema.tables x ON x.table_schema = 'public' AND x.table_name = a.table_name LOOP
+        EXECUTE format('DELETE FROM audit_logs l USING public.%I r WHERE r.company_id = $1 AND '
+                       '((l.entity_type = $2 AND l.entity_id = r.id) OR (l.parent_type = $2 AND l.parent_id = r.id))', t.table_name)
+        USING cid, t.entity_type;
+    END LOOP;
+    DELETE FROM audit_logs WHERE entity_type = 'Company' AND entity_id = cid AND changes LIKE '{"migration"%';
+
+    -- Users only this company had, created by a previous load (natively created users stay, and
+    -- keep their membership).
+    CREATE TEMP TABLE gone_users ON COMMIT DROP AS
+    SELECT u.id FROM users u
+    WHERE u.created_by = 'legacy-migration' AND u.username NOT IN ('admin', 'super_admin', 'system_admin')
+      AND EXISTS (SELECT 1 FROM user_companies c WHERE c.user_id = u.id AND c.company_id = cid)
+      AND NOT EXISTS (SELECT 1 FROM user_companies c WHERE c.user_id = u.id AND c.company_id <> cid);
+    DELETE FROM audit_logs WHERE entity_type = 'User' AND entity_id IN (SELECT id FROM gone_users);
+    DELETE FROM user_preferences WHERE user_id IN (SELECT id FROM gone_users);
+    DELETE FROM user_roles WHERE user_id IN (SELECT id FROM gone_users);
+    DELETE FROM user_companies WHERE user_id IN (SELECT id FROM gone_users);
+    -- Memberships a previous load gave to users of other companies (re-linked by 10_master.sql).
+    DELETE FROM user_companies c USING users u
+    WHERE c.user_id = u.id AND c.company_id = cid AND u.created_by = 'legacy-migration'
+      AND u.username NOT IN ('admin', 'super_admin', 'system_admin');
+    DELETE FROM users WHERE id IN (SELECT id FROM gone_users);
+
+    -- Accounting settings stay only when someone set them in the app.
+    DELETE FROM accounting_settings WHERE company_id = cid AND created_by = 'legacy-migration';
+
+    FOR t IN SELECT c.table_name FROM information_schema.columns c
+             JOIN information_schema.tables x ON x.table_schema = c.table_schema AND x.table_name = c.table_name AND x.table_type = 'BASE TABLE'
+             WHERE c.table_schema = 'public' AND c.column_name = 'company_id' AND c.table_name <> ALL (keep) LOOP
+        EXECUTE format('DELETE FROM public.%I WHERE company_id = $1', t.table_name) USING cid;
+        GET DIAGNOSTICS n = ROW_COUNT;
+        IF n > 0 THEN RAISE NOTICE '  % : % row(s)', t.table_name, n; END IF;
+    END LOOP;
+
+    -- Sweep child rows whose parent is gone, until nothing changes. Only single-column FKs into
+    -- tables other than companies / users / roles / permissions (those parents are never deleted here).
+    LOOP
+        total := 0;
+        FOR t IN SELECT cl.relname AS child, a.attname AS col, pl.relname AS parent, pa.attname AS pcol
+                 FROM pg_constraint k
+                 JOIN pg_class cl ON cl.oid = k.conrelid JOIN pg_namespace ns ON ns.oid = cl.relnamespace AND ns.nspname = 'public'
+                 JOIN pg_class pl ON pl.oid = k.confrelid
+                 JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
+                 JOIN pg_attribute pa ON pa.attrelid = k.confrelid AND pa.attnum = k.confkey[1]
+                 WHERE k.contype = 'f' AND array_length(k.conkey, 1) = 1
+                   AND pl.relname NOT IN ('companies', 'users', 'roles', 'permissions') LOOP
+            EXECUTE format('DELETE FROM public.%I c WHERE c.%I IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.%I p WHERE p.%I = c.%I)',
+                           t.child, t.col, t.parent, t.pcol, t.col);
+            GET DIAGNOSTICS n = ROW_COUNT;
+            IF n > 0 THEN RAISE NOTICE '  % (orphans of %) : % row(s)', t.child, t.parent, n; END IF;
+            total := total + n;
+        END LOOP;
+        EXIT WHEN total = 0;
+    END LOOP;
+END $$;
+RESET session_replication_role;
+
+-- ---- ID offset ------------------------------------------------------------------------------
+-- 0 while no table the loader writes explicit IDs into holds a row (an empty database: legacy IDs
+-- are kept as they are). Otherwise the next multiple of 1,000,000 above the highest ID of any table.
+DO $$
+DECLARE
+    t record;
+    m bigint;
+    top bigint := 0;
+    used boolean := false;
+BEGIN
+    FOR t IN SELECT c.relname FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'public' AND c.relkind = 'r' AND a.attname = 'id' AND a.attidentity IN ('a', 'd') LOOP
+        EXECUTE format('SELECT max(id) FROM public.%I', t.relname) INTO m;
+        top := greatest(top, coalesce(m, 0));
+        IF m IS NOT NULL AND t.relname IN ('items', 'employees', 'customers', 'suppliers', 'warehouses', 'inventory_adjustments',
+                                           'delivery_receipts', 'outlet_delivery_receipts', 'sales_invoices', 'sales_invoice_returns', 'customer_payments',
+                                           'purchase_invoices', 'pull_out_reasons', 'bills_of_materials', 'banks', 'bank_accounts') THEN
+            used := true;
+        END IF;
+    END LOOP;
+    UPDATE migration.ctx SET id_offset = CASE WHEN used THEN (top / 1000000 + 1) * 1000000 ELSE 0 END;
 END $$;
 
-DELETE FROM user_preferences WHERE user_id IN (SELECT id FROM users WHERE username NOT IN ('admin', 'super_admin', 'system_admin'));
-DELETE FROM user_roles       WHERE user_id IN (SELECT id FROM users WHERE username NOT IN ('admin', 'super_admin', 'system_admin'));
-DELETE FROM users            WHERE username NOT IN ('admin', 'super_admin', 'system_admin');
-SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT coalesce(max(id), 0) + 1 FROM users), false);
+-- Shift every ID column of the legacy copy by the offset: each table's own id and every column
+-- that references a migrated row (items, employees, customers, warehouses, suppliers, documents,
+-- lines, banks). Lookup tables whose rows get fresh Norbiz IDs (brands, groups, categories, types,
+-- terms, modes of payment) and lookup references (typeid, unitid, termsid, ...) are left alone.
+-- legacy.shift remembers the shift already applied, so --skip-extract re-runs adjust by the difference.
+CREATE TABLE IF NOT EXISTS legacy.shift (applied bigint NOT NULL);
+INSERT INTO legacy.shift SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM legacy.shift);
+
+DO $$
+DECLARE
+    delta CONSTANT bigint := (SELECT id_offset FROM migration.ctx) - (SELECT applied FROM legacy.shift);
+    unshifted_ids CONSTANT text[] := ARRAY['tblbrands', 'tblcategorychartsorig', 'tblcompany', 'tblcustomertypes', 'tblitemdescriptions',
+        'tblmodesofpayment', 'tblsitransactiontypes', 'tblterms', 'tbltransactiontypes', 'tblcustomercreditmemotypes', 'tblsmskus'];
+    refs CONSTANT text[] := ARRAY['agent1', 'agent2', 'agent3', 'agentid', 'ancdetailid', 'ancid', 'ancmasterid', 'approvedby', 'approvedbyid',
+        'approvedid', 'bankid', 'bomid', 'checkedby', 'checkedbyid', 'checkedid', 'createdbyid', 'creditmemoid', 'custodianid',
+        'customerbranchid', 'customercmmasterid', 'customerid', 'customerpaymentdetailid', 'customerpaymentid', 'debitmemoid',
+        'deliveredbyid', 'depositid', 'deriveddetailid', 'detailid', 'drid', 'employeeid', 'encodedby', 'encodedbyid', 'invoiceid',
+        'issuedtoid', 'itemid', 'maindetailid', 'masterid', 'modifiedbyid', 'notedby', 'notedbyid', 'odrid', 'payableid',
+        'paymentdetailid', 'poid', 'preparedby', 'preparedbyid', 'pulloutreasonid', 'receivebyid', 'receivedby', 'receivedbyid',
+        'receiveid', 'returnid', 'returnslipmasterid', 'rootparentid', 'salesinvoiceid', 'sidetailid', 'simasterid', 'supplierid',
+        'supplierinvoiceid', 'supplierpaymentdetailid', 'supplierpaymentid', 'transferredby', 'uicustomerreturnid', 'userid',
+        'voidedby', 'voidedbyid', 'warehouseid'];
+    t record;
+    sets text;
+BEGIN
+    IF delta = 0 THEN RETURN; END IF;
+    FOR t IN SELECT c.table_name, string_agg(c.column_name, ',') AS cols
+             FROM information_schema.columns c
+             WHERE c.table_schema = 'legacy' AND c.data_type IN ('integer', 'bigint', 'smallint')
+               AND ((c.column_name = 'id' AND c.table_name <> ALL (unshifted_ids))
+                    OR (c.column_name = ANY (refs) AND NOT (c.table_name = 'tblcategorychartsorig' AND c.column_name = 'parentid')))
+             GROUP BY c.table_name LOOP
+        SELECT string_agg(format('%I = %I + %s', col, col, delta), ', ') INTO sets FROM unnest(string_to_array(t.cols, ',')) col;
+        EXECUTE format('UPDATE legacy.%I SET %s', t.table_name, sets);
+    END LOOP;
+    UPDATE legacy.shift SET applied = applied + delta;
+    ANALYZE;
+END $$;
+
+-- The legacy main warehouse (tblWareHouses ID 1) as a Norbiz warehouse ID.
+CREATE FUNCTION migration.main_wh() RETURNS bigint LANGUAGE sql STABLE AS $$ SELECT 1 + id_offset FROM migration.ctx $$;
+-- A Norbiz ID back to its legacy ID (for the report).
+CREATE FUNCTION migration.legacy_id(id bigint) RETURNS bigint LANGUAGE sql STABLE AS $$ SELECT $1 - id_offset FROM migration.ctx $$;
 
 -- Schema housekeeping the app's ddl-auto=update can't do: SKU codes became unique per item only, but
 -- a database created before that change still carries the old global constraint (see db/init.sql).
@@ -190,6 +353,13 @@ BEGIN
             ('purchase_receipts', 'voided', 'FALSE'),
             ('roles', 'created_at', 'NOW()'),
             ('roles', 'updated_at', 'NOW()'),
+            ('sales_invoice_lines', 'quantity_loaded', '0'),
+            ('sales_invoice_return_lines', 'posts_stock', 'TRUE'),
+            ('sales_invoice_return_lines', 'unit_price', '0'),
+            ('sales_invoice_returns', 'created_at', 'NOW()'),
+            ('sales_invoice_returns', 'origin', $d$'NATIVE'$d$),
+            ('sales_invoice_returns', 'voided', 'FALSE'),
+            ('sales_invoices', 'loaded', 'FALSE'),
             ('stock_transfer_lines', 'quantity_loaded', '0'),
             ('stock_transfer_lines', 'unit_price', '0'),
             ('stock_transfers', 'created_at', 'NOW()'),
@@ -221,5 +391,5 @@ BEGIN
     END LOOP;
 END $$;
 
-DROP SCHEMA IF EXISTS migration CASCADE;
-CREATE SCHEMA migration;
+
+CREATE FUNCTION migration.cid() RETURNS bigint LANGUAGE sql STABLE AS $$ SELECT company_id FROM migration.ctx $$;

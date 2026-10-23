@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # =============================================================================================
-# Legacy jbsKarutora -> Norbiz migration: the one command for rehearsals and the real cutover.
+# Legacy (jbsKarutora, jbsNeostrata, ...) -> Norbiz migration: the one command for rehearsals and
+# the real cutover of one legacy company. Other companies already in the target are left untouched.
 #
-#   ./run_migration.sh --confirm-reset <target db> [--skip-extract] [--skip-images] [--images-limit N]
+#   ./run_migration.sh --confirm-reset <target db> [--legacy-db <legacy database>] [--config FILE]
+#                      [--skip-extract] [--skip-images] [--images-limit N]
+#
+#   --legacy-db   the SQL Server database to load (default: MSSQL_DATABASE from the config)
+#   --config      the config file (default: ./config.env)
 #
 #   1. preflight  — target DB reachable and named by --confirm-reset, Norbiz app NOT connected,
 #                   schema + seed data present, legacy SQL Server reachable
 #   2. backup     — pg_dump of the target DB to backups/<db>-<timestamp>.dump (always)
-#   3. migrate    — extract + reset + load + reconcile + report (migrate.py); stops on a failed check
+#   3. migrate    — extract + wipe this company's previous load + load + reconcile + report (migrate.py);
+#                   stops on a failed check
 #   4. images     — item pictures into ITEM_IMAGE_UPLOAD_DIR (images.py --clean)
 #   5. redis      — flush the query cache (bulk SQL bypasses cache invalidation)
 #
@@ -21,20 +27,24 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
-CONFIRM=""; SKIP_EXTRACT=""; SKIP_IMAGES=""; IMAGES_LIMIT=""
+CONFIRM=""; SKIP_EXTRACT=""; SKIP_IMAGES=""; IMAGES_LIMIT=""; LEGACY_DB=""; CONFIG="config.env"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --confirm-reset) CONFIRM="${2:-}"; shift 2 ;;
+        --legacy-db)     LEGACY_DB="${2:-}"; shift 2 ;;
+        --config)        CONFIG="${2:-}"; shift 2 ;;
         --skip-extract)  SKIP_EXTRACT="--skip-extract"; shift ;;
         --skip-images)   SKIP_IMAGES=1; shift ;;
         --images-limit)  IMAGES_LIMIT="--limit ${2:-}"; shift 2 ;;
-        -h|--help)       sed -n '2,19p' "$0"; exit 0 ;;
+        -h|--help)       sed -n '2,25p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
-[[ -n "$CONFIRM" ]] || { echo "--confirm-reset <target db name> is required: this run wipes that database's Norbiz data." >&2; exit 2; }
+[[ -n "$CONFIRM" ]] || { echo "--confirm-reset <target db name> is required: this run wipes the legacy company's previous load in that database." >&2; exit 2; }
 
-if [[ -f config.env ]]; then set -a; . ./config.env; set +a; fi
+if [[ -f "$CONFIG" ]]; then set -a; . "$CONFIG"; set +a; elif [[ "$CONFIG" != "config.env" ]]; then echo "No config file $CONFIG" >&2; exit 2; fi
+if [[ -n "$LEGACY_DB" ]]; then export MSSQL_DATABASE="$LEGACY_DB"; fi
+echo "Legacy database: ${MSSQL_DATABASE:-jbsKarutora}"
 : "${PG_DSN:?PG_DSN is not set (see config.env.example)}"
 PY="$HERE/.venv/bin/python"
 [[ -x "$PY" ]] || { echo "Missing $PY — run: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2; exit 2; }
