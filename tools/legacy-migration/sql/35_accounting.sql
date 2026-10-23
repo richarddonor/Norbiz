@@ -178,11 +178,17 @@ WHERE NOT coalesce(x.void, false) AND NOT d.void;
 CREATE INDEX ON migration.tender_dep (tender_id);
 
 -- Norbiz deposits keep only cash and checks; a legacy deposit with none is not migrated.
+-- A voided deposit keeps the slip it had, as DepositService.voidDeposit does: legacy voids its
+-- details along with it, so they are read here directly (tender_dep holds live deposits only, so
+-- these lines never link the tender to the voided deposit).
 CREATE TABLE migration.deposit_line AS
-SELECT td.deposit_id, t.id AS tender_id, t.amount,
-       row_number() OVER (PARTITION BY td.deposit_id ORDER BY t.id) AS line_number
-FROM migration.tender_dep td JOIN migration.tender t ON t.id = td.tender_id
-WHERE t.mode IN ('CASH', 'CHECK') AND NOT t.voided;
+SELECT x.deposit_id, t.id AS tender_id, t.amount,
+       row_number() OVER (PARTITION BY x.deposit_id ORDER BY t.id) AS line_number
+FROM (SELECT td.deposit_id, td.tender_id FROM migration.tender_dep td
+      UNION
+      SELECT dd.depositid, dd.paymentdetailid FROM legacy.tbldepositdetails dd JOIN migration.dep d ON d.id = dd.depositid AND d.void
+     ) x JOIN migration.tender t ON t.id = x.tender_id
+WHERE t.mode IN ('CASH', 'CHECK') AND (NOT t.voided OR EXISTS (SELECT 1 FROM migration.dep d WHERE d.id = x.deposit_id AND d.void));
 CREATE INDEX ON migration.deposit_line (deposit_id);
 CREATE INDEX ON migration.tender (payment_id);
 ANALYZE migration.tender; ANALYZE migration.tender_dep; ANALYZE migration.deposit_line;
