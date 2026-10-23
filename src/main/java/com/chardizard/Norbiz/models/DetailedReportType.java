@@ -21,6 +21,7 @@ public enum DetailedReportType {
     PULL_OUT_RECEIPT(TransactionType.PULL_OUT_RECEIPT, "Pull-out Receipt", "Sales"),
     ASSEMBLY(TransactionType.ASSEMBLY, "Assembly", "Inventory"),
     SALES_INVOICE(TransactionType.SALES_INVOICE, "Sales Invoice", "Sales"),
+    SALES_INVOICE_RETURN(TransactionType.SALES_INVOICE_RETURN, "Sales Invoice Return", "Sales"),
     CUSTOMER_MEMO(TransactionType.CUSTOMER_MEMO, "Customer Memo", "Accounting"),
     SUPPLIER_MEMO(TransactionType.SUPPLIER_MEMO, "Supplier Memo", "Accounting"),
     CUSTOMER_PAYMENT(TransactionType.CUSTOMER_PAYMENT, "Customer Payment", "Accounting"),

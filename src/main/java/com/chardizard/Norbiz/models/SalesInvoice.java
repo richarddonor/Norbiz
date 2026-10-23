@@ -10,7 +10,7 @@ import lombok.Setter;
 import org.hibernate.annotations.ColumnDefault;
 
 // Not Auditable: immutable once posted (only create/view/void) — the open-item allocation ledger is the audit trail.
-// Bills a customer: opens a RECEIVABLE CHARGE open item for netAmount. Either Direct (its own lines; deducts the
+// Bills a customer: opens a RECEIVABLE CHARGE open item for netAmount (none when it is zero). Either Direct (its own lines; deducts the
 // company's main warehouse stock) or billing one Delivery Receipt in full (lines copied; no stock effect) —
 // see docs/ACCOUNTING.md "Sales Invoice".
 @Getter
@@ -85,7 +85,8 @@ public class SalesInvoice {
     @Column(name = "payment_status", nullable = false, length = 20)
     private PaymentStatus paymentStatus = PaymentStatus.UNPAID;
 
-    // The RECEIVABLE CHARGE this invoice opened.
+    // The RECEIVABLE CHARGE this invoice opened. Null for a zero-value invoice (free goods, testers): it owes nothing
+    // and is PAID from the start.
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "open_item_id", unique = true,
         foreignKey = @ForeignKey(name = "SALES_INVOICES_OPEN_ITEM_ID_FK"))
@@ -106,6 +107,11 @@ public class SalesInvoice {
 
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
+
+    // Fully returned: every line's quantityLoaded has reached its quantity (Sales Invoice Return loads it).
+    @ColumnDefault("false")
+    @Column(name = "loaded", nullable = false)
+    private boolean loaded = false;
 
     // NATIVE for everything posted through the API.
     // ColumnDefault: lets ddl-auto=update add the NOT NULL column to existing rows.

@@ -16,7 +16,7 @@ Everything rests on two tables, written only by `OpenItemService`:
   - `side` is `RECEIVABLE` (customer) or `PAYABLE` (supplier). Exactly one of `customer_id` / `supplier_id` is set.
   - `direction`:
     - `CHARGE` raises the party's balance: Sales Invoice, Purchase Invoice, customer debit memo, supplier credit memo, refunds.
-    - `CREDIT` lowers it: payment tenders, customer credit memo, supplier debit memo.
+    - `CREDIT` lowers it: payment tenders, customer credit memo, sales invoice return, supplier debit memo.
   - `amount`, `applied_amount`, `balance` (= amount − applied). `status` is `OPEN`, `CLOSED` (fully applied) or `VOIDED`.
   - `pending_amount` (charges) is the part of what's applied that is paid by checks not yet cleared (legacy "PDC").
   - `bounced_amount` (charges) is the running total of payments reversed because their check bounced.
@@ -58,7 +58,8 @@ Every one follows the standard transaction rules (docs/TRANSACTIONS.md):
 
 | Type | Prefix | Endpoint | Effect |
 |---|---|---|---|
-| Sales Invoice | `SI` | `/sales-invoices` | RECEIVABLE CHARGE for `netAmount`. **Direct**: own lines; deducts the main warehouse's on-hand stock (void returns it). **From a Delivery Receipt**: bills one plain-customer DR in full (lines copied, no stock effect, `DeliveryReceipt.billed`). Outlet DRs can't be billed (consignment): bill outlets with debit memos. |
+| Sales Invoice | `SI` | `/sales-invoices` | RECEIVABLE CHARGE for `netAmount` (none for a **zero-value** invoice — free goods, testers — which is PAID from the start and voids like any other). **Direct**: own lines; deducts the main warehouse's on-hand stock (void returns it). **From a Delivery Receipt**: bills one plain-customer DR in full (lines copied, no stock effect, `DeliveryReceipt.billed`). Outlet DRs can't be billed (consignment): bill outlets with debit memos. |
+| Sales Invoice Return | `SIR` | `/sales-invoice-returns` | Items billed on one customer's invoices come back: stock into the main warehouse, a RECEIVABLE CREDIT for what they were billed at, applied to those invoices by default. See below. |
 | Customer Memo | `CDM` / `CCM` | `/customer-memos` | DEBIT → RECEIVABLE CHARGE; CREDIT → RECEIVABLE CREDIT, optionally applied inline. Reasons: SALES_RETURN, REBATE, PRICE_ADJUSTMENT, BILLING, OPENING_BALANCE, OTHER. |
 | Supplier Memo | `SDM` / `SCM` | `/supplier-memos` | DEBIT (we debit the supplier, e.g. a return) → PAYABLE CREDIT, optionally applied inline; CREDIT (supplier credits their account, i.e. bills more) → PAYABLE CHARGE. |
 | Customer Payment | `CPY` | `/customer-payments` | One RECEIVABLE CREDIT per tender (cash, check, transfer, card, others), plus optional applications and existing credits used (see below). **What's left unapplied is the customer's advance.** |
@@ -99,6 +100,31 @@ from its items (void those first). Specifically:
 
 Every `void` writes the change down by flushing at once. One non-voided Sales Invoice per DR and one non-voided
 Purchase Invoice per PO are enforced by partial unique indexes.
+
+## Sales Invoice Return
+
+A customer sends back items billed on its Sales Invoices (`SalesInvoiceReturnService`).
+
+- **Lines.** Each request line names an invoice line (`salesInvoiceLineId`, from `GET /lookups/sales-invoices?customerId=`) and
+  the quantity coming back. One return may span several invoices of the same customer. Rejected: another customer's or a
+  voided invoice, a return dated before the invoice, or more than is still unreturned on the line.
+- **Value.** Each line is credited at the invoice line's **net unit price**: unit price less the line and the invoice
+  discount (`SalesInvoiceReturnService.netUnitPrice`). `netAmount` = the lines' sum, rounded once. A zero-value return
+  (free goods) opens no credit.
+- **Stock.** `quantityDelta = +q` into the company's main warehouse (`sourceType = "SALES_INVOICE_RETURN"`), whichever
+  mode the invoice was posted in.
+- **Credit.** A RECEIVABLE CREDIT (`OpenItemSourceType.SALES_INVOICE_RETURN`). With `applyToInvoices` (default true) it is
+  applied to each returned invoice's open balance, at most what that invoice's returned items were billed at. Whatever is
+  left (the invoice was already paid, or `applyToInvoices=false`) stays on the customer's account as unapplied credit,
+  usable later on a Customer Payment (`credits`) or a Customer Refund.
+- **Loading.** Invoice lines track what came back (`SalesInvoiceLine.quantityLoaded`); an invoice is `loaded` once
+  everything on it was returned. An invoice with returns can't be voided until they are.
+- **Void** (`VOID_SALES_INVOICE_RETURN`): takes the stock back out (subject to the negative-stock rule), reverses the
+  credit's own applications, voids the credit and reopens the invoice lines. Blocked while a later payment or refund
+  used the credit.
+- Migrated returns keep the legacy "Sales Return" credit memo's applications as the credit's (docs/LEGACY_MIGRATION.md).
+  A migrated line may name no invoice line, and may not have moved stock (`postsStock = false`); voiding one doesn't
+  reverse stock it never moved.
 
 ## Check lifecycles
 
@@ -172,13 +198,14 @@ for aging.
   - `/lookups/banks` and `/lookups/bank-accounts` are cached.
   - `/lookups/open-items` (one party's OPEN items, `direction=CHARGE|CREDIT`) is **uncached**.
   - `/lookups/billable-delivery-receipts` is cached.
+  - `/lookups/sales-invoices` (a customer's returnable invoices with their lines and net unit prices) is cached.
   - Permissions are in `LookupAccess` (`BANK`, `BANK_ACCOUNT`, `OPEN_ITEM`, `DELIVERY_RECEIPT`).
 
 ## Permissions
 
 | Area | Permissions |
 |---|---|
-| Each document type | `VIEW_` / `CREATE_` / `VOID_` × SALES_INVOICE, CUSTOMER_MEMO, SUPPLIER_MEMO, CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, CUSTOMER_REFUND, SUPPLIER_REFUND, DEPOSIT, BANK_RECONCILIATION, STATEMENT_OF_ACCOUNT |
+| Each document type | `VIEW_` / `CREATE_` / `VOID_` × SALES_INVOICE, SALES_INVOICE_RETURN, CUSTOMER_MEMO, SUPPLIER_MEMO, CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, CUSTOMER_REFUND, SUPPLIER_REFUND, DEPOSIT, BANK_RECONCILIATION, STATEMENT_OF_ACCOUNT |
 | Banks and bank accounts | `VIEW_` / `CREATE_` / `UPDATE_` / `DELETE_` × BANK, BANK_ACCOUNT |
 | Check status | `UPDATE_RECEIVED_CHECK_STATUS`, `UPDATE_ISSUED_CHECK_STATUS` |
 | Settings | `MANAGE_ACCOUNTING_SETTINGS` |
@@ -191,7 +218,7 @@ Open-item amounts and balances are visible with the AR/AP permissions; Purchase 
 
 ## Schema
 
-All of it is in `db/migrations/007_accounting.sql`, folded into `db/init.sql`:
+All of it is in `db/migrations/007_accounting.sql` (Sales Invoice Return: `013_sales_invoice_returns.sql`), folded into `db/init.sql`:
 - the new tables;
 - `term_days` on customers and suppliers;
 - `billed` on delivery receipts;

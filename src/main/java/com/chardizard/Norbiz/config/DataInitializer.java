@@ -145,6 +145,7 @@ public class DataInitializer implements CommandLineRunner {
         List<Permission> accountingPermissions = new ArrayList<>();
         String[][] transactions = {
                 {"SALES_INVOICE", "Sales - Sales Invoice"},
+                {"SALES_INVOICE_RETURN", "Sales - Sales Invoice Return"},
                 {"CUSTOMER_MEMO", "Accounting - Customer Memo"},
                 {"SUPPLIER_MEMO", "Accounting - Supplier Memo"},
                 {"CUSTOMER_PAYMENT", "Accounting - Customer Payment"},

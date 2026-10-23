@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 @Tag(name = "Sales Invoices", description = "Sales invoice transactions — requires VIEW_SALES_INVOICE / CREATE_SALES_INVOICE / VOID_SALES_INVOICE permissions. "
-        + "Bills a customer and opens a receivable for its net amount. Either bill a plain-customer Delivery Receipt in full (lines copied, "
+        + "Bills a customer and opens a receivable for its net amount (none for a zero-value invoice, which is PAID at once). Either bill a plain-customer Delivery Receipt in full (lines copied, "
         + "no stock effect) or post a 'Direct' invoice whose lines deduct the company's main warehouse stock. Immutable once posted: only "
         + "create, view, and void.")
 @RestController
@@ -167,6 +167,7 @@ public class SalesInvoiceController {
         res.setCreatedAt(invoice.getCreatedAt());
         res.setCreatedBy(invoice.getCreatedBy());
         res.setVoided(invoice.isVoided());
+        res.setLoaded(invoice.isLoaded());
         res.setVoidedAt(invoice.getVoidedAt());
         res.setVoidedBy(invoice.getVoidedBy());
         res.setOrigin(invoice.getOrigin());
@@ -190,6 +191,7 @@ public class SalesInvoiceController {
         res.setDiscountPercentage(line.getDiscountPercentage());
         res.setLineNet(AccountingAmounts.lineNet(line.getQuantity(), line.getUnitPrice(), line.getDiscountPercentage()));
         res.setLineNumber(line.getLineNumber());
+        res.setQuantityLoaded(line.getQuantityLoaded());
         return res;
     }
 }

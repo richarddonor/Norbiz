@@ -57,6 +57,7 @@ final class CompanyResolver {
             case OutletReceipt o -> o.getCompany().getId();
             case OutletDeliveryReceipt o -> o.getCompany().getId();
             case OutletDeliveryReturn o -> o.getCompany().getId();
+            case SalesInvoiceReturn r -> r.getCompany().getId();
             case StockTransfer t -> t.getCompany().getId();
             case OutletPullOut o -> o.getCompany().getId();
             case PullOutReceipt r -> r.getCompany().getId();
@@ -91,6 +92,7 @@ final class CompanyResolver {
             case OutletReceiptLine l -> l.getOutletReceipt().getCompany().getId();
             case OutletDeliveryReceiptLine l -> l.getOutletDeliveryReceipt().getCompany().getId();
             case OutletDeliveryReturnLine l -> l.getOutletDeliveryReturn().getCompany().getId();
+            case SalesInvoiceReturnLine l -> l.getSalesInvoiceReturn().getCompany().getId();
             case StockTransferLine l -> l.getStockTransfer().getCompany().getId();
             case OutletPullOutLine l -> l.getOutletPullOut().getCompany().getId();
             case PullOutReceiptLine l -> l.getPullOutReceipt().getCompany().getId();

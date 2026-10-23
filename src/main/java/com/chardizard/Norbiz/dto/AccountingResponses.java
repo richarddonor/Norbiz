@@ -71,6 +71,7 @@ public final class AccountingResponses {
             case SALES_INVOICE -> "Sales Invoice";
             case CUSTOMER_DEBIT_MEMO -> "Customer Debit Memo";
             case CUSTOMER_CREDIT_MEMO -> "Customer Credit Memo";
+            case SALES_INVOICE_RETURN -> "Sales Invoice Return";
             case CUSTOMER_PAYMENT_TENDER, SUPPLIER_PAYMENT_TENDER -> "Advance";
             case CUSTOMER_REFUND -> "Customer Refund";
             case PURCHASE_INVOICE -> "Purchase Invoice";

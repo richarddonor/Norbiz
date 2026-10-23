@@ -20,4 +20,6 @@ public class SalesInvoiceLineResponse {
     // quantity * unitPrice * (1 - discountPercentage / 100)
     private BigDecimal lineNet;
     private Integer lineNumber;
+    // Quantity returned so far by Sales Invoice Returns.
+    private BigDecimal quantityLoaded;
 }

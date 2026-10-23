@@ -411,6 +411,36 @@ public class LookupController {
         return ResponseEntity.ok(AppResponse.of(lookupService.outletDeliveryReceipt(id, userDetails.getUsername())));
     }
 
+    // ---- sales invoices ----
+
+    @Operation(summary = "Sales invoice dropdown",
+            description = "Source invoices for Sales Invoice Return. openOnly (default) returns only invoices that are neither voided nor "
+                    + "fully returned. Lines carry quantity, quantityLoaded (already returned) and unitPrice = the net price per unit "
+                    + "(line and invoice discounts folded in), i.e. what returning one unit credits.")
+    @ApiResponse(responseCode = "200", description = "Sales invoice options returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/sales-invoices")
+    @PreAuthorize("@lookupAccess.can(authentication, 'SALES_INVOICE')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionLookupResponse>>> salesInvoices(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = COMPANY_DESC) @RequestParam(required = false) Long companyId,
+            @Parameter(hidden = true) @RequestHeader(value = COMPANY_HEADER, required = false) Long headerCompanyId,
+            @Parameter(description = "Search text (contains, case-insensitive) over reference and sheet number") @RequestParam(required = false) @Size(max = 255) String q,
+            @Parameter(description = "Filter by customer ID") @RequestParam(required = false) Long customerId,
+            @Parameter(description = "Only returnable invoices: not voided, not fully returned (default true)") @RequestParam(defaultValue = "true") boolean openOnly,
+            Pageable pageable) {
+        return ok(lookupService.salesInvoices(userDetails.getUsername(), company(companyId, headerCompanyId), q, customerId, openOnly, pageable));
+    }
+
+    @Operation(summary = "Sales invoice option by ID")
+    @ApiResponse(responseCode = "200", description = "Sales invoice option returned")
+    @ApiResponse(responseCode = "403", description = "No qualifying permission or no access to company")
+    @GetMapping("/sales-invoices/{id}")
+    @PreAuthorize("@lookupAccess.can(authentication, 'SALES_INVOICE')")
+    public ResponseEntity<AppResponse<TransactionLookupResponse>> salesInvoice(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(AppResponse.of(lookupService.salesInvoice(id, userDetails.getUsername())));
+    }
+
     // ---- stock transfers ----
 
     @Operation(summary = "Stock transfer dropdown",

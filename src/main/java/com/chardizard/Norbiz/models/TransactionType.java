@@ -16,6 +16,7 @@ public enum TransactionType {
     PULL_OUT_RECEIPT("VIEW_PULL_OUT_RECEIPT"),
     ASSEMBLY("VIEW_ASSEMBLY"),
     SALES_INVOICE("VIEW_SALES_INVOICE"),
+    SALES_INVOICE_RETURN("VIEW_SALES_INVOICE_RETURN"),
     // One type per memo table; DEBIT/CREDIT memos number from separate sequences (CUSTOMER_MEMO_DEBIT /
     // CUSTOMER_MEMO_CREDIT, prefixes CDM/CCM) — the one exception to "type name = sequence key".
     CUSTOMER_MEMO("VIEW_CUSTOMER_MEMO"),

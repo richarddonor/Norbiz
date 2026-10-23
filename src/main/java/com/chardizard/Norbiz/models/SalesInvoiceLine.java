@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 
 // Not Auditable: immutable once posted (see SalesInvoice).
 @Getter
@@ -48,4 +49,9 @@ public class SalesInvoiceLine {
     // Server-assigned, 1-based, in entry order.
     @Column(name = "line_number", nullable = false)
     private int lineNumber;
+
+    // Quantity returned so far by Sales Invoice Returns (docs/TRANSACTIONS.md "Transaction Loading").
+    @ColumnDefault("0")
+    @Column(name = "quantity_loaded", nullable = false, precision = 19, scale = 4)
+    private BigDecimal quantityLoaded = BigDecimal.ZERO;
 }

@@ -190,6 +190,17 @@ public class TransactionDetailedReportController {
         return report(DetailedReportType.SALES_INVOICE, userDetails, filter, pageable, totals);
     }
 
+    @Operation(summary = "Sales Invoice Return - Detailed", description = DESCRIPTION)
+    @ApiResponse(responseCode = "200", description = "Report rows returned")
+    @ApiResponse(responseCode = "403", description = "Missing VIEW_SALES_INVOICE_RETURN_DETAILED_REPORT permission")
+    @GetMapping("/sales-invoice-returns")
+    @PreAuthorize("hasAuthority('VIEW_SALES_INVOICE_RETURN_DETAILED_REPORT')")
+    public ResponseEntity<AppResponse<PageResponse<TransactionDetailedReportRow>>> salesInvoiceReturns(
+            @AuthenticationPrincipal UserDetails userDetails, @Valid @ParameterObject DetailedReportFilter filter, @ParameterObject Pageable pageable,
+            @Parameter(description = ListTotals.PARAM) @RequestParam(defaultValue = "false") boolean totals) {
+        return report(DetailedReportType.SALES_INVOICE_RETURN, userDetails, filter, pageable, totals);
+    }
+
     @Operation(summary = "Customer Memo - Detailed", description = ACCOUNTING_DESCRIPTION)
     @ApiResponse(responseCode = "200", description = "Report rows returned")
     @ApiResponse(responseCode = "403", description = "Missing VIEW_CUSTOMER_MEMO_DETAILED_REPORT permission")

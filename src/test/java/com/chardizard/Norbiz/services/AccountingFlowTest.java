@@ -33,6 +33,7 @@ class AccountingFlowTest {
 
     @Autowired AccountingSettingsService settingsService;
     @Autowired SalesInvoiceService salesInvoiceService;
+    @Autowired SalesInvoiceReturnService salesInvoiceReturnService;
     @Autowired PurchaseInvoiceService purchaseInvoiceService;
     @Autowired DeliveryReceiptService deliveryReceiptService;
     @Autowired CustomerMemoService customerMemoService;
@@ -243,6 +244,137 @@ class AccountingFlowTest {
         req.setDeliveryReceiptId(dr.getId());
         req.setInvoiceDate("2026-03-05");
         assertThatThrownBy(() -> salesInvoiceService.create(req, user)).hasMessageContaining("outlet");
+    }
+
+    @Test
+    void zeroValueInvoiceOwesNothingAndCanBeVoided() {
+        SalesInvoice free = directInvoice("2026-03-01", "3", "0");
+        assertThat(free.getNetAmount()).isEqualByComparingTo("0");
+        assertThat(free.getOpenItem()).as("no receivable").isNull();
+        assertThat(free.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(stockOnHand()).isEqualByComparingTo("97");
+
+        salesInvoiceService.voidSalesInvoice(free.getId(), user);
+        assertThat(free.isVoided()).isTrue();
+        assertThat(stockOnHand()).isEqualByComparingTo("100");
+    }
+
+    // ---- sales invoice returns ----
+
+    @Test
+    void returnCreditsTheNetPriceBackToTheInvoiceAndRestocks() {
+        // 10 x 50.00, 10% line discount, 10% invoice discount -> 40.50 a unit, 405.00 in all.
+        SalesInvoice si = discountedInvoice("2026-03-01", "10", "50.00", "10", "10");
+        assertThat(si.getNetAmount()).isEqualByComparingTo("405.00");
+        assertThat(stockOnHand()).isEqualByComparingTo("90");
+
+        SalesInvoiceReturn ret = salesReturn("2026-03-05", null, returnLine(si, "4"));
+        assertThat(ret.getNetAmount()).isEqualByComparingTo("162.00");
+        assertThat(ret.getLines().getFirst().getUnitPrice()).isEqualByComparingTo("40.50");
+        assertThat(stockOnHand()).isEqualByComparingTo("94");
+        assertThat(si.getLines().getFirst().getQuantityLoaded()).isEqualByComparingTo("4");
+        assertThat(si.isLoaded()).isFalse();
+        assertThat(si.getOpenItem().getBalance()).as("credit applied to the invoice").isEqualByComparingTo("243.00");
+        assertThat(si.getPaymentStatus()).isEqualTo(PaymentStatus.PARTIALLY_PAID);
+        assertThat(ret.getOpenItem().getBalance()).isEqualByComparingTo("0");
+
+        assertThatThrownBy(() -> salesReturn("2026-03-06", null, returnLine(si, "7"))).hasMessageContaining("still unreturned (6)");
+        assertThatThrownBy(() -> salesInvoiceService.voidSalesInvoice(si.getId(), user)).hasMessageContaining("returned against it");
+
+        // The rest comes back: the invoice is fully returned and fully credited.
+        salesReturn("2026-03-07", null, returnLine(si, "6"));
+        assertThat(si.isLoaded()).isTrue();
+        assertThat(si.getOpenItem().getBalance()).isEqualByComparingTo("0");
+        assertThat(si.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(stockOnHand()).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void voidingAReturnTakesTheStockOutAndReopensTheInvoice() {
+        SalesInvoice si = directInvoice("2026-03-01", "10", "50.00");   // 500
+        SalesInvoiceReturn ret = salesReturn("2026-03-05", null, returnLine(si, "10"));
+        assertThat(si.isLoaded()).isTrue();
+
+        salesInvoiceReturnService.voidReturn(ret.getId(), user);
+        assertThat(ret.isVoided()).isTrue();
+        assertThat(ret.getOpenItem().getStatus()).isEqualTo(OpenItemStatus.VOIDED);
+        assertThat(stockOnHand()).isEqualByComparingTo("90");
+        assertThat(si.getLines().getFirst().getQuantityLoaded()).isEqualByComparingTo("0");
+        assertThat(si.isLoaded()).isFalse();
+        assertThat(si.getOpenItem().getBalance()).isEqualByComparingTo("500.00");
+        assertThat(si.getPaymentStatus()).isEqualTo(PaymentStatus.UNPAID);
+        assertThatThrownBy(() -> salesInvoiceReturnService.voidReturn(ret.getId(), user)).hasMessageContaining("already voided");
+
+        salesInvoiceService.voidSalesInvoice(si.getId(), user);
+        assertThat(stockOnHand()).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void returnOnAPaidInvoiceLeavesACreditThatALaterPaymentCanUse() {
+        SalesInvoice paid = directInvoice("2026-03-01", "2", "50.00");   // 100
+        customerPayment("2026-03-02", List.of(cashTender("100.00")), apply(paid.getOpenItem(), "100.00"));
+        SalesInvoiceReturn ret = salesReturn("2026-03-05", null, returnLine(paid, "1"));
+        assertThat(ret.getOpenItem().getBalance()).as("nothing open to apply to").isEqualByComparingTo("50.00");
+
+        SalesInvoice next = directInvoice("2026-03-10", "1", "80.00");
+        CustomerPaymentRequest creditsOnly = new CustomerPaymentRequest();
+        creditsOnly.setCompanyId(company.getId());
+        creditsOnly.setCustomerId(customer.getId());
+        creditsOnly.setPaymentDate("2026-03-11");
+        creditsOnly.setCredits(List.of(creditLine(ret.getOpenItem(), next.getOpenItem(), "50.00")));
+        CustomerPayment usesCredit = customerPaymentService.create(creditsOnly, user);
+        assertThat(next.getOpenItem().getBalance()).isEqualByComparingTo("30.00");
+
+        assertThatThrownBy(() -> salesInvoiceReturnService.voidReturn(ret.getId(), user)).hasMessageContaining("used by later");
+        customerPaymentService.voidPayment(usesCredit.getId(), user);
+        salesInvoiceReturnService.voidReturn(ret.getId(), user);
+    }
+
+    @Test
+    void oneReturnCanSpanSeveralInvoicesOfTheSameCustomer() {
+        SalesInvoice a = directInvoice("2026-03-01", "2", "50.00");   // 100
+        SalesInvoice b = directInvoice("2026-03-02", "3", "20.00");   // 60
+        SalesInvoiceReturn ret = salesReturn("2026-03-05", false, returnLine(a, "1"), returnLine(b, "3"));
+        assertThat(ret.getNetAmount()).isEqualByComparingTo("110.00");
+        assertThat(ret.getOpenItem().getBalance()).as("applyToInvoices=false keeps it unapplied").isEqualByComparingTo("110.00");
+        assertThat(a.getOpenItem().getBalance()).isEqualByComparingTo("100.00");
+        assertThat(b.isLoaded()).isTrue();
+        assertThat(a.isLoaded()).isFalse();
+
+        DetailedReportFilter filter = new DetailedReportFilter();
+        filter.setSourceReferenceNumber(b.getReferenceNumber());
+        var rows = detailedReportService.find(DetailedReportType.SALES_INVOICE_RETURN, user, filter, false, PageRequest.of(0, 50)).getContent();
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().getSourceReferenceNumber()).isEqualTo(b.getReferenceNumber());
+        assertThat(rows.getFirst().getQuantity()).isEqualByComparingTo("3");
+    }
+
+    @Test
+    void returnsAreCheckedAgainstTheCustomerAndTheInvoiceDate() {
+        SalesInvoice si = directInvoice("2026-03-10", "2", "50.00");
+        assertThatThrownBy(() -> salesReturn("2026-03-09", null, returnLine(si, "1"))).hasMessageContaining("before the date of sales invoice");
+
+        Customer other = customerService.create(customerRequest("OTH" + suffix, CustomerType.CUSTOMER, 0), user);
+        SalesInvoiceReturnRequest req = new SalesInvoiceReturnRequest();
+        req.setCompanyId(company.getId());
+        req.setCustomerId(other.getId());
+        req.setReturnDate("2026-03-11");
+        req.setLines(List.of(returnLine(si, "1")));
+        assertThatThrownBy(() -> salesInvoiceReturnService.create(req, user)).hasMessageContaining("another customer");
+
+        salesInvoiceService.voidSalesInvoice(si.getId(), user);
+        assertThatThrownBy(() -> salesReturn("2026-03-11", null, returnLine(si, "1"))).hasMessageContaining("voided sales invoice");
+    }
+
+    @Test
+    void returningFreeGoodsCreditsNothing() {
+        SalesInvoice free = directInvoice("2026-03-01", "2", "0");
+        SalesInvoiceReturn ret = salesReturn("2026-03-02", null, returnLine(free, "2"));
+        assertThat(ret.getNetAmount()).isEqualByComparingTo("0");
+        assertThat(ret.getOpenItem()).isNull();
+        assertThat(stockOnHand()).isEqualByComparingTo("100");
+        salesInvoiceReturnService.voidReturn(ret.getId(), user);
+        assertThat(stockOnHand()).isEqualByComparingTo("98");
     }
 
     // ---- customer payments, advances, credit applications ----
@@ -804,6 +936,38 @@ class AccountingFlowTest {
         req.setInvoiceDate(date);
         req.setLines(List.of(line));
         return salesInvoiceService.create(req, user);
+    }
+
+    private SalesInvoice discountedInvoice(String date, String quantity, String unitPrice, String lineDiscount, String headerDiscount) {
+        SalesInvoiceLineRequest line = new SalesInvoiceLineRequest();
+        line.setItemId(item.getId());
+        line.setQuantity(new BigDecimal(quantity));
+        line.setUnitPrice(new BigDecimal(unitPrice));
+        line.setDiscountPercentage(new BigDecimal(lineDiscount));
+        SalesInvoiceRequest req = new SalesInvoiceRequest();
+        req.setCompanyId(company.getId());
+        req.setCustomerId(customer.getId());
+        req.setInvoiceDate(date);
+        req.setDiscountPercentage(new BigDecimal(headerDiscount));
+        req.setLines(List.of(line));
+        return salesInvoiceService.create(req, user);
+    }
+
+    private SalesInvoiceReturn salesReturn(String date, Boolean applyToInvoices, SalesInvoiceReturnLineRequest... lines) {
+        SalesInvoiceReturnRequest req = new SalesInvoiceReturnRequest();
+        req.setCompanyId(company.getId());
+        req.setCustomerId(customer.getId());
+        req.setReturnDate(date);
+        req.setApplyToInvoices(applyToInvoices);
+        req.setLines(List.of(lines));
+        return salesInvoiceReturnService.create(req, user);
+    }
+
+    private static SalesInvoiceReturnLineRequest returnLine(SalesInvoice invoice, String quantity) {
+        SalesInvoiceReturnLineRequest line = new SalesInvoiceReturnLineRequest();
+        line.setSalesInvoiceLineId(invoice.getLines().getFirst().getId());
+        line.setQuantity(new BigDecimal(quantity));
+        return line;
     }
 
     private DeliveryReceipt deliveryReceipt(Customer to, String quantity, String unitPrice) {

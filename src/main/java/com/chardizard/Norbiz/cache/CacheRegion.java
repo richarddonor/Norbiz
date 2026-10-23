@@ -26,6 +26,7 @@ public enum CacheRegion {
     LOOKUP_DELIVERY_RECEIPT(Kind.LOOKUP, DeliveryReceipt.class, DeliveryReceiptLine.class, Item.class, Customer.class, Warehouse.class),
     LOOKUP_OUTLET_DELIVERY_RECEIPT(Kind.LOOKUP, OutletDeliveryReceipt.class, OutletDeliveryReceiptLine.class, Item.class, Customer.class,
             Warehouse.class, Employee.class),
+    LOOKUP_SALES_INVOICE(Kind.LOOKUP, SalesInvoice.class, SalesInvoiceLine.class, Item.class, Customer.class, Warehouse.class),
     LOOKUP_STOCK_TRANSFER(Kind.LOOKUP, StockTransfer.class, StockTransferLine.class, Item.class, Customer.class, Warehouse.class),
     LOOKUP_OUTLET_PULL_OUT(Kind.LOOKUP, OutletPullOut.class, OutletPullOutLine.class, Item.class, Customer.class, Warehouse.class),
     LOOKUP_PULL_OUT_REASON(Kind.LOOKUP, PullOutReason.class),

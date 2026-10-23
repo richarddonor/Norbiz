@@ -45,6 +45,8 @@ public class SalesInvoiceResponse {
     private Instant createdAt;
     private String createdBy;
     private boolean voided;
+    // Fully returned (every line came back on Sales Invoice Returns).
+    private boolean loaded;
     private Instant voidedAt;
     private String voidedBy;
     private TransactionOrigin origin;

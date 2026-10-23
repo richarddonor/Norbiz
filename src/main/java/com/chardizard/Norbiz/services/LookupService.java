@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +70,7 @@ public class LookupService {
     private final PullOutReasonRepository pullOutReasonRepository;
     private final BillOfMaterialRepository billOfMaterialRepository;
     private final PurchaseInvoiceRepository purchaseInvoiceRepository;
+    private final SalesInvoiceRepository salesInvoiceRepository;
     private final InventoryBalanceRepository inventoryBalanceRepository;
     private final QueryCache queryCache;
 
@@ -361,6 +363,27 @@ public class LookupService {
         return toLookup(odr);
     }
 
+    // openOnly = invoices that are neither voided nor fully returned, i.e. still a valid Sales Invoice Return source.
+    public Page<TransactionLookupResponse> salesInvoices(String username, Long companyId, String q, Long customerId,
+                                                         boolean openOnly, Pageable pageable) {
+        return search(CacheRegion.LOOKUP_SALES_INVOICE,
+                params("q", q, "customerId", customerId, "openOnly", openOnly), TransactionLookupResponse.class,
+                salesInvoiceRepository, username, companyId, SalesInvoice.class,
+                SpecificationUtils.allOf(
+                        SpecificationUtils.anyContainsIgnoreCase(q, "referenceNumber", "sheetNumber"),
+                        idEquals("customer", customerId),
+                        openOnly ? SpecificationUtils.booleanEquals("voided", false) : null,
+                        openOnly ? SpecificationUtils.booleanEquals("loaded", false) : null),
+                withDefaultSort(pageable, Sort.by(Sort.Direction.DESC, "invoiceDate")), this::toLookup);
+    }
+
+    public TransactionLookupResponse salesInvoice(Long id, String username) {
+        SalesInvoice si = salesInvoiceRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Sales invoice not found: " + id));
+        assertCompanyAccess(username, si.getCompany().getId());
+        return toLookup(si);
+    }
+
     // openOnly = transfers that are neither voided nor delivered, i.e. still a valid Delivery Receipt source.
     public Page<TransactionLookupResponse> stockTransfers(String username, Long companyId, String q, Long customerId,
                                                           boolean openOnly, Pageable pageable) {
@@ -564,6 +587,18 @@ public class LookupService {
         return new TransactionLookupResponse(odr.getId(), odr.getCompany().getId(), odr.getReferenceNumber(), odr.getDeliveryDate(),
                 null, null, odr.getCustomer().getId(), odr.getCustomer().getName(), odr.getWarehouse().getId(), odr.getWarehouse().getName(),
                 agent.getId(), agent.getFirstName() + " " + agent.getLastName(), null, odr.isVoided(), odr.isLoaded(), lines);
+    }
+
+    // Lines carry the net unit price (line and invoice discounts folded in): what a return of one unit credits.
+    private TransactionLookupResponse toLookup(SalesInvoice si) {
+        List<TransactionLookupResponse.Line> lines = si.getLines().stream()
+                .map(l -> new TransactionLookupResponse.Line(l.getId(), l.getLineNumber(), l.getItem().getId(),
+                        l.getItem().getItemCode(), l.getItem().getName(), l.getQuantity(), l.getQuantityLoaded(),
+                        null, SalesInvoiceReturnService.netUnitPrice(l).setScale(4, RoundingMode.HALF_UP)))
+                .toList();
+        return new TransactionLookupResponse(si.getId(), si.getCompany().getId(), si.getReferenceNumber(), si.getInvoiceDate(),
+                null, null, si.getCustomer().getId(), si.getCustomer().getName(), si.getWarehouse().getId(), si.getWarehouse().getName(),
+                null, null, null, si.isVoided(), si.isLoaded(), lines);
     }
 
     // warehouse = the main warehouse holding the transfer; lines carry the selling price the DR will copy.

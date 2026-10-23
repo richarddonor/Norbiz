@@ -285,6 +285,7 @@ public class AccountingReportService {
             case PURCHASE_INVOICE -> "Purchase invoice";
             case CUSTOMER_DEBIT_MEMO, SUPPLIER_CREDIT_MEMO -> "Debit to account (memo)";
             case CUSTOMER_CREDIT_MEMO, SUPPLIER_DEBIT_MEMO -> "Credit to account (memo)";
+            case SALES_INVOICE_RETURN -> "Sales return";
             case CUSTOMER_PAYMENT_TENDER, SUPPLIER_PAYMENT_TENDER -> "Payment";
             case CUSTOMER_REFUND, SUPPLIER_REFUND -> "Refund";
         };

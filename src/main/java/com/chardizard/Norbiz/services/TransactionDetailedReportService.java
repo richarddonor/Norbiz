@@ -61,6 +61,7 @@ public class TransactionDetailedReportService {
     private final PullOutReceiptLineRepository pullOutReceiptLineRepository;
     private final AssemblyLineRepository assemblyLineRepository;
     private final SalesInvoiceLineRepository salesInvoiceLineRepository;
+    private final SalesInvoiceReturnLineRepository salesInvoiceReturnLineRepository;
     private final CustomerMemoLineRepository customerMemoLineRepository;
     private final SupplierMemoLineRepository supplierMemoLineRepository;
     private final CustomerPaymentReportLineRepository customerPaymentReportLineRepository;
@@ -74,6 +75,7 @@ public class TransactionDetailedReportService {
     /**
      * How a line entity reaches its header's fields: the line's header association, and the header's
      * date, notes, counterparty and agent (null when it has none) and source-transaction association names.
+     * A source path with a dot is reached from the line instead (Sales Invoice Return: each line names its own invoice).
      */
     private record Shape(String header, String date, String remarks, String counterparty, String agent, String... sources) {
     }
@@ -121,6 +123,9 @@ public class TransactionDetailedReportService {
             case SALES_INVOICE -> query(salesInvoiceLineRepository,
                     new Shape("salesInvoice", "invoiceDate", "remarks", "customer", null, "deliveryReceipt"),
                     type, username, filter, pageable, this::fromSalesInvoice);
+            case SALES_INVOICE_RETURN -> query(salesInvoiceReturnLineRepository,
+                    new Shape("salesInvoiceReturn", "returnDate", "remarks", "customer", null, "salesInvoiceLine.salesInvoice"),
+                    type, username, filter, pageable, this::fromSalesInvoiceReturn);
             // Accounting documents have no items or warehouse: one row per memo line / tender / application / ...
             case CUSTOMER_MEMO -> queryAmounts(customerMemoLineRepository,
                     new Shape("customerMemo", "memoDate", "remarks", "customer", null), type, username, filter, pageable,
@@ -246,7 +251,14 @@ public class TransactionDetailedReportService {
                 // Any source matches — Purchase Receipt loads from either a PO or a Direct invoice.
                 List<Predicate> any = new ArrayList<>();
                 for (String source : shape.sources()) {
-                    addContains(cb, any, f.getSourceReferenceNumber(), header.join(source, JoinType.LEFT).get("referenceNumber"));
+                    From<?, ?> from = header;
+                    if (source.contains(".")) {
+                        from = root;
+                        for (String step : source.split("\\.")) from = from.join(step, JoinType.LEFT);
+                    } else {
+                        from = header.join(source, JoinType.LEFT);
+                    }
+                    addContains(cb, any, f.getSourceReferenceNumber(), from.get("referenceNumber"));
                 }
                 predicates.add(cb.or(any.toArray(Predicate[]::new)));
             }
@@ -517,7 +529,8 @@ public class TransactionDetailedReportService {
 
     private TransactionDetailedReportRow fromSalesInvoice(SalesInvoiceLine line) {
         SalesInvoice h = line.getSalesInvoice();
-        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), BigDecimal.ZERO);
+        // Loaded = returned so far by Sales Invoice Returns.
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), line.getQuantityLoaded());
         header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getInvoiceDate(), h.getWarehouse(), h.getRemarks());
         status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
         row.setCounterpartyId(h.getCustomer().getId());
@@ -525,6 +538,19 @@ public class TransactionDetailedReportService {
         if (h.getDeliveryReceipt() != null) row.setSourceReferenceNumber(h.getDeliveryReceipt().getReferenceNumber());
         row.setDiscountPercentage(line.getDiscountPercentage());
         price(row, line.getUnitPrice(), line.getDiscountPercentage());
+        return row;
+    }
+
+    // Price is the invoice line's net unit price (its discounts folded in), so amount = what was credited.
+    private TransactionDetailedReportRow fromSalesInvoiceReturn(SalesInvoiceReturnLine line) {
+        SalesInvoiceReturn h = line.getSalesInvoiceReturn();
+        TransactionDetailedReportRow row = line(line.getId(), line.getLineNumber(), line.getItem(), line.getQuantity(), BigDecimal.ZERO);
+        header(row, h.getId(), h.getCompany(), h.getReferenceNumber(), h.getSheetNumber(), h.getReturnDate(), h.getWarehouse(), h.getRemarks());
+        status(row, h.isVoided(), h.getVoidedAt(), h.getVoidedBy(), h.getCreatedAt(), h.getCreatedBy(), h.getOrigin());
+        row.setCounterpartyId(h.getCustomer().getId());
+        row.setCounterpartyName(h.getCustomer().getName());
+        if (line.getSalesInvoiceLine() != null) row.setSourceReferenceNumber(line.getSalesInvoiceLine().getSalesInvoice().getReferenceNumber());
+        price(row, line.getUnitPrice(), null);
         return row;
     }
 

@@ -14,6 +14,7 @@ import com.chardizard.Norbiz.repositories.PurchaseOrderRepository;
 import com.chardizard.Norbiz.repositories.PurchaseReceiptRepository;
 import com.chardizard.Norbiz.repositories.StockTransferRepository;
 import com.chardizard.Norbiz.repositories.SalesInvoiceRepository;
+import com.chardizard.Norbiz.repositories.SalesInvoiceReturnRepository;
 import com.chardizard.Norbiz.repositories.CustomerMemoRepository;
 import com.chardizard.Norbiz.repositories.SupplierMemoRepository;
 import com.chardizard.Norbiz.repositories.CustomerPaymentRepository;
@@ -47,6 +48,7 @@ public class TransactionLookupService {
     private final PullOutReceiptRepository pullOutReceiptRepository;
     private final AssemblyRepository assemblyRepository;
     private final SalesInvoiceRepository salesInvoiceRepository;
+    private final SalesInvoiceReturnRepository salesInvoiceReturnRepository;
     private final CustomerMemoRepository customerMemoRepository;
     private final SupplierMemoRepository supplierMemoRepository;
     private final CustomerPaymentRepository customerPaymentRepository;
@@ -96,6 +98,9 @@ public class TransactionLookupService {
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case SALES_INVOICE -> salesInvoiceRepository.findById(id)
+                    .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
+                    .orElseThrow(() -> notFound(type, id));
+            case SALES_INVOICE_RETURN -> salesInvoiceReturnRepository.findById(id)
                     .map(t -> new TransactionHeader(t.getCompany().getId(), t.getReferenceNumber(), t.isVoided()))
                     .orElseThrow(() -> notFound(type, id));
             case CUSTOMER_MEMO -> customerMemoRepository.findById(id)

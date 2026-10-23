@@ -435,6 +435,45 @@ public class DocumentSchemaRegistry {
                                             new DefaultDocumentLayout.Column("lineNet", 110))))
                     )
             )),
+            Map.entry("SALES_INVOICE_RETURN", new Entry(
+                    new DocumentSchemaResponse(
+                            "SALES_INVOICE_RETURN",
+                            List.of(
+                                    new DocumentFieldSchema("referenceNumber", "Reference Number", "string"),
+                                    new DocumentFieldSchema("sheetNumber", "Sheet Number", "string"),
+                                    new DocumentFieldSchema("companyName", "Company", "string"),
+                                    new DocumentFieldSchema("customerName", "Customer", "string"),
+                                    new DocumentFieldSchema("warehouseName", "Warehouse", "string"),
+                                    new DocumentFieldSchema("salesInvoiceReferenceNumbers", "Sales Invoice(s)", "string"),
+                                    new DocumentFieldSchema("returnDate", "Return Date", "date"),
+                                    new DocumentFieldSchema("netAmount", "Net Amount", "currency"),
+                                    new DocumentFieldSchema("appliedAmount", "Applied", "currency"),
+                                    new DocumentFieldSchema("unappliedAmount", "Unapplied Credit", "currency"),
+                                    new DocumentFieldSchema("remarks", "Remarks", "string"),
+                                    new DocumentFieldSchema("createdBy", "Posted By", "user")
+                            ),
+                            List.of(
+                                    new DocumentRepeatingGroupSchema("lines", "Line Items", List.of(
+                                            new DocumentFieldSchema("salesInvoiceReferenceNumber", "Sales Invoice #", "string"),
+                                            new DocumentFieldSchema("itemCode", "Item Code", "string"),
+                                            new DocumentFieldSchema("itemName", "Item Name", "string"),
+                                            new DocumentFieldSchema("quantity", "Quantity", "number"),
+                                            new DocumentFieldSchema("unitPrice", "Unit Price", "currency"),
+                                            new DocumentFieldSchema("amount", "Amount", "currency")
+                                    ))
+                            )
+                    ),
+                    new DefaultDocumentLayout(
+                            "Sales Invoice Return", "returnDate", "Customer:", "customerName", "remarks",
+                            List.of(new DefaultDocumentLayout.Table("lines", "Line Items", 1, List.of(
+                                    new DefaultDocumentLayout.Column("salesInvoiceReferenceNumber", 110),
+                                    new DefaultDocumentLayout.Column("itemCode", 110),
+                                    new DefaultDocumentLayout.Column("itemName", 250),
+                                    new DefaultDocumentLayout.Column("quantity", 80),
+                                    new DefaultDocumentLayout.Column("unitPrice", 90),
+                                    new DefaultDocumentLayout.Column("amount", 110))))
+                    )
+            )),
             Map.entry("CUSTOMER_MEMO", new Entry(
                     new DocumentSchemaResponse(
                             "CUSTOMER_MEMO",

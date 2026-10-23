@@ -25,7 +25,7 @@ import java.util.Map;
 
 /**
  * Sales Invoice (docs/ACCOUNTING.md "Sales Invoice"): bills a customer and opens a RECEIVABLE CHARGE for its net
- * amount. Direct mode carries its own lines and deducts the company's main warehouse stock, like a Delivery
+ * amount (none for a zero-value invoice, which is PAID at once). Direct mode carries its own lines and deducts the company's main warehouse stock, like a Delivery
  * Receipt; DR mode bills one plain-customer Delivery Receipt in full (lines copied, no stock effect).
  */
 @Service
@@ -187,9 +187,10 @@ public class SalesInvoiceService {
             inventoryStockService.assertAvailable(mainWarehouse, invoice.getLines(), SalesInvoiceLine::getItem, SalesInvoiceLine::getQuantity);
         }
 
+        // A zero total is allowed (free goods, testers, samples): it opens no receivable and is PAID from the start.
         invoice.setNetAmount(AccountingAmounts.salesInvoiceNet(invoice));
-        if (!AccountingAmounts.isPositive(invoice.getNetAmount())) {
-            throw new IllegalArgumentException("Invoice total must be greater than zero");
+        if (invoice.getNetAmount().signum() < 0) {
+            throw new IllegalArgumentException("Invoice total cannot be negative");
         }
         invoice.setTermDays(request.getTermDays() != null ? request.getTermDays() : customer.getTermDays());
         Instant dueDate = DateRangeUtils.startOfDayUtc(request.getDueDate());
@@ -214,9 +215,13 @@ public class SalesInvoiceService {
             deliveryReceiptRepository.save(deliveryReceipt);
         }
 
-        saved.setOpenItem(openItemService.open(company, AccountSide.RECEIVABLE, customer, null, OpenItemDirection.CHARGE,
-                OpenItemSourceType.SALES_INVOICE, saved.getId(), saved.getReferenceNumber(), invoiceDate, saved.getDueDate(),
-                saved.getNetAmount(), true, username));
+        if (AccountingAmounts.isPositive(saved.getNetAmount())) {
+            saved.setOpenItem(openItemService.open(company, AccountSide.RECEIVABLE, customer, null, OpenItemDirection.CHARGE,
+                    OpenItemSourceType.SALES_INVOICE, saved.getId(), saved.getReferenceNumber(), invoiceDate, saved.getDueDate(),
+                    saved.getNetAmount(), true, username));
+        } else {
+            saved.setPaymentStatus(PaymentStatus.PAID);
+        }
 
         log.info("User '{}' posted sales invoice (id={}) {} for {} with {} line(s) to customer {}{}", username, saved.getId(),
                 saved.getReferenceNumber(), saved.getNetAmount().toPlainString(), saved.getLines().size(), customer.getId(),
@@ -226,14 +231,20 @@ public class SalesInvoiceService {
     }
 
     // Voiding is the only sanctioned way to cancel an immutable transaction (docs/TRANSACTIONS.md "Voiding").
-    // Blocked while any payment/credit is applied to it — void those (or their applications) first.
+    // Blocked while any payment/credit is applied to it, or anything was returned against it — void those first.
     @Transactional
     public SalesInvoice voidSalesInvoice(Long id, String username) {
         SalesInvoice invoice = findById(id, username);
         if (invoice.isVoided()) {
             throw new IllegalArgumentException("Sales invoice already voided: " + id);
         }
-        openItemService.voidItem(invoice.getOpenItem(), username);
+        if (invoice.getLines().stream().anyMatch(l -> l.getQuantityLoaded().signum() > 0)) {
+            throw new IllegalArgumentException("Cannot void " + invoice.getReferenceNumber()
+                    + ": items were returned against it — void the sales invoice return(s) first");
+        }
+        if (invoice.getOpenItem() != null) {
+            openItemService.voidItem(invoice.getOpenItem(), username);
+        }
 
         Instant now = Instant.now();
         if (invoice.getDeliveryReceipt() == null) {
